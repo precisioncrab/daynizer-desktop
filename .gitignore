@@ -7,3 +7,5 @@ release
 *.sqlite3
 *.log
 .DS_Store
+
+thunderbird-addon/
