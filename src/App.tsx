@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import Sidebar from "./components/Sidebar";
+import AddonMenuBar from "./components/AddonMenuBar";
 import TaskTable from "./components/TaskTable";
 import DetailPanel from "./components/DetailPanel";
 import ContextMenu from "./components/ContextMenu";
@@ -13,7 +14,7 @@ import ContactsView from "./components/ContactsView";
 import ImportVCardModal from "./components/ImportVCardModal";
 import ContactsSidebar from "./components/ContactsSidebar";
 import ContactDetailPanel from "./components/ContactDetailPanel";
-import { ContactFilter, LabelColors, toggleFavoriteCategories, findDuplicateClusters } from "./contactUtils";
+import { ContactFilter, LabelColors, toggleFavoriteCategories, findDuplicateClusters, contactCategories } from "./contactUtils";
 import MergeDuplicatesView from "./components/MergeDuplicatesView";
 import { Task, TaskList, CaldavAccountPublic, CalendarEvent, Contact, AddressBook, EventOverride } from "./types";
 import { selectWidth } from "./selectWidth";
@@ -564,6 +565,30 @@ export default function App() {
     await window.api.settings?.set("contactLabelColors", JSON.stringify(next));
   }
 
+  /** Delete a contact label: strip that CATEGORIES value from every contact
+   *  carrying it, then reload + schedule a sync so the removal reaches CardDAV.
+   *  Note: a label that a contact inherits only from a CardDAV group card
+   *  (group_labels) is not removed here — that would need editing the group
+   *  card itself; this handles the category-based labels created in-app. */
+  async function deleteLabel(label: string) {
+    const affected = contacts.filter(
+      (c) => !c.deleted && contactCategories(c).some((x) => x.toLowerCase() === label.toLowerCase())
+    );
+    if (!window.confirm(
+      `Delete the label "${label}"?\n\nIt will be removed from ${affected.length} contact(s). The contacts themselves are not deleted.`
+    )) return;
+    for (const c of affected) {
+      const next = contactCategories(c)
+        .filter((x) => x.toLowerCase() !== label.toLowerCase())
+        .join(", ");
+      await window.api.contacts?.update(c.id, { categories: next });
+    }
+    if (contactFilter.kind === "label" && contactFilter.value === label) setContactFilter({ kind: "all" });
+    if (labelColors[label]) await setLabelColor(label, null);
+    await loadContacts();
+    scheduleDirtySync();
+  }
+
   async function toggleFavorite(c: Contact) {
     await window.api.contacts?.update(c.id, { categories: toggleFavoriteCategories(c) });
     await loadContacts();
@@ -861,6 +886,11 @@ export default function App() {
     await loadTasks();
     await loadLists();
     await loadEvents();
+    // Contacts + address books must reload too, or a book linked/synced here
+    // (e.g. from Settings) won't show its pulled contacts until the next full
+    // "Sync now". Mirrors runSync's full reload.
+    await loadContacts();
+    await loadAddressBooks();
     return res;
   }
 
@@ -905,6 +935,11 @@ export default function App() {
     ? (categoryFocused ? "Category: All" : "All")
     : (categoryFocused ? `Category: ${categoryFilter}` : categoryFilter);
 
+  // In the Thunderbird add-on there's no native File/Edit/View/… menu bar (that
+  // was Electron-only), so we render an in-app toolbar there. Detected via the
+  // WebExtension `browser` global; the Electron desktop keeps its native menu.
+  const isAddon = typeof (globalThis as any).browser !== "undefined" && !!(globalThis as any).browser?.runtime?.id;
+
   return (
     <div className={`app ${railCollapsed ? "rail-collapsed" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       {mainView === "contacts" ? (
@@ -916,6 +951,7 @@ export default function App() {
           onCreateBook={createAddressBook}
           labelColors={labelColors}
           onSetLabelColor={setLabelColor}
+          onDeleteLabel={deleteLabel}
           onDisconnectBook={disconnectBook}
           onDeleteBook={deleteBook}
           onSync={() => runSync()}
@@ -955,6 +991,19 @@ export default function App() {
       )}
 
       <div className="main">
+        {isAddon && (
+          <AddonMenuBar
+            onNewTask={() => createTaskInScope()}
+            onNewList={() => setForceAddingList(true)}
+            onUndo={() => undoRef.current()}
+            onSettings={() => setShowSettings(true)}
+            onSearch={() => searchInputRef.current?.focus()}
+            onAbout={() => setShowAbout(true)}
+            onSync={() => runSync()}
+            onSetView={setMainView}
+            syncing={syncing}
+          />
+        )}
         <div className="view-tabs">
           <button className={mainView === "tasks" ? "active" : ""} onClick={() => setMainView("tasks")}>Tasks</button>
           <button className={mainView === "calendar" ? "active" : ""} onClick={() => setMainView("calendar")}>Calendar</button>

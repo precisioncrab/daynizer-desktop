@@ -48,7 +48,7 @@ export function taskToVTodo(
 ): { uid: string; ics: string } {
   const uid = existingUid || task.caldav_uid || `${task.id}@tasks-desktop`;
   const comp = new ICAL.Component(["vcalendar", [], []]);
-  comp.updatePropertyWithValue("prodid", "-//Tasks Desktop//EN");
+  comp.updatePropertyWithValue("prodid", "-//Daynizer//EN");
   comp.updatePropertyWithValue("version", "2.0");
 
   const vtodo = new ICAL.Component("vtodo");
@@ -235,7 +235,7 @@ function icalDtendToString(t: ICAL.Time): string {
  *  ride along inside their parent component. Malformed items are skipped. */
 export function bundleIcs(icsStrings: string[]): string {
   const cal = new ICAL.Component(["vcalendar", [], []]);
-  cal.updatePropertyWithValue("prodid", "-//Tasks Desktop//Export//EN");
+  cal.updatePropertyWithValue("prodid", "-//Daynizer//Export//EN");
   cal.updatePropertyWithValue("version", "2.0");
   for (const s of icsStrings) {
     try {
@@ -299,7 +299,7 @@ export function eventToVEvent(
 ): { uid: string; ics: string } {
   const uid = existingUid || event.caldav_uid || `${event.id}@tasks-desktop`;
   const comp = new ICAL.Component(["vcalendar", [], []]);
-  comp.updatePropertyWithValue("prodid", "-//Tasks Desktop//EN");
+  comp.updatePropertyWithValue("prodid", "-//Daynizer//EN");
   comp.updatePropertyWithValue("version", "2.0");
 
   const vevent = new ICAL.Component("vevent");

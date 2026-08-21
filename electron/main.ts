@@ -55,7 +55,7 @@ import { discoverAddressBooks, linkAddressBook, unlinkAddressBook, syncAccountCo
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
-// The experimental build is packaged with productName "Tasks Desktop (Experimental)",
+// The experimental build is packaged with productName "Daynizer (Experimental)",
 // so electron-builder names its exe/install dir accordingly. Detect it from the exe
 // path (no build-time flag needed) so it can wear the distinct orange icon + identity,
 // the same way dev runs do — handy since it shares the stable app's database.
@@ -124,7 +124,7 @@ function createWindow() {
     height: 760,
     minWidth: 820,
     minHeight: 520,
-    title: "Tasks Desktop",
+    title: "Daynizer",
     // Explicit window icon so the taskbar button always shows the app icon
     // regardless of how the exe was launched (installed shortcut, portable
     // unpacked exe, or dev). Without this, Windows falls back to the generic
@@ -214,9 +214,9 @@ function setupTray() {
     // Dev/experimental runs use a distinct orange icon file (build/icons/32x32-dev.png)
     // so they're never confused with an installed production build at a glance.
     tray = new Tray(nativeImage.createFromPath(iconPath(isDistinctBuild ? "32x32-dev.png" : "32x32.png")));
-    tray.setToolTip(isDev ? "Tasks Desktop (dev)" : isExperimental ? "Tasks Desktop (Experimental)" : "Tasks Desktop");
+    tray.setToolTip(isDev ? "Daynizer (dev)" : isExperimental ? "Daynizer (Experimental)" : "Daynizer");
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: "Open Tasks Desktop", click: () => showMainWindow() },
+      { label: "Open Daynizer", click: () => showMainWindow() },
       { type: "separator" },
       { label: "Quit", click: () => { isQuiting = true; app.quit(); } }
     ]));
@@ -238,7 +238,7 @@ function applyLaunchAtLogin(enabled: boolean) {
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(file, `[Desktop Entry]
 Type=Application
-Name=Tasks Desktop
+Name=Daynizer
 Exec="${process.execPath}"
 X-GNOME-Autostart-enabled=true
 `);
@@ -299,7 +299,7 @@ async function exportLogs() {
   try {
     const dir = app.getPath("userData");
     const parts: string[] = [
-      "Tasks Desktop diagnostics",
+      "Daynizer diagnostics",
       `Generated:   ${new Date().toISOString()}`,
       `App version: ${app.getVersion()}`,
       `Platform:    ${process.platform} ${process.arch}`,
@@ -411,7 +411,7 @@ function buildMenu() {
         { role: "toggleDevTools" },
         { type: "separator" },
         {
-          label: "About Tasks Desktop",
+          label: "About Daynizer",
           click: () => mainWindow?.webContents.send("shortcut:open-about")
         }
       ]

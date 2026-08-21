@@ -107,22 +107,31 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
   }, [onClose]);
 
   async function addAccount() {
-    if (!serverUrl || !username || !password) {
-      setTestMsg("Fill in server URL, username, and password before saving.");
+    // A CalDAV URL is no longer required: an account can be CardDAV-only (just a
+    // CardDAV URL + credentials). Require at least one of the two URLs.
+    if ((!serverUrl && !draftCarddavUrl) || !username || !password) {
+      setTestMsg("Enter a CalDAV URL or a CardDAV URL, plus username and password, before saving.");
       return;
     }
     setBusy(true);
     setTestMsg(null);
     try {
-      if (!(await window.api.accounts.ensureHostPermission(serverUrl))) {
+      // Request host permission for whichever URL(s) were entered (CalDAV and
+      // CardDAV can live on different hosts) in ONE call -- a second
+      // permissions.request() after an await loses the click's user gesture.
+      if (!(await window.api.accounts.ensureHostPermission([serverUrl, draftCarddavUrl].filter(Boolean)))) {
         setTestMsg("Permission to contact that server was denied.");
         return;
       }
-      const created = await window.api.accounts.create({ label: label || serverUrl, server_url: serverUrl, username, password });
+      const created = await window.api.accounts.create({ label: label || serverUrl || draftCarddavUrl, server_url: serverUrl, username, password });
       if (draftCarddavUrl) await window.api.accounts.update(created.id, { carddav_url: draftCarddavUrl });
       setLabel(""); setServerUrl(""); setUsername(""); setPassword(""); setDraftCarddavUrl("");
       await refresh();
-      await discover(created.id);
+      // Discover calendars only when a CalDAV URL was given; discover address
+      // books when a CardDAV URL was given. A CardDAV-only account skips the
+      // calendar discovery that would otherwise fail with no CalDAV server.
+      if (serverUrl) await discover(created.id);
+      if (draftCarddavUrl && window.api.addressbooks) await discoverBooks(created.id);
     } catch (err: any) {
       setTestMsg(err?.message || String(err));
     } finally {
@@ -131,14 +140,14 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
   }
 
   async function testDraft() {
-    if (!serverUrl || !username || !password) {
-      setTestMsg("Fill in server URL, username, and password before testing.");
+    if ((!serverUrl && !draftCarddavUrl) || !username || !password) {
+      setTestMsg("Enter a CalDAV URL or a CardDAV URL, plus username and password, before testing.");
       return;
     }
     setBusy(true);
     setTestMsg(null);
     try {
-      if (!(await window.api.accounts.ensureHostPermission(serverUrl))) {
+      if (!(await window.api.accounts.ensureHostPermission([serverUrl, draftCarddavUrl].filter(Boolean)))) {
         setTestMsg("Permission to contact that server was denied.");
         return;
       }
@@ -521,7 +530,7 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
             </button>
           ))}
           <div className="settings-nav-about">
-            <div>Tasks Desktop{version ? ` v${version}` : ""}</div>
+            <div>Daynizer{version ? ` v${version}` : ""}</div>
             <div style={{ marginTop: 4 }}>
               {update?.state === "checking" && "Checking for updates…"}
               {update?.state === "none" && "Up to date"}
@@ -558,7 +567,7 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
                       <button onClick={() => removeAccount(acc.id)} disabled={busy}>Remove</button>
                     </div>
                   </div>
-                  <div className="status">{acc.server_url} — {acc.username}</div>
+                  <div className="status">{acc.server_url || acc.carddav_url} — {acc.username}</div>
                   <div className="status">{linkedCalCount(acc)} calendar(s), {linkedBookCount(acc)} address book(s) linked</div>
                   {acc.last_sync_at && (
                     <div className={`status ${acc.last_sync_status === "error" ? "error" : ""}`}>
@@ -660,7 +669,7 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
           <h3 style={{ marginTop: 18 }}>Add account</h3>
           <div className="form-grid">
           <input placeholder="Label (e.g. My Nextcloud)" value={label} onChange={(e) => setLabel(e.target.value)} />
-          <input placeholder="Server URL — CalDAV (https://…/caldav.php/)" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
+          <input placeholder="CalDAV URL — tasks & calendars (optional)" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
           <input placeholder="CardDAV URL — contacts (optional)" value={draftCarddavUrl} onChange={(e) => setDraftCarddavUrl(e.target.value)} />
           <input placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
           <div className="password-field">
@@ -758,7 +767,7 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
                   checked={prefs.launchAtLogin === "1"}
                   onChange={(e) => setPref("launchAtLogin", e.target.checked ? "1" : "0")}
                 />
-                Start Tasks Desktop when the computer starts
+                Start Daynizer when the computer starts
               </label>
             </div>
           </>

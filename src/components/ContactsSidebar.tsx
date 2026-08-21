@@ -21,6 +21,7 @@ interface Props {
   onCreateBook: (name: string) => void;
   labelColors: LabelColors;
   onSetLabelColor: (label: string, color: string | null) => void;
+  onDeleteLabel: (label: string) => void;
   onDisconnectBook: (b: AddressBook) => void;
   onDeleteBook: (b: AddressBook) => void;
   onSync: () => void;
@@ -31,7 +32,7 @@ interface Props {
 }
 
 export default function ContactsSidebar({
-  addressBooks, contacts, filter, onSelect, onCreateBook, labelColors, onSetLabelColor,
+  addressBooks, contacts, filter, onSelect, onCreateBook, labelColors, onSetLabelColor, onDeleteLabel,
   onDisconnectBook, onDeleteBook, onSync, syncing, onOpenSettings, collapsed, onToggleCollapsed
 }: Props) {
   const [adding, setAdding] = useState(false);
@@ -146,7 +147,8 @@ export default function ContactsSidebar({
           onClose={() => setLabelMenu(null)}
           items={[
             ...PALETTE.map((p) => ({ label: `● ${p.name}`, onClick: () => onSetLabelColor(labelMenu.label, p.color) })),
-            { label: "No color", onClick: () => onSetLabelColor(labelMenu.label, null) }
+            { label: "No color", onClick: () => onSetLabelColor(labelMenu.label, null) },
+            { label: "Delete label", danger: true, onClick: () => onDeleteLabel(labelMenu.label) }
           ]}
         />
       )}

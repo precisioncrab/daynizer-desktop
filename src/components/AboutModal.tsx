@@ -15,7 +15,7 @@ export default function AboutModal({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <button className="modal-close" onClick={onClose}>×</button>
-        <h2>Tasks Desktop</h2>
+        <h2>Daynizer</h2>
         <div className="about-version">{version ? `Version ${version}` : "Version unknown"}</div>
         <div className="about-license">
           <p>Copyright © 2026 Arlis</p>

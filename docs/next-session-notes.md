@@ -1,5 +1,30 @@
 # Notes for next session
 
+## 2026-08-02 — ▶️ START HERE NEXT: Friendica scheduled posts, Phase 1 (design done, decisions locked)
+
+**New feature: schedule social posts from the calendar.** Full design is written in `docs/scheduled-posts-plan.md` — read it first. In short: a scheduled post becomes a 4th calendar item type (next to tasks/events); it's scheduled **on the always-on Friendica server** (which fires it even when this app is closed) and the existing n8n tag-router fans it out to Pixelfed/Mastodon/Tumblr/Meta by hashtag. This app is the composer/calendar, not the publisher.
+
+**Decisions already locked (don't re-litigate):**
+- **Friendica-authoritative + local mirror** (mirrors the CalDAV model). Reason: the server is always on, this app is not — firing must be server-side.
+- **Un-timed local drafts allowed:** `state='draft'` is local-only (no API call); assigning a `scheduled_at` pushes it to Friendica → `state='scheduled'`.
+- **Reschedule = create-then-delete** (Friendica returns `501` on `PUT /scheduled_statuses/:id` — no in-place edit; create-then-delete so a failed move never loses the post).
+- **Surface n8n routing tags as checkboxes** in the composer (`#art`, `#mastodon`, `#pixelfed`, …).
+
+**Prerequisites — all READY:**
+- Scheduling API **verified live** (2026-08-02, Friendica 2026.05): `POST /statuses`+`scheduled_at` → ScheduledStatus ✅ · `GET /scheduled_statuses` ✅ · `DELETE …/:id` ✅ · `PUT` → 501 ⚠️.
+- **Write token minted** and in Bitwarden (`Friendica — read write token (hunter)`; app `friendica-scheduler`). base_url `https://precisioncrab.com`, username `hunter`, numeric account id `3`.
+- ⚠️ Unverified: whether the instance enforces Mastodon's "`scheduled_at` ≥ ~5 min out" rule — validate client-side anyway.
+
+**Phase 1 scope (zero write risk — build this slice first, behind a `FRIENDICA_SCHEDULING` flag in `src/featureFlags.ts`):**
+1. `friendica_accounts` table + migration in `electron/db.ts` (`token_enc` via `safeStorage`, exactly like `caldav_accounts.password_enc`).
+2. `electron/friendica.ts` — `testConnection` (GET `/accounts/verify_credentials`) + `listScheduled` (GET `/scheduled_statuses`), pull-only. Node `fetch` like `caldav.ts`; token decrypted in-main only.
+3. Settings UI section to add a Friendica account (label, base_url, username, paste token) + Test connection.
+4. `scheduled_posts` table + pull-only sync; render existing scheduled posts on the calendar as **read-only** `kind:"post"` items in `CalendarView.tsx` `buildEcEvents()` (new branch; `eventClick` → a stub `PostDetailPanel`).
+
+Nothing in Phase 1 can create/delete a post, so it's safe to run against the live instance. Phases 2–4 (create/delete → reschedule/media/tags → sync polish) are in the plan doc.
+
+> ⚠️ **Same standing rule as always:** the Cowork sandbox can't run the vite build and must NOT build/commit. Cowork writes the code; **Arlis runs `npm run build` + `npm run dev`/`dev:electron` and commits from his own terminal.** Suggested commit when green: `git add electron/ src/ docs/ && git commit -m "scheduled posts: phase 1 (friendica account + read-only calendar)"`.
+
 ## 2026-07-12 (evening) — Contacts phase 3 UI + CardDAV linking (BUILT, NOT YET BUILD-TESTED)
 
 On branch `contacts`. A large batch of renderer work was written but **not built or

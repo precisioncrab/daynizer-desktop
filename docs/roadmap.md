@@ -1,6 +1,12 @@
 # Roadmap / ideas to circle back to
 
 ## Next up
+- **Scheduled social posts (Friendica-backed) — DESIGN DONE, build Phase 1 next** (added 2026-08-02).
+  Schedule posts from the calendar; they're queued on the always-on Friendica server (which fires them
+  even when this app is closed) and fanned out to Pixelfed/Mastodon/Tumblr/Meta by hashtag via the
+  existing n8n router. Full plan + locked decisions in `docs/scheduled-posts-plan.md`; cold-start
+  pickup in `docs/next-session-notes.md` (top entry). Scheduling API verified live; write token minted.
+  Build behind a `FRIENDICA_SCHEDULING` feature flag, Phase 1 = account + read-only calendar (no write risk).
 - **Recurring event editing, part 2 — per-occurrence edits** (RRULE picker + whole-series
   create/edit/delete shipped 2026-07-09, see "Recurring event editing" under DONE below). Still
   possible if wanted later: the single-occurrence-vs-whole-series prompt ("This event" / "This and
