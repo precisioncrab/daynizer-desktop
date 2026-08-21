@@ -233,7 +233,7 @@ function applyLaunchAtLogin(enabled: boolean) {
   if (process.platform === "linux") {
     try {
       const dir = path.join(os.homedir(), ".config", "autostart");
-      const file = path.join(dir, "tasks-desktop.desktop");
+      const file = path.join(dir, "daynizer.desktop");
       if (enabled) {
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(file, `[Desktop Entry]
@@ -324,7 +324,7 @@ async function exportLogs() {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const res = await dialog.showSaveDialog(mainWindow!, {
       title: "Export Logs",
-      defaultPath: path.join(app.getPath("desktop"), `tasks-desktop-logs-${stamp}.txt`),
+      defaultPath: path.join(app.getPath("desktop"), `daynizer-logs-${stamp}.txt`),
       filters: [{ name: "Text", extensions: ["txt"] }]
     });
     if (res.canceled || !res.filePath) return;
@@ -657,7 +657,7 @@ app.whenReady().then(() => {
   // Distinct AppUserModelID in dev so a raw `electron .` run doesn't register a
   // shortcut under the packaged app's identity — that collision is what made
   // Windows show the Electron icon on the installed app's taskbar button.
-  if (process.platform === "win32") app.setAppUserModelId(isDev ? "com.arlis.tasksdesktop.dev" : isExperimental ? "com.arlis.tasksdesktop.experimental" : "com.arlis.tasksdesktop"); // required for toasts; matches the experimental build's appId so its taskbar button/toasts stay separate from stable
+  if (process.platform === "win32") app.setAppUserModelId(isDev ? "com.precisioncrab.daynizer.dev" : isExperimental ? "com.precisioncrab.daynizer.experimental" : "com.precisioncrab.daynizer"); // required for toasts; matches the experimental build's appId so its taskbar button/toasts stay separate from stable
   // Heal links left pointing at a deleted account before any sync runs. This
   // state is invisible in the UI -- the list/book still looks connected -- but
   // every sync gate skips it, so it fails 100% silently until someone reads

@@ -9,4 +9,4 @@ gh release download --repo precisioncrab/daynizer-desktop --pattern '*.flatpak' 
 sudo flatpak install --reinstall -y "$TMP"/*.flatpak
 
 echo "Done. Installed version:"
-flatpak info com.arlis.tasksdesktop | grep -i version || true
+flatpak info com.precisioncrab.daynizer | grep -i version || true

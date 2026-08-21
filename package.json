@@ -1,6 +1,6 @@
 {
   "name": "tasks-desktop",
-  "version": "1.0.0",
+  "version": "0.4.0",
   "description": "A non-touch, mouse/keyboard-first desktop app with Tasks.org-compatible features and CalDAV sync.",
   "author": "Arlis <remindful_boogeyman454@simplelogin.com>",
   "main": "dist-electron/main.js",
@@ -14,7 +14,7 @@
     "build": "npm run build:renderer && npm run build:electron",
     "start": "npm run build && electron .",
     "package": "npm run build && electron-builder",
-    "package:exp": "npm run build && electron-builder --publish never -c.appId=com.arlis.tasksdesktop.experimental -c.productName=\"Daynizer (Experimental)\" -c.win.icon=build/icon-exp.ico -c.win.artifactName=Daynizer-Experimental-Setup-${version}.${ext}",
+    "package:exp": "npm run build && electron-builder --publish never -c.appId=com.precisioncrab.daynizer.experimental -c.productName=\"Daynizer (Experimental)\" -c.win.icon=build/icon-exp.ico -c.win.artifactName=Daynizer-Experimental-Setup-${version}.${ext}",
     "build:addon": "vite build --config thunderbird-addon/vite.config.ts",
     "package:addon": "npm run build:addon && powershell -NoProfile -Command \"Compress-Archive -Path dist-addon/* -DestinationPath daynizer-addon.zip -Force; Move-Item -Force daynizer-addon.zip daynizer-addon.xpi\"",
     "dev:addon": "vite --config thunderbird-addon/vite.config.ts"
@@ -41,7 +41,7 @@
     "vite": "^5.4.2"
   },
   "build": {
-    "appId": "com.arlis.tasksdesktop",
+    "appId": "com.precisioncrab.daynizer",
     "productName": "Daynizer",
     "files": [
       "dist",
@@ -77,7 +77,8 @@
         "flatpak"
       ],
       "icon": "build/icons",
-      "category": "Office"
+      "category": "Office",
+      "executableName": "daynizer"
     },
     "flatpak": {
       "runtime": "org.freedesktop.Platform",

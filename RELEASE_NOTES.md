@@ -1,8 +1,8 @@
-Daynizer v1.0.0 — the rebrand, calendar events, and reliability release
+Daynizer v0.4.0 — the rebrand, calendar events, and reliability release
 
 The app formerly known as Tasks Desktop is now **Daynizer**. This release adds two-way
 calendar event sync, recurring events, app-wide undo, a redesigned Settings, and a batch of
-sync-reliability fixes — on top of the contacts support introduced in 0.3.0.
+sync-reliability fixes — on top of the contacts support introduced in 0.3.0. Daynizer is still beta.
 
 ## New name: Daynizer
 - Tasks Desktop is now Daynizer. This is a name change only — your data, accounts, and sync
