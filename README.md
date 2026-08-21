@@ -42,7 +42,7 @@ installer once. To remove it: Windows Settings → Apps → Installed apps → D
 ### Debian / Ubuntu (.deb)
 
 ```bash
-sudo apt install ./daynizer_x.y.z_amd64.deb
+sudo apt install ./tasks-desktop_x.y.z_amd64.deb
 ```
 
 `apt` resolves the dependencies automatically (plain `dpkg -i` works too, followed by
