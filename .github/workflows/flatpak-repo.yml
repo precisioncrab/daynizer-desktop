@@ -91,7 +91,7 @@ jobs:
       - name: Generate .flatpakref / .flatpakrepo + landing page
         run: |
           set -euo pipefail
-          PAGES_URL="https://precisioncrab.github.io/tasks-desktop"
+          PAGES_URL="https://precisioncrab.github.io/daynizer-desktop"
           REPO_URL="$PAGES_URL/repo"
           APPID="${{ steps.repo.outputs.appid }}"
           BRANCH="${{ steps.repo.outputs.branch }}"
@@ -101,24 +101,24 @@ jobs:
           # Stops GitHub Pages' Jekyll from mangling the ostree repo directories
           touch pages/.nojekyll
 
-          cat > pages/tasks-desktop.flatpakref <<EOF
+          cat > pages/daynizer-desktop.flatpakref <<EOF
           [Flatpak Ref]
           Name=$APPID
           Branch=$BRANCH
-          Title=Tasks Desktop
+          Title=Daynizer
           Url=$REPO_URL
-          Homepage=https://github.com/precisioncrab/tasks-desktop
+          Homepage=https://github.com/precisioncrab/daynizer-desktop
           IsRuntime=false
           RuntimeRepo=https://flathub.org/repo/flathub.flatpakrepo
           GPGKey=$GPGKEY
           EOF
 
-          cat > pages/tasks-desktop.flatpakrepo <<EOF
+          cat > pages/daynizer-desktop.flatpakrepo <<EOF
           [Flatpak Repo]
-          Title=Tasks Desktop (precisioncrab)
+          Title=Daynizer (precisioncrab)
           Url=$REPO_URL
-          Homepage=https://github.com/precisioncrab/tasks-desktop
-          Comment=Auto-updating Flatpak repository for Tasks Desktop
+          Homepage=https://github.com/precisioncrab/daynizer-desktop
+          Comment=Auto-updating Flatpak repository for Daynizer
           GPGKey=$GPGKEY
           EOF
 
@@ -126,7 +126,7 @@ jobs:
           <!doctype html>
           <html lang="en"><head><meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Tasks Desktop — Flatpak</title>
+          <title>Daynizer — Flatpak</title>
           <style>
             body{font-family:system-ui,sans-serif;max-width:44rem;margin:3rem auto;padding:0 1rem;line-height:1.5}
             code,pre{background:#f4f4f5;border-radius:6px}
@@ -134,16 +134,16 @@ jobs:
             pre{padding:1rem;overflow-x:auto}
             h1{margin-bottom:.2rem}
           </style></head><body>
-          <h1>Tasks Desktop — Flatpak</h1>
+          <h1>Daynizer — Flatpak</h1>
           <p>An auto-updating Flatpak repository. Install once, then <code>flatpak update</code>
           keeps it current.</p>
           <h2>Install</h2>
-          <pre>flatpak install --from $PAGES_URL/tasks-desktop.flatpakref</pre>
+          <pre>flatpak install --from $PAGES_URL/daynizer-desktop.flatpakref</pre>
           <p>Then run it from your app menu or with:</p>
           <pre>flatpak run $APPID</pre>
           <h2>Update</h2>
           <pre>flatpak update</pre>
-          <p><a href="https://github.com/precisioncrab/tasks-desktop">Project on GitHub</a></p>
+          <p><a href="https://github.com/precisioncrab/daynizer-desktop">Project on GitHub</a></p>
           </body></html>
           EOF
 

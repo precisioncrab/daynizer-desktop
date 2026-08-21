@@ -55,7 +55,7 @@
     "publish": {
       "provider": "github",
       "owner": "precisioncrab",
-      "repo": "tasks-desktop"
+      "repo": "daynizer-desktop"
     },
     "mac": {
       "target": [
@@ -69,7 +69,7 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico",
-      "artifactName": "${name}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "linux": {
       "target": [

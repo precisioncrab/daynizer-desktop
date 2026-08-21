@@ -1,4 +1,4 @@
-# Tasks Desktop
+# Daynizer
 
 A non-touch, mouse-and-keyboard desktop app that reimplements the core functionality of
 [Tasks.org](https://tasks.org) (lists, subtasks, due/start dates, priorities, recurrence, tags) as an
@@ -8,18 +8,18 @@ Tasks.org mobile setup (DAVx5 / Nextcloud / any Tasks.org-compatible CalDAV serv
 > **Beta software.** This project is still in active development and hasn't reached a stable 1.0 yet.
 > Expect rough edges and bugs, and keep a backup of anything important — while sync is two-way, you
 > shouldn't rely on this as the only copy of your tasks until a v1.0 release. Bug reports are welcome
-> on the [issue tracker](https://github.com/precisioncrab/tasks-desktop/issues).
+> on the [issue tracker](https://github.com/precisioncrab/daynizer-desktop/issues).
 
 ## Installation
 
 Grab the latest build for your platform from the
-[Releases page](https://github.com/precisioncrab/tasks-desktop/releases/latest).
+[Releases page](https://github.com/precisioncrab/daynizer-desktop/releases/latest).
 
 ### Windows (.exe)
 
-Download `tasks-desktop-Setup-x.y.z.exe` and run it. It installs per-user (no admin prompt) and
+Download `Daynizer-Setup-x.y.z.exe` and run it. It installs per-user (no admin prompt) and
 **automatically replaces any previously installed version** — settings and your task database are kept.
-To remove the app: Windows Settings → Apps → Installed apps → Tasks Desktop → Uninstall.
+To remove the app: Windows Settings → Apps → Installed apps → Daynizer → Uninstall.
 
 From v0.1.14 onward the Windows app updates itself: it checks this repo's releases on startup, downloads
 the new version in the background, and offers "Restart to update" in Settings, so you only ever need to
@@ -38,12 +38,12 @@ Update by installing a newer .deb the same way; remove with `sudo apt remove tas
 
 ### Flatpak (auto-updating)
 
-Tasks Desktop is published as a proper Flatpak repository, so you install it once and then
+Daynizer is published as a proper Flatpak repository, so you install it once and then
 `flatpak update` (or GNOME Software / KDE Discover) keeps it current automatically:
 
 ```bash
 # install once from the repository (pulls the runtimes it needs from Flathub)
-flatpak install --from https://precisioncrab.github.io/tasks-desktop/tasks-desktop.flatpakref
+flatpak install --from https://precisioncrab.github.io/daynizer-desktop/daynizer-desktop.flatpakref
 
 # run it
 flatpak run com.arlis.tasksdesktop
@@ -59,14 +59,14 @@ Remove it with `flatpak uninstall com.arlis.tasksdesktop`. (If you have a Flathu
 required runtimes install automatically; if not, the `.flatpakref` points at Flathub so they're fetched
 on first install.)
 
-A standalone `.flatpak` bundle is also attached to each [GitHub release](https://github.com/precisioncrab/tasks-desktop/releases/latest)
+A standalone `.flatpak` bundle is also attached to each [GitHub release](https://github.com/precisioncrab/daynizer-desktop/releases/latest)
 for offline installs, but the repository above is the recommended path since it's the one that
 auto-updates.
 
 ### macOS (.dmg)
 
 Two dmgs are published: `arm64` for Apple Silicon (M1 and later) and `x64` for Intel Macs — pick the
-one matching your machine (About This Mac shows which chip you have). Open it and drag **Tasks Desktop**
+one matching your machine (About This Mac shows which chip you have). Open it and drag **Daynizer**
 into **Applications**. The build is not code-signed, so the
 first launch will be blocked by Gatekeeper — right-click (or Ctrl-click) the app in Applications and
 choose **Open**, then confirm. This is only needed once. Update by installing a newer .dmg over the old
@@ -74,7 +74,7 @@ copy; remove by deleting the app from Applications.
 
 ## Connecting a CalDAV / CardDAV server (Synology, Nextcloud, …)
 
-Tasks Desktop syncs **tasks & calendars over CalDAV** and **contacts over CardDAV**. Open **Settings**
+Daynizer syncs **tasks & calendars over CalDAV** and **contacts over CardDAV**. Open **Settings**
 (the "CalDAV / CardDAV accounts…" button in the sidebar) → **Add account** and fill in:
 
 - **Server URL — CalDAV** — the calendars/tasks endpoint.
@@ -144,7 +144,7 @@ doesn't support two-factor auth for third-party CalDAV/CardDAV clients; use your
 ## Setup
 
 ```bash
-cd tasks-desktop
+cd daynizer-desktop
 npm install
 ```
 
