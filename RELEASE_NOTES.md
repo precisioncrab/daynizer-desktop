@@ -1,20 +1,39 @@
-Tasks Desktop v0.3.0 — Contacts release
+Daynizer v1.0.0 — the rebrand, calendar events, and reliability release
 
-The headline of this release is contacts (CardDAV) support, plus a batch of sync-reliability fixes around duplicate lists, self-signed HTTPS servers, and the Windows taskbar icon.
+The app formerly known as Tasks Desktop is now **Daynizer**. This release adds two-way
+calendar event sync, recurring events, app-wide undo, a redesigned Settings, and a batch of
+sync-reliability fixes — on top of the contacts support introduced in 0.3.0.
 
-## Contacts (CardDAV) — new
-- A dedicated Contacts tab with a list, detail panel, and a contacts-aware sidebar (address books, favorites, labels with colors).
-- Two-way CardDAV sync: create, edit, and delete contacts and have them sync to your server alongside tasks and calendars.
-- Birthdays & anniversaries rail, year-less birthdays, per-label colors, search, and label filtering.
-- Link a local address book to a remote CardDAV collection, or keep it local-only.
+## New name: Daynizer
+- Tasks Desktop is now Daynizer. This is a name change only — your data, accounts, and sync
+  are unchanged. Existing installs keep working and stay connected to the same server.
 
-## Self-signed HTTPS servers
-- New opt-in setting: "Allow self-signed HTTPS certificates (self-hosted servers)." Turn it on to connect to a self-hosted server using a self-signed cert (e.g. Synology DSM's default HTTPS on your LAN). Off by default; only enable for servers you trust.
+## Calendar events (CalDAV) — new
+- Two-way event sync: create, edit, and delete calendar events and have them sync with your
+  CalDAV server alongside tasks and contacts.
+- Recurring events display across the calendar, and whole-series ("all events") edits sync
+  reliably.
+- Per-event reminders (VALARM) and all-day / multi-day events.
 
-## Duplicate lists / contacts — fixed
-- Fixed the root cause of duplicate local lists: connecting/disconnecting a server (or switching it between http and https) no longer spawns a second copy of the same list. Remote calendars and address books are now matched by a normalized URL, so an http↔https change is recognized as the same collection.
-- Disconnecting a list now keeps it and its tasks but renames it "(local)" so it's clearly distinct from the synced copy — instead of deleting it.
-- New "Clean up duplicates" button in Settings merges duplicate lists / address books / contacts left over from earlier connect/disconnect cycles: it keeps one synced copy per collection, renames extras "(local)", and removes identical duplicate contacts. It never deletes your tasks.
+## Undo
+- One-level undo (Ctrl/Cmd+Z, or Edit ▸ Undo) across tasks and events — reverses your last
+  create, edit, delete, complete, or reschedule.
 
-## Windows taskbar icon
-- The app window now sets its own icon explicitly, so the taskbar shows the Tasks Desktop icon instead of the generic Electron icon regardless of how it's launched.
+## Subtasks
+- Collapse and expand subtasks in the task list; subtask parent relationships now round-trip
+  correctly over sync (RELATED-TO).
+
+## Settings, redesigned
+- Settings is organized into left-nav panes (Accounts, Calendars & Lists, Contacts, Sync,
+  Notifications & Startup) instead of one long scrolling column.
+- Choose a default list for new tasks and a default calendar for new events.
+
+## Sync reliability
+- Prompt to sync on close when you have unsynced changes.
+- Fixes for edits getting "wedged" by etag mismatches, and steadier handling of conflicting
+  server changes.
+- Self-signed HTTPS support and the duplicate-list cleanup from 0.3.0 are still here.
+
+## Contacts
+- Delete a label (category) across all contacts and sync the change; per-label colors; merge
+  duplicates; favorites.
