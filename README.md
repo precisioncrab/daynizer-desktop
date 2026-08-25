@@ -201,6 +201,10 @@ doesn't support two-factor auth for third-party CalDAV/CardDAV clients; use your
 - Recurring events are edited as a whole series only (no per-occurrence exceptions), and the calendar
   grid draws a recurring event on its first occurrence rather than expanding it across every date; the
   RRULE itself is stored and synced correctly.
+- On **DAViCal-based servers (including Synology Calendar)**, deleting a whole list removes it locally
+  but cannot remove the calendar collection from the server — DAViCal rejects `DELETE` on a collection
+  (`405`). Individual tasks/events still delete and sync normally; only whole-calendar deletion is
+  server-side manual (remove it in the server's own UI).
 
 ## Stack
 

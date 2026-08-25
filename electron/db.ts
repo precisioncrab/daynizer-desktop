@@ -464,8 +464,12 @@ export function listFindByCalendar(accountId: string, calendarUrl: string): Task
  *  propagate. Used by the "sync before closing?" prompt. */
 export function countDirtyItems(): number {
   const db = getDb();
-  const c = (table: string) => (db.prepare(`SELECT COUNT(*) AS c FROM ${table} WHERE dirty = 1`).get() as any).c as number;
-  return c("tasks") + c("events") + c("contacts");
+  // Dirty edits plus soft-deleted rows that still exist on the server (their
+  // deletion is a pending push). Without the deletion clause the "sync before
+  // closing?" prompt missed deletes, so a delete could be lost on quit.
+  const c = (table: string, uidCol: string) =>
+    (db.prepare(`SELECT COUNT(*) AS c FROM ${table} WHERE dirty = 1 OR (deleted = 1 AND ${uidCol} IS NOT NULL)`).get() as any).c as number;
+  return c("tasks", "caldav_uid") + c("events", "caldav_uid") + c("contacts", "carddav_uid");
 }
 
 export function listCreate(name: string, color = "#4a90d9"): TaskList {

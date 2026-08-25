@@ -4,6 +4,7 @@ import { Contact, AddressBook, TypedValue, PostalAddress } from "../types";
 interface Props {
   contact: Contact | null;
   addressBooks: AddressBook[];
+  existingLabels?: string[];
   onUpdate: (id: string, patch: Partial<Contact>) => void;
   onDelete: (id: string) => void;
 }
@@ -24,7 +25,7 @@ const rmBtnStyle: CSSProperties = {
   background: "none", border: "none", color: "#9aa0a6", cursor: "pointer", fontSize: 14, padding: "0 4px"
 };
 
-export default function ContactDetailPanel({ contact, addressBooks, onUpdate, onDelete }: Props) {
+export default function ContactDetailPanel({ contact, addressBooks, existingLabels = [], onUpdate, onDelete }: Props) {
   const [bookId, setBookId] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -162,7 +163,7 @@ export default function ContactDetailPanel({ contact, addressBooks, onUpdate, on
           <input type="text" placeholder="Street" value={a.street} onChange={(e) => patchAddr(i, { street: e.target.value })} />
           <div className="detail-row">
             <input type="text" placeholder="City" value={a.city} onChange={(e) => patchAddr(i, { city: e.target.value })} />
-            <input type="text" placeholder="Region" value={a.region} onChange={(e) => patchAddr(i, { region: e.target.value })} />
+            <input type="text" placeholder="State" value={a.region} onChange={(e) => patchAddr(i, { region: e.target.value })} />
           </div>
           <div className="detail-row">
             <input type="text" placeholder="Postal" value={a.postal} onChange={(e) => patchAddr(i, { postal: e.target.value })} />
@@ -172,8 +173,25 @@ export default function ContactDetailPanel({ contact, addressBooks, onUpdate, on
       ))}
       <button style={addBtnStyle} onClick={() => { setAddresses([...addresses, { type: "home", street: "", city: "", region: "", postal: "", country: "" }]); mark(); }}>+ Add address</button>
 
-      <label>Categories (comma-separated)</label>
+      <label>Labels (comma-separated)</label>
       <input type="text" value={categories} onChange={(e) => { setCategories(e.target.value); mark(); }} />
+      {existingLabels.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => {
+            const pick = e.target.value;
+            if (!pick) return;
+            const cur = categories.split(",").map((x) => x.trim()).filter(Boolean);
+            if (!cur.some((x) => x.toLowerCase() === pick.toLowerCase())) {
+              setCategories([...cur, pick].join(", "));
+              mark();
+            }
+          }}
+        >
+          <option value="">+ Add existing label…</option>
+          {existingLabels.map((l) => <option key={l} value={l}>{l}</option>)}
+        </select>
+      )}
 
       <label>Notes</label>
       <textarea value={notes} onChange={(e) => { setNotes(e.target.value); mark(); }} />

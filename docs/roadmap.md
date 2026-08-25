@@ -24,6 +24,18 @@
   (name, color) + small settings UI, then calendar/task-table coloring could prefer category color
   over list color when a task has one. Deferred for now — calendar view v1 uses list color only.
 
+## Known bugs
+- **Nested subtasks not always importing nested — possibly Nextcloud-specific** (added 2026-08-25).
+  A beta user reported that nested tasks imported from Tasks.org don't consistently come in nested:
+  a task with 6 subtasks arrived with only ~2 nested and the other ~4 flattened to the outer (top)
+  level. **Tested 2026-08-25 on Synology — nesting worked correctly (all subtasks nested), and the
+  Thunderbird add-on also handled it fine.** So it hasn't reproduced locally yet and may be tied to
+  **Nextcloud** specifically (or that user's data/setup). Next: spin up a Nextcloud test server and
+  try to repro there. Suspect `RELATED-TO` (parent-UID) handling on import/pull — compare how
+  Nextcloud emits and round-trips `RELATED-TO;RELTYPE=CHILD/PARENT` vs Synology, and how the sync
+  maps it to `parentId` (`electron/caldav.ts` / `db.ts`). Website screenshots are also waiting on
+  this repro — see `../WEBSITE-TODO.md`.
+
 ## Export & sharing — proposed (added 2026-07-16)
 - **Contact export to `.vcf`** — export one, selected, or all contacts to a vCard file. The
   inverse of the existing Import vCard flow; can reuse the vCard generator in

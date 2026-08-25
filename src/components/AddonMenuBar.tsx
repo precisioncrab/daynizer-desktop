@@ -50,6 +50,10 @@ export default function AddonMenuBar(props: Props) {
       title: "Edit",
       items: [
         { label: "Undo", hint: "Ctrl+Z", onClick: props.onUndo },
+        { label: "Cut", hint: "Ctrl+X", onClick: () => { try { document.execCommand("cut"); } catch { /* ignore */ } } },
+        { label: "Copy", hint: "Ctrl+C", onClick: () => { try { document.execCommand("copy"); } catch { /* ignore */ } } },
+        { label: "Paste", hint: "Ctrl+V", onClick: () => { try { document.execCommand("paste"); } catch { /* ignore */ } } },
+        { label: "Select All", hint: "Ctrl+A", onClick: () => { try { document.execCommand("selectAll"); } catch { /* ignore */ } } },
         { label: "Settings…", hint: "Ctrl+,", onClick: props.onSettings }
       ]
     },

@@ -298,9 +298,23 @@ export async function createServerCalendar(account: CaldavAccount, name: string)
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "list";
   const newCalUrl = `${calHomeUrl}${slug}-${Date.now()}/`;
 
+  // Declare the component set explicitly. A calendar created with only a
+  // displayname gets an EMPTY <supported-calendar-component-set> on SabreDAV
+  // (Synology's backend): Synology Calendar then hides it and Tasks.org refuses
+  // to subscribe, even though DAVx5 still lists it. A list here holds both tasks
+  // and events, so advertise VEVENT + VTODO. (tsdav serializes props via xml-js,
+  // so the nested c:comp elements below become <c:comp name="…"/>.)
   await client.makeCalendar({
     url: newCalUrl,
-    props: { displayname: name }
+    props: {
+      displayname: name,
+      "c:supported-calendar-component-set": {
+        "c:comp": [
+          { _attributes: { name: "VEVENT" } },
+          { _attributes: { name: "VTODO" } }
+        ]
+      }
+    } as any
   });
 
   const newList = listCreate(name);

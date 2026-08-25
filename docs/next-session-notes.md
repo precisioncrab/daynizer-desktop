@@ -1,5 +1,44 @@
 # Notes for next session
 
+## 2026-08-25 — Fixes from beta-test notes + live Synology validation
+
+Batch from Arlis's desktop + add-on test checklists. Code changes are in `src/**`
+(shared by desktop AND the add-on — the add-on's `tab/entry.ts` imports `../../src/main`)
+and `electron/**`. Typechecked clean (renderer / electron / addon tsconfigs).
+
+**Fixed & LIVE-VERIFIED against Synology:**
+- **Lists -> server now appear.** Root cause proven on the wire: `createServerCalendar()`
+  sent only `displayname`, so the new calendar got an EMPTY `supported-calendar-component-set`.
+  The server hides those and Tasks.org won't subscribe (DAVx5 shows them anyway). Fix: declare
+  `VEVENT + VTODO` on `makeCalendar` (`electron/caldav.ts` + `thunderbird-addon/background/caldav.ts`
+  + canonical add-on repo). Verified: new lists from desktop (`daynizer2`) and add-on (`tbird4`)
+  both landed with `[VEVENT,VTODO]` and show in Synology Calendar. NOTE: must install the new
+  build from `release\`, not just relaunch the old install.
+
+**Server identity (matters for the rest):** the Synology "native" Calendar is **DAViCal 1.1.12**
+under the hood (`/caldav.php/`, `X-DAViCal-Version`). New known limitation: DAViCal returns
+`405 "DELETE collection is not supported"`, so deleting a whole list in the app cannot remove the
+collection from the server (items still delete fine). `PROPPATCH` of the component set IS allowed
+(used it to surface + delete 13 orphan test calendars this session).
+
+**Fixed, typecheck-clean, NOT yet runtime-tested by Arlis:**
+- Contact editor "Categories" -> "Labels" (matches the sidebar) + a dropdown of existing labels
+  (`ContactDetailPanel.tsx` + `App.tsx`).
+- Address field "Region" -> "State".
+- Tasks created in Calendar view default to the default TASK list, not the event calendar
+  (`App.tsx` `createTaskOnDate`).
+- Pending deletions now count as unsynced — `electron/db.ts` `countDirtyItems` only counted
+  `dirty=1` and missed soft-deletes, so the close-prompt ignored deletes and a delete could be lost
+  on quit and re-pulled.
+- Add-on Edit menu: Cut/Copy/Paste/Select All (`AddonMenuBar.tsx`).
+- Add-on Settings: empty "Notifications & Startup" pane hidden for the add-on (`SettingsModal.tsx`).
+
+**Diagnosed, not changed (need more live testing):** favorites -> server/Android (no standard
+CardDAV favorite; the add-on reboot-loss is a pull/conflict issue), merge-duplicates not clearing
+server dupes, "(conflicted copy)" dupes, notification-click jump (renderer handler + AUMID already
+correct — likely a Windows toast quirk). Full detail in `../FIX-NOTES-2026-08-25.md`.
+
+
 ## 2026-08-02 — ▶️ START HERE NEXT: Friendica scheduled posts, Phase 1 (design done, decisions locked)
 
 **New feature: schedule social posts from the calendar.** Full design is written in `docs/scheduled-posts-plan.md` — read it first. In short: a scheduled post becomes a 4th calendar item type (next to tasks/events); it's scheduled **on the always-on Friendica server** (which fires it even when this app is closed) and the existing n8n tag-router fans it out to Pixelfed/Mastodon/Tumblr/Meta by hashtag. This app is the composer/calendar, not the publisher.

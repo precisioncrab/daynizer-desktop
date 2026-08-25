@@ -14,7 +14,7 @@ import ContactsView from "./components/ContactsView";
 import ImportVCardModal from "./components/ImportVCardModal";
 import ContactsSidebar from "./components/ContactsSidebar";
 import ContactDetailPanel from "./components/ContactDetailPanel";
-import { ContactFilter, LabelColors, toggleFavoriteCategories, findDuplicateClusters, contactCategories } from "./contactUtils";
+import { ContactFilter, LabelColors, toggleFavoriteCategories, findDuplicateClusters, contactCategories, contactLabels } from "./contactUtils";
 import MergeDuplicatesView from "./components/MergeDuplicatesView";
 import { Task, TaskList, CaldavAccountPublic, CalendarEvent, Contact, AddressBook, EventOverride } from "./types";
 import { selectWidth } from "./selectWidth";
@@ -671,7 +671,12 @@ export default function App() {
    *  defaulted a 1-hour span later, same as events -- a plain "YYYY-MM-DD"
    *  (month-view day click) stays a due-date-only task, same as before. */
   async function createTaskOnDate(dateStr: string) {
-    const list_id = defaultEventListId();
+    // Tasks created from the calendar honor the default TASK list (not the
+    // default event calendar). An active calendar isolation filter still wins,
+    // since that's the collection the user is looking at.
+    const list_id = calendarListFilter !== "all"
+      ? calendarListFilter
+      : ((defaultTaskList && lists.some((l) => l.id === defaultTaskList)) ? defaultTaskList : firstSyncedListId());
     if (!list_id) return;
     const hasTime = dateStr.length > 10;
     const t = await window.api.tasks.create({
@@ -940,6 +945,14 @@ export default function App() {
   // WebExtension `browser` global; the Electron desktop keeps its native menu.
   const isAddon = typeof (globalThis as any).browser !== "undefined" && !!(globalThis as any).browser?.runtime?.id;
 
+  // Every label currently in use across all contacts, for the "add existing
+  // label" dropdown in the contact editor (own CATEGORIES + group-card labels).
+  const existingLabels = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of contacts) for (const l of contactLabels(c)) set.add(l);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [contacts]);
+
   return (
     <div className={`app ${railCollapsed ? "rail-collapsed" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       {mainView === "contacts" ? (
@@ -1176,6 +1189,7 @@ export default function App() {
           <ContactDetailPanel
             contact={contacts.find((c) => c.id === selectedContactId) || null}
             addressBooks={addressBooks}
+            existingLabels={existingLabels}
             onUpdate={updateContact}
             onDelete={deleteContact}
           />

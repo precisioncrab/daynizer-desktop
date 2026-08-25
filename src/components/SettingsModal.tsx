@@ -388,7 +388,9 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
     { id: "calendars", label: "Calendars & Lists" },
     { id: "contacts", label: "Contacts" },
     { id: "sync", label: "Sync" },
-    { id: "notifications", label: "Notifications & Startup" }
+    // The Thunderbird add-on has no settings/reminder subsystem (window.api.settings
+    // is undefined there), so hide the empty Notifications & Startup pane for it.
+    ...(window.api.settings ? [{ id: "notifications" as Pane, label: "Notifications & Startup" }] : [])
   ];
   const pendingCount = Object.keys(pendingByCal).length + Object.keys(pendingByBook).length;
   const linkedCalCount = (acc: CaldavAccountPublic) =>
