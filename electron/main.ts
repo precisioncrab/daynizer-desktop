@@ -49,7 +49,7 @@ import {
   contactsMerge,
   dedupeDatabase
 } from "./db.js";
-import { testConnection, discoverCalendars, linkListToCalendar, unlinkList, syncAccount, createServerCalendar, encryptPassword, connectCalendar, syncLog } from "./caldav.js";
+import { testConnection, discoverCalendars, linkListToCalendar, unlinkList, syncAccount, createServerCalendar, encryptPassword, connectCalendar, syncLog, pushCalendarName } from "./caldav.js";
 import { taskToVTodo, eventToVEvent, bundleIcs } from "./ical.js";
 import { discoverAddressBooks, linkAddressBook, unlinkAddressBook, syncAccountContacts, connectAddressBook, importVCards } from "./carddav.js";
 
@@ -470,7 +470,28 @@ function registerIpc() {
 
   ipcMain.handle("lists:all", () => listsAll());
   ipcMain.handle("lists:create", (_e, name: string, color?: string) => listCreate(name, color));
-  ipcMain.handle("lists:update", (_e, id: string, patch: any) => listUpdate(id, patch));
+  ipcMain.handle("lists:update", async (_e, id: string, patch: any) => {
+    const before = listsAll().find((l) => l.id === id);
+    const updated = listUpdate(id, patch);
+    // A rename of a linked list must reach the server too (was local-only).
+    // PROPPATCH the calendar's DAV:displayname. Best-effort: a failure leaves
+    // the local rename in place and is retried the next time it's renamed.
+    if (
+      patch && typeof patch.name === "string" &&
+      before && patch.name !== before.name &&
+      updated.caldav_account_id && updated.caldav_calendar_url
+    ) {
+      const account = accountsAll().find((a) => a.id === updated.caldav_account_id);
+      if (account) {
+        try {
+          await pushCalendarName(account, updated.caldav_calendar_url, updated.name);
+        } catch (err) {
+          console.error("Failed to push list rename to server:", err);
+        }
+      }
+    }
+    return updated;
+  });
   ipcMain.handle("lists:delete", (_e, id: string) => listDelete(id));
   ipcMain.handle("lists:export", async (_e, listId: string) => {
     const list = listsAll().find((l) => l.id === listId);
