@@ -291,6 +291,38 @@ export function connectCalendar(
   return listsAll().find((l) => l.id === list.id)!;
 }
 
+/** XML-escape a text value for a DAV request body. */
+function xmlEscape(v: string): string {
+  return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
+/** Push a renamed list's title to the server as the calendar collection's
+ *  DAV:displayname via PROPPATCH, so a rename in the app propagates to
+ *  Nextcloud / Synology / Tasks.org instead of staying local. Best-effort: any
+ *  failure (offline, or a server that rejects the property) is logged and
+ *  thrown to the caller, which swallows it so the local rename still stands. */
+export async function pushCalendarName(account: CaldavAccount, calendarUrl: string, name: string): Promise<void> {
+  const client = await clientFor(account);
+  const body =
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<d:propertyupdate xmlns:d="DAV:"><d:set><d:prop>` +
+    `<d:displayname>${xmlEscape(name)}</d:displayname>` +
+    `</d:prop></d:set></d:propertyupdate>`;
+  const res = await client.davRequest({
+    url: calendarUrl,
+    init: {
+      method: "PROPPATCH",
+      headers: { "content-type": "application/xml; charset=utf-8" },
+      body
+    },
+    convertIncoming: false,
+    parseOutgoing: false
+  });
+  const ok = !Array.isArray(res) || res.every((r) => r.ok !== false && (r.status ? r.status < 400 : true));
+  syncLog(`PROPPATCH displayname ${calendarUrl} -> "${name}": ${ok ? "ok" : JSON.stringify(res)}`);
+  if (!ok) throw new Error(`Server rejected displayname change (${JSON.stringify(res)})`);
+}
+
 /** Remove the calendar link from a list (sets it back to local-only). */
 export function unlinkList(listId: string) {
   listUpdate(listId, {
