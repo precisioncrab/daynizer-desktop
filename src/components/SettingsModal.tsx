@@ -20,6 +20,16 @@ function sameDavUrl(a: string | null | undefined, b: string | null | undefined):
 function toLocalName(name: string): string {
   return /\(local\)\s*$/i.test(name) ? name : `${name} (local)`;
 }
+/** Electron wraps every IPC handler rejection as
+ *  "Error invoking remote method 'x:y': TypeError: <real message>". Strip that
+ *  scaffolding (and a leading error-class name) so the banner shows only the
+ *  human-readable reason we threw. */
+function cleanErr(err: any): string {
+  let m = String(err?.message ?? err ?? "Unknown error");
+  m = m.replace(/^Error invoking remote method '[^']*':\s*/i, "");
+  m = m.replace(/^(?:[A-Z]\w*Error):\s*/, "");
+  return m.trim() || "Unknown error";
+}
 
 interface Props {
   lists: TaskList[];
@@ -268,7 +278,7 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
             accountsToSync.add(accountId);
           }
         } catch (err: any) {
-          errors.push(`${cal.displayName}: ${err?.message || err}`);
+          errors.push(`${cal.displayName}: ${cleanErr(err)}`);
         }
       }
       for (const [bookUrl, selected] of bookEntries) {
@@ -294,7 +304,7 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
             }
           }
         } catch (err: any) {
-          errors.push(`${book.displayName}: ${err?.message || err}`);
+          errors.push(`${book.displayName}: ${cleanErr(err)}`);
         }
       }
     } finally {
