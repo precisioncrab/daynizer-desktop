@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Contact } from "../types";
-import { ContactFilter, LabelColors, matchesFilter, isFavorite, contactLabels, initials } from "../contactUtils";
+import { ContactFilter, LabelColors, matchesFilter, isFavorite, contactLabels, initials, avatarColor } from "../contactUtils";
 
 interface Props {
   contacts: Contact[];
@@ -23,11 +23,29 @@ function firstValue(json: string): string {
   } catch { return ""; }
 }
 
-const avatarStyle = {
-  width: 30, height: 30, borderRadius: "50%", background: "#34353a", color: "#c8c8c8",
+const avatarBase = {
+  width: 30, height: 30, borderRadius: "50%",
   display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600,
-  flexShrink: 0, marginTop: 1
+  flexShrink: 0, marginTop: 1, overflow: "hidden",
+  backgroundSize: "cover", backgroundPosition: "center"
 } as const;
+
+/** Avatar for a contact: the synced photo if present, else a colored ring +
+ *  initials keyed off the contact's name. */
+function ContactAvatar({ contact }: { contact: Contact }) {
+  const photo =
+    contact.photo && (contact.photo.startsWith("data:") || contact.photo.startsWith("http"))
+      ? contact.photo
+      : "";
+  if (photo) {
+    return <div style={{ ...avatarBase, backgroundImage: `url("${photo}")` }} aria-label={contact.fn} />;
+  }
+  return (
+    <div style={{ ...avatarBase, background: avatarColor(contact), color: "#1e1f22" }}>
+      {initials(contact)}
+    </div>
+  );
+}
 
 export default function ContactsView({ contacts, filter, labelColors, selectedContactId, onSelect, onCreate, onImport, onFindDuplicates, duplicateCount, onToggleFavorite }: Props) {
   const [search, setSearch] = useState("");
@@ -83,7 +101,7 @@ export default function ContactsView({ contacts, filter, labelColors, selectedCo
                 className={`task-row ${c.id === selectedContactId ? "selected" : ""}`}
                 onClick={() => onSelect(c.id)}
               >
-                <div style={avatarStyle}>{initials(c)}</div>
+                <ContactAvatar contact={c} />
                 <div className="title-col">
                   <div className="title">{c.fn || "Unnamed"}</div>
                   {sub && <div className="meta">{sub}</div>}

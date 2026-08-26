@@ -60,13 +60,30 @@ export function matchesFilter(c: Contact, f: ContactFilter): boolean {
 /** Persisted map of label name -> color hex (stored as a settings JSON blob). */
 export type LabelColors = Record<string, string>;
 
-/** Initials for the avatar circle when there's no photo. */
+/** Initials for the avatar circle when there's no photo. Falls back to the
+ *  formatted name (FN) when structured first/last are empty -- as they are for
+ *  contacts synced from servers (e.g. Nextcloud) that only send a single name
+ *  field. Splitting FN the same way the editor does (first token, then the
+ *  remainder) keeps the two-letter initials stable before AND after an edit. */
 export function initials(c: Contact): string {
   const a = (c.first_name || "").trim();
   const b = (c.last_name || "").trim();
   if (a || b) return `${a[0] || ""}${b[0] || ""}`.toUpperCase();
-  const fn = (c.fn || "").trim();
-  return (fn[0] || "?").toUpperCase();
+  const parts = (c.fn || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return (parts[0]?.[0] || "?").toUpperCase();
+}
+
+/** A stable avatar fill color derived from the contact's name, so each contact
+ *  gets a consistent, distinct hue with no stored color -- and it works
+ *  immediately for server-synced contacts (no edit/resave needed). Muted
+ *  saturation + partial alpha so the solid circle reads softly (translucent)
+ *  over the app's dark background rather than as a harsh block of color. */
+export function avatarColor(c: Contact): string {
+  const key = ((c.fn || `${c.first_name} ${c.last_name}`).trim() || c.id || "?");
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(h, 31) + key.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360} 42% 52% / 0.72)`;
 }
 
 // ---------- Duplicate detection (for the manual merge review) ----------
