@@ -13,6 +13,20 @@ function parseArr<T>(s: string | undefined): T[] {
   try { const v = JSON.parse(s || "[]"); return Array.isArray(v) ? v : []; } catch { return []; }
 }
 
+/** Some servers (e.g. Nextcloud) send only a single formatted name (vCard FN)
+ *  with no structured N, leaving first_name/last_name empty. The list falls back
+ *  to fn, but the editor's First/Last inputs would show blank -- and saving would
+ *  then rebuild fn from those blanks and clobber the name to "Unnamed". So when
+ *  the structured parts are empty, seed them by splitting the display name:
+ *  first token -> first name, the remainder -> last name (keeps suffixes like
+ *  "Jr." with the surname). */
+function splitFullName(fn: string): { first: string; last: string } {
+  const parts = fn.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first: "", last: "" };
+  if (parts.length === 1) return { first: parts[0], last: "" };
+  return { first: parts[0], last: parts.slice(1).join(" ") };
+}
+
 const PHONE_TYPES = ["cell", "home", "work", "main", "fax", "other"];
 const EMAIL_TYPES = ["home", "work", "other"];
 const ADDR_TYPES = ["home", "work", "other"];
@@ -42,8 +56,23 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
 
   useEffect(() => {
     setBookId(contact?.address_book_id ?? "");
-    setFirstName(contact?.first_name ?? "");
-    setLastName(contact?.last_name ?? "");
+    {
+      const rawFirst = contact?.first_name ?? "";
+      const rawLast = contact?.last_name ?? "";
+      const fnVal = (contact?.fn ?? "").trim();
+      const orgVal = (contact?.org ?? "").trim();
+      // Only derive from fn for person contacts with no structured name; leave
+      // org-only cards (fn === org) alone so a company name never lands in the
+      // First/Last fields.
+      if (!rawFirst && !rawLast && fnVal && fnVal !== orgVal) {
+        const split = splitFullName(fnVal);
+        setFirstName(split.first);
+        setLastName(split.last);
+      } else {
+        setFirstName(rawFirst);
+        setLastName(rawLast);
+      }
+    }
     setOrg(contact?.org ?? "");
     setTitle(contact?.title ?? "");
     {

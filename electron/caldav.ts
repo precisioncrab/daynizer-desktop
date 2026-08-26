@@ -206,6 +206,24 @@ export async function testConnection(account: CaldavAccount): Promise<{ ok: bool
   }
 }
 
+/** Coerce a CalDAV calendar-color property to a plain string (or null).
+ *  tsdav returns whatever its XML parser produced for <calendar-color>. Most
+ *  servers give a bare string ("#RRGGBBAA"), but some (e.g. Nextcloud's
+ *  user-created task lists) return an object like { _cdata: "#0082C9FF" }.
+ *  Passing a non-primitive straight into SQLite throws "Provided value cannot
+ *  be bound to SQLite parameter 3" (the `color` column of the list INSERT),
+ *  which previously made those lists impossible to connect. */
+function normalizeCalendarColor(raw: unknown): string | null {
+  if (raw == null) return null;
+  if (typeof raw === "string") return raw.trim() || null;
+  if (typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    const v = o._cdata ?? o._text ?? o["#text"] ?? o._;
+    if (typeof v === "string") return v.trim() || null;
+  }
+  return null;
+}
+
 export async function discoverCalendars(account: CaldavAccount): Promise<DiscoveredCalendar[]> {
   const client = await clientFor(account);
   const calendars = await client.fetchCalendars();
@@ -220,7 +238,7 @@ export async function discoverCalendars(account: CaldavAccount): Promise<Discove
       ctag: (cal as any).ctag ?? null,
       supportsTodo: !((cal as any).components as string[] | undefined)
         || ((cal as any).components as string[]).includes("VTODO"),
-      color: cal.calendarColor ?? (cal as any).color ?? null
+      color: normalizeCalendarColor(cal.calendarColor ?? (cal as any).color)
     }));
 }
 
@@ -339,7 +357,8 @@ export async function syncAccount(account: CaldavAccount): Promise<SyncResult[]>
     const calByUrl = new Map(calendars.map((c) => [String(c.url), c]));
     for (const list of listsAll().filter((l) => l.caldav_account_id === account.id && l.caldav_calendar_url)) {
       const cal = calByUrl.get(list.caldav_calendar_url!);
-      if (cal?.calendarColor) listUpdate(list.id, { color: cal.calendarColor } as Partial<TaskList>);
+      const color = normalizeCalendarColor(cal?.calendarColor);
+      if (color) listUpdate(list.id, { color } as Partial<TaskList>);
     }
   } catch { /* non-fatal */ }
 

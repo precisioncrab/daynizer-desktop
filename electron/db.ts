@@ -472,14 +472,39 @@ export function countDirtyItems(): number {
   return c("tasks", "caldav_uid") + c("events", "caldav_uid") + c("contacts", "carddav_uid");
 }
 
+/** SQLite (node:sqlite / sql.js) only binds primitives: string, number,
+ *  bigint, Uint8Array/Buffer, or null. An object, array, boolean, or undefined
+ *  fails with the opaque "Provided value cannot be bound to SQLite parameter N",
+ *  which hides both the column and the offending value. This turns that into a
+ *  message that actually names them -- e.g. a malformed CalDAV calendar-color
+ *  arriving as an object instead of a hex string. */
+function assertBindable(context: string, columns: string[], values: unknown[]): void {
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (v === null) continue;
+    const t = typeof v;
+    if (t === "string" || t === "number" || t === "bigint" || v instanceof Uint8Array) continue;
+    const col = columns[i] ?? `#${i + 1}`;
+    let shown: string;
+    try { shown = t === "object" ? JSON.stringify(v) : String(v); } catch { shown = String(v); }
+    if (shown && shown.length > 120) shown = shown.slice(0, 117) + "\u2026";
+    throw new Error(
+      `${context}: the "${col}" field got an unsupported ${t} value${shown ? ` (${shown})` : ""}; expected text, a number, or empty.`
+    );
+  }
+}
+
 export function listCreate(name: string, color = "#4a90d9"): TaskList {
   const db = getDb();
   const id = nanoid();
   const now = nowIso();
   const maxOrder = (db.prepare(`SELECT COALESCE(MAX(sort_order), -1) AS m FROM lists`).get() as any).m as number;
+  const cols = ["id", "name", "color", "sort_order", "created_at", "updated_at"];
+  const vals = [id, name, color, maxOrder + 1, now, now];
+  assertBindable(`List "${name}"`, cols, vals);
   db.prepare(
     `INSERT INTO lists (id, name, color, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(id, name, color, maxOrder + 1, now, now);
+  ).run(...vals);
   return db.prepare(`SELECT * FROM lists WHERE id = ?`).get(id) as unknown as TaskList;
 }
 
@@ -488,18 +513,20 @@ export function listUpdate(id: string, patch: Partial<TaskList>): TaskList {
   const current = db.prepare(`SELECT * FROM lists WHERE id = ?`).get(id) as unknown as TaskList;
   if (!current) throw new Error("List not found");
   const merged = { ...current, ...patch, updated_at: nowIso() };
-  db.prepare(
-    `UPDATE lists SET name=?, color=?, sort_order=?, caldav_account_id=?, caldav_calendar_url=?, caldav_ctag=?, updated_at=? WHERE id=?`
-  ).run(
+  const cols = ["name", "color", "sort_order", "caldav_account_id", "caldav_calendar_url", "caldav_ctag", "updated_at"];
+  const vals = [
     merged.name,
     merged.color,
     merged.sort_order,
     merged.caldav_account_id,
     merged.caldav_calendar_url,
     merged.caldav_ctag,
-    merged.updated_at,
-    id
-  );
+    merged.updated_at
+  ];
+  assertBindable(`List "${merged.name}"`, cols, vals);
+  db.prepare(
+    `UPDATE lists SET name=?, color=?, sort_order=?, caldav_account_id=?, caldav_calendar_url=?, caldav_ctag=?, updated_at=? WHERE id=?`
+  ).run(...vals, id);
   return db.prepare(`SELECT * FROM lists WHERE id = ?`).get(id) as unknown as TaskList;
 }
 
