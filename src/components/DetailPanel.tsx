@@ -75,6 +75,9 @@ export default function DetailPanel({ task, lists, subtasks, allCategories = [],
   const [recurMode, setRecurMode] = useState<string>("custom");
   const [customRecur, setCustomRecur] = useState("");
   const [tags, setTags] = useState("");
+  // Uncommitted text in the "Add category" box. Folded into tags on Save so a
+  // typed category that was never Enter-committed still saves (and syncs).
+  const [catInput, setCatInput] = useState("");
   const [newSubtask, setNewSubtask] = useState("");
   // New subtask titles typed this edit session, not yet created -- committed
   // on Save along with everything else in this panel (one save model for the
@@ -94,6 +97,7 @@ export default function DetailPanel({ task, lists, subtasks, allCategories = [],
     setDueDate(dd.date); setDueTime(dd.time);
     setPriority(task?.priority ?? 0);
     setTags(task?.tags ?? "");
+    setCatInput("");
     const preset = RECUR_PRESETS.find((p) => p.value === (task?.recurrence ?? null));
     setRecurMode(preset ? preset.label : task?.recurrence ? "custom" : RECUR_PRESETS[0].label);
     setCustomRecur(task?.recurrence ?? "");
@@ -138,6 +142,13 @@ export default function DetailPanel({ task, lists, subtasks, allCategories = [],
   async function handleSave() {
     const id = task!.id;
     const recurrence = recurMode === "custom" ? (customRecur || null) : RECUR_PRESETS.find((p) => p.label === recurMode)?.value ?? null;
+    // Include a category typed but not yet Enter-committed, so it isn't lost.
+    const pendingCat = catInput.trim();
+    const existingCats = tags.split(",").map((c) => c.trim()).filter(Boolean);
+    const mergedTags = pendingCat && !existingCats.includes(pendingCat)
+      ? [...existingCats, pendingCat].join(", ")
+      : tags;
+    setCatInput("");
     onUpdate(id, {
       title: title.trim() || task!.title,
       notes,
@@ -146,7 +157,7 @@ export default function DetailPanel({ task, lists, subtasks, allCategories = [],
       due_date: joinDateTime(dueDate, dueTime),
       priority: priority as any,
       recurrence,
-      tags
+      tags: mergedTags
     });
     for (const t of pendingSubtasks) onAddSubtask(id, t);
     // Diff against what's already in the DB: anything without a real id is
@@ -272,29 +283,35 @@ export default function DetailPanel({ task, lists, subtasks, allCategories = [],
           list="category-suggestions"
           className="category-add-input"
           placeholder="Add category…"
+          value={catInput}
           onChange={(e) => {
-            // Auto-commit when the user picks an existing suggestion from the datalist
-            const val = e.target.value.trim();
-            if (val && allCategories.includes(val)) {
+            const val = e.target.value;
+            setCatInput(val);
+            // Typing a category is itself an edit -- enable Save right away
+            // (the text is folded into tags on Save even without Enter).
+            if (val.trim()) markDirty();
+            // Auto-commit when the user picks an existing suggestion from the datalist.
+            const t = val.trim();
+            if (t && allCategories.includes(t)) {
               const existing = tags.split(",").map((c) => c.trim()).filter(Boolean);
-              if (!existing.includes(val)) {
-                setTags([...existing, val].join(", "));
+              if (!existing.includes(t)) {
+                setTags([...existing, t].join(", "));
                 markDirty();
               }
-              e.target.value = "";
+              setCatInput("");
             }
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === ",") {
               e.preventDefault();
-              const val = (e.target as HTMLInputElement).value.trim();
+              const val = catInput.trim();
               if (val) {
                 const existing = tags.split(",").map((c) => c.trim()).filter(Boolean);
                 if (!existing.includes(val)) {
                   setTags([...existing, val].join(", "));
                   markDirty();
                 }
-                (e.target as HTMLInputElement).value = "";
+                setCatInput("");
               }
             }
           }}
