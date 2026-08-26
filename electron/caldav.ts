@@ -699,10 +699,11 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
           completed_at: parsed.completed_at,
           recurrence: parsed.recurrence,
           tags: parsed.tags,
-          // Nest under the RELATED-TO parent when it's already present locally.
-          // (Edge case: a child pulled before its parent in the same round stays
-          // top-level until a later sync re-pulls it. Rare; only affects nested
-          // structures created on another client.)
+          // Nest under the RELATED-TO parent when it's already present
+          // locally. When the parent hasn't been created yet (map iteration is
+          // unordered, and Nextcloud/Tasks.org emit nested VTODOs this way),
+          // this resolves to null here and is healed by the reconcile pass that
+          // runs right after this loop.
           parent_id: localParentId(parsed.parent_uid, list.id),
           caldav_uid: uid,
           caldav_href: remote.url,
@@ -762,6 +763,32 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
         });
         mergeRemindersFromRemote("task", local.id, parsed.reminderOffsets);
         result.pulled++;
+      }
+    }
+
+    // Reconcile subtask nesting now that EVERY pulled task exists locally.
+    // The pull loop above creates tasks in unordered map order, so a child can
+    // be inserted before its parent and orphan to the top level; the etag
+    // update path also never re-resolves parent_id, so such an orphan would
+    // otherwise never re-nest. Re-derive each child's parent from its
+    // RELATED-TO here. This is a clean sync write (carries caldav_etag ->
+    // dirty stays 0), so it never triggers a re-push. We only SET a resolved
+    // parent; we don't clear one when the server reports none, to avoid
+    // clobbering local nesting that hasn't been pushed yet.
+    {
+      const afterPull = tasksByList(list.id);
+      const byUidNow = new Map<string, Task>();
+      for (const t of afterPull) if (t.caldav_uid) byUidNow.set(t.caldav_uid, t);
+      for (const [uid, remote] of remoteByUid) {
+        const parsed2 = parseVTodo(remote.data);
+        if (!parsed2 || !parsed2.parent_uid) continue;
+        const child = byUidNow.get(uid);
+        if (!child) continue;
+        const resolved = localParentId(parsed2.parent_uid, list.id);
+        if (resolved && resolved !== child.id && child.parent_id !== resolved) {
+          syncLog(`re-nesting "${child.title}" (${uid}) under parent ${parsed2.parent_uid}`);
+          taskUpdate(child.id, { parent_id: resolved, caldav_etag: child.caldav_etag });
+        }
       }
     }
 
