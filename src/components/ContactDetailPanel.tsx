@@ -28,7 +28,14 @@ function splitFullName(fn: string): { first: string; last: string } {
 }
 
 const PHONE_TYPES = ["cell", "home", "work", "main", "fax", "other"];
-const EMAIL_TYPES = ["home", "work", "other"];
+// Display labels vs stored vCard TYPE. Keep "home" as the stored value so it
+// round-trips to Android/DAVx5 (which maps home -> personal) and existing
+// emails still match, but show it as "personal".
+const EMAIL_TYPES: { value: string; label: string }[] = [
+  { value: "home", label: "personal" },
+  { value: "work", label: "work" },
+  { value: "other", label: "other" }
+];
 const ADDR_TYPES = ["home", "work", "other"];
 
 const addBtnStyle: CSSProperties = {
@@ -194,7 +201,7 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
       {emails.map((em, i) => (
         <div key={i} className="detail-row" style={{ alignItems: "center", gap: 6 }}>
           <select value={em.type || "home"} onChange={(e) => patchTyped(emails, setEmails, i, { type: e.target.value })} style={{ flex: "0 0 90px" }}>
-            {EMAIL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            {EMAIL_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
           <input type="text" style={{ flex: 1 }} value={em.value} onChange={(e) => patchTyped(emails, setEmails, i, { value: e.target.value })} />
           <button style={rmBtnStyle} onClick={() => { setEmails(emails.filter((_, idx) => idx !== i)); mark(); }}>×</button>
