@@ -168,6 +168,10 @@ function MergeEditor({ cluster, onCancel, onMerge }: {
     const loserIds = cluster.filter((c) => c.id !== keeperId).map((c) => c.id);
     await onMerge(keeperId, loserIds, patch);
     setBusy(false);
+    // Return to the duplicate-cluster list. If that was the last cluster, the
+    // parent has already switched back to the contacts view and this is a
+    // harmless no-op.
+    onCancel();
   }
 
   const section = (label: string, body: ReactNode) => (

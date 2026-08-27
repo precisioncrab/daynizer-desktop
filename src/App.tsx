@@ -298,14 +298,20 @@ export default function App() {
   async function mergeContacts(keeperId: string, loserIds: string[], patch: Partial<Contact>) {
     await window.api.contacts?.merge(keeperId, loserIds, patch);
     if (selectedContactId && loserIds.includes(selectedContactId)) selectContact(null);
-    await loadContacts();
+    const fresh = (await window.api.contacts?.all()) ?? [];
+    setContacts(fresh);
     scheduleDirtySync();
-    // The merge editor gave no confirmation before. Leave it, return to the
-    // contacts list, and select the surviving contact so the result is visible.
-    setContactsMode("list");
-    selectContact(keeperId);
-    setSyncMsg(`Merged ${loserIds.length + 1} contacts into one.`);
-    setTimeout(() => setSyncMsg(null), 4000);
+    // Where to go next: if other duplicate clusters remain, stay in the
+    // duplicates view so the user can keep resolving them (the merge editor
+    // returns to the cluster list on its own). Only when everything is resolved
+    // do we drop back to the contacts list on the surviving contact.
+    const remaining = findDuplicateClusters(fresh.filter((c) => !c.deleted), dismissedDupPairs);
+    if (remaining.length === 0) {
+      setContactsMode("list");
+      selectContact(keeperId);
+      setSyncMsg(`Merged ${loserIds.length + 1} contacts into one.`);
+      setTimeout(() => setSyncMsg(null), 4000);
+    }
   }
 
   useEffect(() => {
