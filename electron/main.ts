@@ -111,6 +111,18 @@ function applyTlsSetting() {
   else delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
 }
 
+// Serialize account syncs at the process level. Overlapping triggers (the
+// launch sync, the auto-sync interval, a dirty-row sync, and a manual Sync now)
+// must never run two passes against the synchronous SQLite DB at once -- that
+// contention is what can freeze a new-contact write behind a running sync. Each
+// call waits for the previous to settle; a failure never wedges the chain.
+let syncChain: Promise<unknown> = Promise.resolve();
+function runExclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const next = syncChain.then(fn, fn);
+  syncChain = next.then(() => undefined, () => undefined);
+  return next;
+}
+
 function showMainWindow() {
   if (!mainWindow) { createWindow(); return; }
   if (!mainWindow.isVisible()) mainWindow.show();
@@ -642,7 +654,7 @@ function registerIpc() {
     if (!account) throw new Error("Account not found");
     return deleteServerCalendar(account, calendarUrl);
   });
-  ipcMain.handle("accounts:sync", async (_e, accountId: string) => {
+  ipcMain.handle("accounts:sync", (_e, accountId: string) => runExclusive(async () => {
     const account = accountsAll().find((a) => a.id === accountId);
     if (!account) throw new Error("Account not found");
     const results = await syncAccount(account);
@@ -676,10 +688,24 @@ function registerIpc() {
       last_sync_status: results.some((r) => r.errors.length) ? "error" : "ok"
     } as any);
     return results;
-  });
+  }));
+}
+
+// Single-instance lock. A second launch (double-click, autostart race, or a
+// stale copy that never fully quit) must not start a second process: two
+// instances share the same userData database, and with synchronous node:sqlite
+// their syncs contend on the DB lock -- which can freeze the UI for minutes (a
+// new-contact write stuck behind the other instance's sync). Hand the launch
+// off to the running window and exit.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => showMainWindow());
 }
 
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return;
   // Distinct AppUserModelID in dev so a raw `electron .` run doesn't register a
   // shortcut under the packaged app's identity — that collision is what made
   // Windows show the Electron icon on the installed app's taskbar button.
