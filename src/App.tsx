@@ -300,6 +300,12 @@ export default function App() {
     if (selectedContactId && loserIds.includes(selectedContactId)) selectContact(null);
     await loadContacts();
     scheduleDirtySync();
+    // The merge editor gave no confirmation before. Leave it, return to the
+    // contacts list, and select the surviving contact so the result is visible.
+    setContactsMode("list");
+    selectContact(keeperId);
+    setSyncMsg(`Merged ${loserIds.length + 1} contacts into one.`);
+    setTimeout(() => setSyncMsg(null), 4000);
   }
 
   useEffect(() => {
