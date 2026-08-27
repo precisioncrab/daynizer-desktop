@@ -576,7 +576,7 @@ export default function CalendarView({
     if (!ready || !ecRef.current) return;
     ecRef.current.setOption("events", buildEcEvents());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, events, tasks, calendarShow, lists, categoryFilter, displayMode, eventDisplayMode, listFilter, selectedTaskId, selectedEventId]);
+  }, [ready, rangeVersion, events, tasks, calendarShow, lists, categoryFilter, displayMode, eventDisplayMode, listFilter, selectedTaskId, selectedEventId]);
 
   useEffect(() => {
     if (!ready || !ecRef.current) return;
