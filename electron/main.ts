@@ -49,7 +49,7 @@ import {
   contactsMerge,
   dedupeDatabase
 } from "./db.js";
-import { testConnection, discoverCalendars, linkListToCalendar, unlinkList, syncAccount, createServerCalendar, encryptPassword, connectCalendar, syncLog, pushCalendarName } from "./caldav.js";
+import { testConnection, discoverCalendars, linkListToCalendar, unlinkList, syncAccount, createServerCalendar, deleteServerCalendar, encryptPassword, connectCalendar, syncLog, pushCalendarName } from "./caldav.js";
 import { taskToVTodo, eventToVEvent, bundleIcs } from "./ical.js";
 import { discoverAddressBooks, linkAddressBook, unlinkAddressBook, syncAccountContacts, connectAddressBook, importVCards } from "./carddav.js";
 
@@ -636,6 +636,11 @@ function registerIpc() {
     const account = accountsAll().find((a) => a.id === accountId);
     if (!account) throw new Error("Account not found");
     return createServerCalendar(account, name);
+  });
+  ipcMain.handle("accounts:deleteServerCalendar", async (_e, accountId: string, calendarUrl: string) => {
+    const account = accountsAll().find((a) => a.id === accountId);
+    if (!account) throw new Error("Account not found");
+    return deleteServerCalendar(account, calendarUrl);
   });
   ipcMain.handle("accounts:sync", async (_e, accountId: string) => {
     const account = accountsAll().find((a) => a.id === accountId);

@@ -75,7 +75,8 @@ const api = {
       ipcRenderer.invoke("accounts:connectCalendar", accountId, calendarUrl, displayName, color),
     unlinkList: (listId: string) => ipcRenderer.invoke("accounts:unlinkList", listId),
     sync: (accountId: string) => ipcRenderer.invoke("accounts:sync", accountId),
-    createServerCalendar: (accountId: string, name: string) => ipcRenderer.invoke("accounts:createServerCalendar", accountId, name)
+    createServerCalendar: (accountId: string, name: string) => ipcRenderer.invoke("accounts:createServerCalendar", accountId, name),
+    deleteServerCalendar: (accountId: string, calendarUrl: string) => ipcRenderer.invoke("accounts:deleteServerCalendar", accountId, calendarUrl)
   },
   on: (channel: string, callback: (...args: any[]) => void) => {
     const listener = (_e: any, ...args: any[]) => callback(...args);

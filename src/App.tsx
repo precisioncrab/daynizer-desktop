@@ -812,7 +812,20 @@ export default function App() {
     }
   }
 
+  // "Delete": remove the list and its tasks from Daynizer, AND from the server
+  // when the list is linked (collection DELETE on the calendar URL). If the
+  // server refuses (DAViCal / Synology return 405 on collection DELETE), delete
+  // locally anyway and warn that the server calendar is still there.
   async function deleteList(id: string) {
+    const list = lists.find((l) => l.id === id);
+    if (list?.caldav_account_id && list.caldav_calendar_url) {
+      try {
+        await window.api.accounts.deleteServerCalendar(list.caldav_account_id, list.caldav_calendar_url);
+      } catch (err: any) {
+        setSyncMsg(`List deleted here, but its calendar couldn't be removed on the server: ${err?.message || err}`);
+        setTimeout(() => setSyncMsg(null), 8000);
+      }
+    }
     await window.api.lists.delete(id);
     if (scope === id) setScope("all");
     await loadLists();
@@ -837,13 +850,13 @@ export default function App() {
     }
   }
 
+  // "Unlink": make a linked list local-only. Unlink from CalDAV so no future
+  // sync touches the server, but KEEP the list and its tasks here (and on the
+  // server) -- syncing simply stops for this list. (Contrast deleteList, which
+  // removes both copies.)
   async function removeList(id: string) {
-    // Unlink from CalDAV first so no future sync touches the server,
-    // then hard-delete the list and its tasks locally.
     const list = lists.find((l) => l.id === id);
     if (list?.caldav_account_id) await window.api.accounts.unlinkList(id);
-    await window.api.lists.delete(id);
-    if (scope === id) setScope("all");
     await loadLists();
     await loadTasks();
   }

@@ -277,20 +277,30 @@ export default function Sidebar({
               label: "Export to .ics…",
               onClick: () => onExportList(listMenu.list.id)
             },
+            // Unlink: only meaningful for a linked list -- makes it local-only,
+            // keeping both the local and server copies but stopping sync.
+            ...(listMenu.list.caldav_account_id
+              ? [{
+                  label: "Unlink",
+                  danger: true,
+                  onClick: () => {
+                    if (confirm(`Unlink "${listMenu.list.name}"? It becomes a local-only list — its tasks stay here and on the server, but they stop syncing.`)) {
+                      onRemoveList(listMenu.list.id);
+                    }
+                  }
+                }]
+              : []),
+            // Delete: removes the list + its tasks here, and on the server too
+            // when it's linked (App.tsx handles the server collection DELETE and
+            // warns if the server refuses it).
             {
-              label: "Remove list",
+              label: "Delete",
               danger: true,
               onClick: () => {
-                if (confirm(`Remove "${listMenu.list.name}" from this app? Tasks are kept on the server.`)) {
-                  onRemoveList(listMenu.list.id);
-                }
-              }
-            },
-            {
-              label: "Delete list (local only)",
-              danger: true,
-              onClick: () => {
-                if (confirm(`Delete "${listMenu.list.name}"? This removes it and its tasks from this app only — nothing is deleted on the server.`)) {
+                const msg = listMenu.list.caldav_account_id
+                  ? `Delete "${listMenu.list.name}"? This removes the list and its tasks from Daynizer and from the server. This can't be undone.`
+                  : `Delete "${listMenu.list.name}"? This removes the list and its tasks from Daynizer. This can't be undone.`;
+                if (confirm(msg)) {
                   onDeleteList(listMenu.list.id);
                 }
               }

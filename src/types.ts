@@ -272,6 +272,7 @@ declare global {
         unlinkList: (listId: string) => Promise<void>;
         sync: (accountId: string) => Promise<{ listId: string; pulled: number; pushed: number; errors: string[] }[]>;
         createServerCalendar: (accountId: string, name: string) => Promise<TaskList>;
+        deleteServerCalendar: (accountId: string, calendarUrl: string) => Promise<void>;
       };
       on: (channel: string, callback: (...args: any[]) => void) => () => void;
     };
