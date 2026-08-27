@@ -16,6 +16,7 @@ import {
   listFindByCalendar,
   davUrlKey,
   tasksByList,
+  tasksByListWithUid,
   taskGet,
   taskCreate,
   taskUpdate,
@@ -186,6 +187,15 @@ async function clientFor(account: CaldavAccount): Promise<Client> {
     defaultAccountType: "caldav"
   });
   return client;
+}
+
+/** Yield the main-process event loop so queued IPC (create/edit/load a task,
+ *  save keystrokes) is serviced between chunks of a sync. node:sqlite is
+ *  synchronous, so without this a large pull monopolizes the single thread and
+ *  the UI is unresponsive until it finishes. Scheduling breather only -- it
+ *  changes nothing about what syncs. */
+function yieldTick(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 export interface DiscoveredCalendar {
@@ -435,7 +445,9 @@ async function syncEvents(client: Client, list: TaskList) {
     ]);
     const remoteByUid = new Map<string, { url: string; etag: string; parsed: ParsedVEvent }>();
     const remoteUids = new Set<string>();
+    let evParseIdx = 0;
     for (const obj of objects) {
+      if ((evParseIdx++ % 20) === 0) await yieldTick();
       const parsed = parseVEvent(obj.data || "");
       if (!parsed) continue;
       // TEMP diagnostic -- comparing Tasks Desktop's own pushed VALARM
@@ -457,7 +469,9 @@ async function syncEvents(client: Client, list: TaskList) {
     let pushed = 0;
 
     // Pull.
+    let evPullIdx = 0;
     for (const [uid, remote] of remoteByUid) {
+      if ((evPullIdx++ % 20) === 0) await yieldTick();
       const parsed = remote.parsed;
       const local = localByUid.get(uid);
       // Recurring events flow through the same etag/dirty/conflict path as
@@ -700,7 +714,9 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
     ]);
     console.log(`[caldav] fetchCalendarObjects returned ${objects.length} object(s) for ${calendarUrl}`);
     const remoteByUid = new Map<string, { url: string; etag: string; data: string }>();
+    let tParseIdx = 0;
     for (const obj of objects) {
+      if ((tParseIdx++ % 20) === 0) await yieldTick();
       const parsed = parseVTodo(obj.data || "");
       if (parsed) remoteByUid.set(parsed.uid, { url: obj.url, etag: obj.etag || "", data: obj.data || "" });
       // TEMP diagnostic -- comparing Tasks Desktop's own pushed VALARM
@@ -711,14 +727,21 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
       }
     }
 
-    const localTasks = tasksByList(list.id);
-    const localByUid = new Map<string, Task>();
-    for (const t of localTasks) if (t.caldav_uid) localByUid.set(t.caldav_uid, t);
+    // Includes soft-deleted rows -- a local delete not yet pushed must not be
+    // mistaken for "never seen this task" and resurrected by the pull loop.
+    const localByUid = tasksByListWithUid(list.id);
 
     // Pull: remote items that are new or changed (by etag) get applied locally.
+    let tPullIdx = 0;
     for (const [uid, remote] of remoteByUid) {
+      if ((tPullIdx++ % 20) === 0) await yieldTick();
       const parsed = parseVTodo(remote.data)!;
       const local = localByUid.get(uid);
+      if (local?.deleted) {
+        // Deleted locally, not yet pushed -- don't resurrect it. The push-delete
+        // phase below removes it from the server this same round.
+        continue;
+      }
       if (!local) {
         const created = taskCreate({
           list_id: list.id,
@@ -830,7 +853,9 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
     // next sync doesn't mistake our own upload for a remote change.
     const needEtagRefresh: { id: string; href: string; title: string }[] = [];
     const freshLocalTasks = tasksByList(list.id);
+    let tPushIdx = 0;
     for (const local of freshLocalTasks) {
+      if ((tPushIdx++ % 20) === 0) await yieldTick();
       if (local.deleted) continue;
       if (!local.caldav_uid) {
         const uid = newUid();
