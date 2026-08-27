@@ -696,6 +696,18 @@ export function tasksByList(listId: string): Task[] {
     .all(listId) as unknown as Task[];
 }
 
+/** Every task in a list keyed by caldav_uid, INCLUDING soft-deleted rows, so a
+ *  local delete not yet pushed isn't mistaken for "never seen this task" and
+ *  resurrected by the sync pull loop. Mirrors eventsByListWithUid. */
+export function tasksByListWithUid(listId: string): Map<string, Task> {
+  const rows = getDb()
+    .prepare(`SELECT * FROM tasks WHERE list_id = ?`)
+    .all(listId) as unknown as Task[];
+  const map = new Map<string, Task>();
+  for (const t of rows) if (t.caldav_uid) map.set(t.caldav_uid, t);
+  return map;
+}
+
 export function taskGet(id: string): Task | undefined {
   return getDb().prepare(`SELECT * FROM tasks WHERE id = ?`).get(id) as unknown as Task | undefined;
 }
