@@ -342,6 +342,27 @@ export function unlinkList(listId: string) {
   } as Partial<TaskList>);
 }
 
+/** Delete a calendar collection on the server (HTTP DELETE on the collection URL).
+ *  Removes the calendar and everything in it. NOTE: some servers (DAViCal, and
+ *  Synology's CalDAV backend) return 405 Method Not Allowed on a collection
+ *  DELETE -- the caller treats a throw here as "the server won't remove it",
+ *  deletes the list locally anyway, and warns. Nextcloud/Radicale/Baikal honor
+ *  it. Best-effort: throws on any non-2xx so the caller can react. */
+export async function deleteServerCalendar(account: CaldavAccount, calendarUrl: string): Promise<void> {
+  const client = await clientFor(account);
+  const res = await client.davRequest({
+    url: calendarUrl,
+    init: { method: "DELETE", headers: {}, body: "" },
+    convertIncoming: false,
+    parseOutgoing: false
+  });
+  const first = Array.isArray(res) ? res[0] : (res as any);
+  const status: number | undefined = first?.status;
+  const ok = !Array.isArray(res) || res.every((r) => r.ok !== false && (r.status ? r.status < 400 : true));
+  syncLog(`DELETE collection ${calendarUrl}: ${ok ? "ok" : JSON.stringify(res)}`);
+  if (!ok) throw new Error(`Server rejected calendar delete${status ? ` (HTTP ${status})` : ""}`);
+}
+
 /** Create a new calendar on the server, make a local list, and link them together. */
 export async function createServerCalendar(account: CaldavAccount, name: string): Promise<TaskList> {
   const client = await clientFor(account);
