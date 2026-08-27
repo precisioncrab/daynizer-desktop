@@ -47,6 +47,8 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
   const [title, setTitle] = useState("");
   const [bday, setBday] = useState("");
   const [bdayNoYear, setBdayNoYear] = useState(false);
+  const [anniversary, setAnniversary] = useState("");
+  const [anniversaryNoYear, setAnniversaryNoYear] = useState(false);
   const [phones, setPhones] = useState<TypedValue[]>([]);
   const [emails, setEmails] = useState<TypedValue[]>([]);
   const [addresses, setAddresses] = useState<PostalAddress[]>([]);
@@ -88,6 +90,17 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
         setBdayNoYear(false);
       }
     }
+    {
+      const a = (contact?.anniversary ?? "").trim();
+      if (a.startsWith("--")) {
+        const digits = a.replace(/[^0-9]/g, "");
+        setAnniversary(`2000-${digits.slice(0, 2)}-${digits.slice(2, 4)}`);
+        setAnniversaryNoYear(true);
+      } else {
+        setAnniversary(a.slice(0, 10));
+        setAnniversaryNoYear(false);
+      }
+    }
     setPhones(parseArr<TypedValue>(contact?.phones));
     setEmails(parseArr<TypedValue>(contact?.emails));
     setAddresses(parseArr<PostalAddress>(contact?.addresses));
@@ -111,6 +124,7 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
       org,
       title,
       bday: bday ? (bdayNoYear ? `--${bday.slice(5, 7)}-${bday.slice(8, 10)}` : bday) : null,
+      anniversary: anniversary ? (anniversaryNoYear ? `--${anniversary.slice(5, 7)}-${anniversary.slice(8, 10)}` : anniversary) : null,
       phones: JSON.stringify(phones.filter((p) => p.value.trim())),
       emails: JSON.stringify(emails.filter((e) => e.value.trim())),
       addresses: JSON.stringify(addresses.filter((a) => [a.street, a.city, a.region, a.postal, a.country].some((x) => (x || "").trim()))),
@@ -153,6 +167,14 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
         <input type="date" style={{ flex: 1 }} value={bday} onChange={(e) => { setBday(e.target.value); mark(); }} />
         <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#9aa0a6", whiteSpace: "nowrap" }}>
           <input type="checkbox" checked={bdayNoYear} onChange={(e) => { setBdayNoYear(e.target.checked); mark(); }} /> no year
+        </label>
+      </div>
+
+      <label>Anniversary</label>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <input type="date" style={{ flex: 1 }} value={anniversary} onChange={(e) => { setAnniversary(e.target.value); mark(); }} />
+        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#9aa0a6", whiteSpace: "nowrap" }}>
+          <input type="checkbox" checked={anniversaryNoYear} onChange={(e) => { setAnniversaryNoYear(e.target.checked); mark(); }} /> no year
         </label>
       </div>
 
