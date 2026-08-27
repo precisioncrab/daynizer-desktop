@@ -18,7 +18,7 @@ CalDAV+CardDAV server). Built with Electron + React + TypeScript.
   (RRULE), fully compatible with Tasks.org VTODOs over CalDAV.
 - **Calendar** — a month/week/day calendar that shows tasks and events together; create, edit, and
   delete events (including recurring events) and sync them two-way over CalDAV.
-- **Contacts** — a dedicated contacts manager with address books, favorites, and color-coded labels,
+- **Contacts** — a dedicated contacts manager with address books and color-coded labels,
   synced two-way over CardDAV.
 - **One server, both protocols** — point Daynizer at your CalDAV/CardDAV server (Synology, Nextcloud,
   Baïkal, Radicale, …) and it discovers and links your calendars, task lists, and address books.
@@ -154,6 +154,11 @@ doesn't support two-factor auth for third-party CalDAV/CardDAV clients; use your
 
 **Tasks**
 - Lists sidebar (custom lists, "All Tasks", "Today & Overdue"); create and select lists.
+- Right-click a list to rename it, export it to `.ics`, **Unlink** it, or **Delete** it. *Unlink* makes
+  a linked list local-only: your tasks stay both on this computer and on the server, but that list
+  stops syncing. *Delete* removes the list and its tasks from Daynizer, and from the server too when
+  the list is linked (see the note under Known limitations about whole-list deletion on DAViCal /
+  Synology).
 - Title, notes, start date, due date, priority (None/High/Medium/Low), tags, and recurrence (RRULE,
   with quick presets for daily/weekly/monthly/yearly plus a custom-RRULE field).
 - Subtasks (one level), shown nested under their parent and in the detail panel.
@@ -162,14 +167,15 @@ doesn't support two-factor auth for third-party CalDAV/CardDAV clients; use your
 **Calendar**
 - Month / week / day views showing tasks and events together, with a tasks/events/both toggle and
   task display modes (due date, start date, or start→due range), plus list/category filters.
-- Double-click or right-click a day or time slot to create an item there; drag a bar to reschedule it,
-  drag an edge to resize.
+- Double-click or right-click a day or time slot to create an item there. Drag an event's bar to
+  reschedule it, or **drag its top or bottom edge to resize it** (change the start or end time) in the
+  week and day views.
 - Calendar events: create / edit / delete, including recurring events (whole series) using the same
   RRULE presets tasks use — all synced two-way over CalDAV.
 
 **Contacts**
-- Dedicated Contacts view with a list, detail panel, and a contacts-aware sidebar (address books,
-  favorites, and labels with colors).
+- Dedicated Contacts view with a list, detail panel, and a contacts-aware sidebar (address books
+  and labels with colors).
 - Two-way CardDAV sync: create, edit, and delete contacts alongside your tasks and calendars.
 - Birthdays & anniversaries, year-less birthdays, per-label colors, label filtering, and a
   merge-duplicates tool. Delete a label to remove that category from every contact and sync the change.
