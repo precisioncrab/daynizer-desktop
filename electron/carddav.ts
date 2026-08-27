@@ -179,6 +179,15 @@ export interface ContactSyncResult {
 }
 
 /** Two-way sync for every address book linked to this account. */
+/** Yield the main-process event loop so queued IPC (create/edit/load a task,
+ *  save keystrokes) is serviced between chunks of a sync. node:sqlite is
+ *  synchronous, so without this a large pull (hundreds of contacts) monopolizes
+ *  the single thread and the UI can't be interacted with until it finishes.
+ *  Purely a scheduling breather -- it changes nothing about what syncs. */
+function yieldTick(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 export async function syncAccountContacts(account: CaldavAccount): Promise<ContactSyncResult[]> {
   const client = await clientFor(account);
   const books = addressBooksAll().filter((b) => b.carddav_account_id === account.id && b.carddav_addressbook_url);
@@ -203,7 +212,9 @@ async function syncAddressBook(client: Client, book: AddressBook): Promise<Conta
     const groupRemoteUids = new Set<string>();
     let groupsSeen = 0;
     const db0 = getDb();
+    let parseIdx = 0;
     for (const obj of objects) {
+      if ((parseIdx++ % 20) === 0) await yieldTick();
       const data = obj.data || "";
       // Synology/DAVx5 store labels ("DP21", "wedding") as separate group cards
       // that list members by UID. Divert those into contact_groups so their
@@ -240,7 +251,9 @@ async function syncAddressBook(client: Client, book: AddressBook): Promise<Conta
     const localByUid = contactsByBookWithUid(book.id);
 
     // Pull.
+    let pullIdx = 0;
     for (const [uid, remote] of remoteByUid) {
+      if ((pullIdx++ % 20) === 0) await yieldTick();
       const parsed = remote.parsed;
       const local = localByUid.get(uid);
       if (local?.deleted) continue;
