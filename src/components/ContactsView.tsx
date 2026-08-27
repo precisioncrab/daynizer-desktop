@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Contact } from "../types";
-import { ContactFilter, LabelColors, matchesFilter, isFavorite, contactLabels, initials, avatarColor } from "../contactUtils";
+import { ContactFilter, LabelColors, matchesFilter, contactLabels, initials, avatarColor } from "../contactUtils";
 
 interface Props {
   contacts: Contact[];
@@ -12,7 +12,6 @@ interface Props {
   onImport: () => void;
   onFindDuplicates: () => void;
   duplicateCount: number;
-  onToggleFavorite: (c: Contact) => void;
 }
 
 /** First value out of a JSON-text typed-value column ([{type,value}, ...]). */
@@ -47,7 +46,7 @@ function ContactAvatar({ contact }: { contact: Contact }) {
   );
 }
 
-export default function ContactsView({ contacts, filter, labelColors, selectedContactId, onSelect, onCreate, onImport, onFindDuplicates, duplicateCount, onToggleFavorite }: Props) {
+export default function ContactsView({ contacts, filter, labelColors, selectedContactId, onSelect, onCreate, onImport, onFindDuplicates, duplicateCount }: Props) {
   const [search, setSearch] = useState("");
 
   const visible = useMemo(() => {
@@ -94,7 +93,6 @@ export default function ContactsView({ contacts, filter, labelColors, selectedCo
           visible.map((c) => {
             const sub = c.org || firstValue(c.emails) || firstValue(c.phones);
             const labels = contactLabels(c);
-            const fav = isFavorite(c);
             return (
               <div
                 key={c.id}
@@ -117,11 +115,6 @@ export default function ContactsView({ contacts, filter, labelColors, selectedCo
                     </div>
                   )}
                 </div>
-                <button
-                  title={fav ? "Remove favorite" : "Add favorite"}
-                  onClick={(e) => { e.stopPropagation(); onToggleFavorite(c); }}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: fav ? "#e8a23d" : "#5b5c61", fontSize: 16, alignSelf: "center", padding: "0 2px" }}
-                >{fav ? "★" : "☆"}</button>
               </div>
             );
           })

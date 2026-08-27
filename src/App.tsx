@@ -14,7 +14,7 @@ import ContactsView from "./components/ContactsView";
 import ImportVCardModal from "./components/ImportVCardModal";
 import ContactsSidebar from "./components/ContactsSidebar";
 import ContactDetailPanel from "./components/ContactDetailPanel";
-import { ContactFilter, LabelColors, toggleFavoriteCategories, findDuplicateClusters, contactCategories, contactLabels } from "./contactUtils";
+import { ContactFilter, LabelColors, findDuplicateClusters, contactCategories, contactLabels } from "./contactUtils";
 import MergeDuplicatesView from "./components/MergeDuplicatesView";
 import { Task, TaskList, CaldavAccountPublic, CalendarEvent, Contact, AddressBook, EventOverride } from "./types";
 import { selectWidth } from "./selectWidth";
@@ -589,12 +589,6 @@ export default function App() {
     scheduleDirtySync();
   }
 
-  async function toggleFavorite(c: Contact) {
-    await window.api.contacts?.update(c.id, { categories: toggleFavoriteCategories(c) });
-    await loadContacts();
-    scheduleDirtySync();
-  }
-
   async function updateContact(id: string, patch: Partial<Contact>) {
     await window.api.contacts?.update(id, patch);
     await loadContacts();
@@ -1059,7 +1053,6 @@ export default function App() {
             onImport={() => setShowImport(true)}
             onFindDuplicates={() => setContactsMode("duplicates")}
             duplicateCount={duplicateClusters.length}
-            onToggleFavorite={toggleFavorite}
           />
           )
         ) : (

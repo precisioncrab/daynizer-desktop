@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Contact, AddressBook } from "../types";
 import ContextMenu from "./ContextMenu";
-import { ContactFilter, LabelColors, isFavorite, contactLabels } from "../contactUtils";
+import { ContactFilter, LabelColors, contactLabels } from "../contactUtils";
 
 const PALETTE: { name: string; color: string }[] = [
   { name: "Blue", color: "#4a90d9" },
@@ -50,7 +50,6 @@ export default function ContactsSidebar({
 
   const active = (f: ContactFilter) => JSON.stringify(f) === JSON.stringify(filter);
   const live = contacts.filter((c) => !c.deleted);
-  const favCount = live.filter(isFavorite).length;
   const bookCount = (id: string) => live.filter((c) => c.address_book_id === id).length;
   const labels = (() => {
     const set = new Set<string>();
@@ -75,11 +74,6 @@ export default function ContactsSidebar({
           <span className="sidebar-dot" style={{ background: "#888" }} />
           <span style={{ flex: 1 }}>All contacts</span>
           {live.length > 0 && <span className="count">{live.length}</span>}
-        </div>
-        <div className={`sidebar-item ${active({ kind: "favorites" }) ? "active" : ""}`} onClick={() => onSelect({ kind: "favorites" })}>
-          <span className="sidebar-dot" style={{ background: "#e8a23d" }} />
-          <span style={{ flex: 1 }}>★ Favorites</span>
-          {favCount > 0 && <span className="count">{favCount}</span>}
         </div>
 
         <div style={{ height: 8 }} />
