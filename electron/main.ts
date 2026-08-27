@@ -125,8 +125,16 @@ function runExclusive<T>(fn: () => Promise<T>): Promise<T> {
 
 function showMainWindow() {
   if (!mainWindow) { createWindow(); return; }
-  if (!mainWindow.isVisible()) mainWindow.show();
   if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  // Windows blocks a background process from stealing the foreground, so a plain
+  // focus() on a notification/tray click only flashes the taskbar button -- the
+  // window restores but stays behind, which reads as "clicking did nothing." A
+  // brief always-on-top flip reliably raises it to the front, then we drop the
+  // flag so it behaves normally afterward.
+  mainWindow.setAlwaysOnTop(true);
+  mainWindow.show();
+  mainWindow.setAlwaysOnTop(false);
   mainWindow.focus();
 }
 
