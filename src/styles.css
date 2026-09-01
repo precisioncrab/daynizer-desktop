@@ -438,11 +438,16 @@ input, textarea, select { user-select: text; }
    cap, then scroll. Still drag-resizable taller via the handle. */
 /* Auto-growing notes fields: one-line floor, JS grows height to fit typed
    content (drag-resize comes back once auto-grow is confirmed). */
-/* flex-shrink:0 is essential: .detail-panel is a flex column, and without it
-   the panel squashes the textarea back down to its min-height, cancelling
-   both the JS auto-grow and any drag-resize. */
-.autogrow-textarea { min-height: calc(1.4em + 14px); line-height: 1.4; overflow-y: hidden; resize: none; flex-shrink: 0; }
-.detail-panel textarea.autogrow-textarea { min-height: calc(1.4em + 14px); resize: none; }
+/* Auto-growing notes field with a corner collapse/expand toggle. The WRAPPER
+   is the flex child now, so flex-shrink:0 lives there -- without it the
+   .detail-panel flex column squashes the field back to its min-height and
+   cancels the JS-set height. padding-right reserves room for the toggle. */
+.autogrow-wrap { position: relative; width: 100%; flex-shrink: 0; }
+.autogrow-textarea { min-height: calc(1.4em + 14px); line-height: 1.4; overflow-y: hidden; resize: none; padding-right: 22px; }
+.detail-panel textarea.autogrow-textarea { min-height: calc(1.4em + 14px); resize: none; padding-right: 22px; }
+.autogrow-toggle { position: absolute; right: 5px; bottom: 5px; width: 18px; height: 18px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; border-radius: 4px; background: transparent; color: #9aa0a6; cursor: pointer; }
+.autogrow-toggle:hover { color: #e6e6e6; background: rgba(255,255,255,0.06); }
+.autogrow-toggle svg { display: block; }
 .detail-row { display: flex; gap: 10px; }
 .detail-row > div { flex: 1; }
 .detail-actions { margin-top: 16px; display: flex; gap: 8px; }
