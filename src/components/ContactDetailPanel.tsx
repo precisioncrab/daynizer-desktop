@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Contact, AddressBook, TypedValue, PostalAddress } from "../types";
+import AutoGrowTextarea from "./AutoGrowTextarea";
 
 interface Props {
   contact: Contact | null;
@@ -252,7 +253,12 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
       )}
 
       <label>Notes</label>
-      <textarea value={notes} onChange={(e) => { setNotes(e.target.value); mark(); }} />
+      <AutoGrowTextarea
+        value={notes}
+        resetKey={contact.id}
+        placeholder="Add notes…"
+        onChange={(e) => { setNotes(e.target.value); mark(); }}
+      />
 
       {addressBooks.length > 1 && (
         <>

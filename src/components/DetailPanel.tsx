@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Task, TaskList, PRIORITY_LABELS } from "../types";
 import RemindersEditor, { PendingReminder } from "./RemindersEditor";
+import AutoGrowTextarea from "./AutoGrowTextarea";
 
 interface Props {
   task: Task | null;
@@ -193,7 +194,12 @@ export default function DetailPanel({ task, lists, subtasks, allCategories = [],
       />
 
       <label>Notes</label>
-      <textarea value={notes} onChange={(e) => { setNotes(e.target.value); markDirty(); }} />
+      <AutoGrowTextarea
+        value={notes}
+        resetKey={task.id}
+        placeholder="Add notes…"
+        onChange={(e) => { setNotes(e.target.value); markDirty(); }}
+      />
 
       <label>List</label>
       <select value={listId} onChange={(e) => { setListId(e.target.value); markDirty(); }}>

@@ -433,6 +433,16 @@ input, textarea, select { user-select: text; }
   font-size: 13px;
 }
 .detail-panel textarea { resize: vertical; min-height: 60px; font-family: inherit; }
+/* Auto-growing notes fields: the engine sizes them to their content
+   (field-sizing), so they start at one line, grow as you type up to the
+   cap, then scroll. Still drag-resizable taller via the handle. */
+/* Auto-growing notes fields: one-line floor, JS grows height to fit typed
+   content (drag-resize comes back once auto-grow is confirmed). */
+/* flex-shrink:0 is essential: .detail-panel is a flex column, and without it
+   the panel squashes the textarea back down to its min-height, cancelling
+   both the JS auto-grow and any drag-resize. */
+.autogrow-textarea { min-height: calc(1.4em + 14px); line-height: 1.4; overflow-y: hidden; resize: none; flex-shrink: 0; }
+.detail-panel textarea.autogrow-textarea { min-height: calc(1.4em + 14px); resize: none; }
 .detail-row { display: flex; gap: 10px; }
 .detail-row > div { flex: 1; }
 .detail-actions { margin-top: 16px; display: flex; gap: 8px; }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { CalendarEvent, TaskList } from "../types";
 import RemindersEditor, { PendingReminder } from "./RemindersEditor";
 import { RECURRING_PER_OCCURRENCE } from "../featureFlags";
+import AutoGrowTextarea from "./AutoGrowTextarea";
 
 type Scope = "all" | "this" | "following";
 
@@ -351,7 +352,12 @@ export default function EventDetailPanel({ event, lists, allCategories = [], occ
       </div>
 
       <label>Notes</label>
-      <textarea value={notes} onChange={(e) => { setNotes(e.target.value); markDirty(); }} />
+      <AutoGrowTextarea
+        value={notes}
+        resetKey={event.id}
+        placeholder="Add notes…"
+        onChange={(e) => { setNotes(e.target.value); markDirty(); }}
+      />
 
       <div className="detail-actions">
         <button className="primary" onClick={handleSave} disabled={!dirty || !startDate}>{dirty ? "Save" : "Saved"}</button>
