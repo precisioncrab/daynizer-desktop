@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Contact } from "../types";
 import { contactCategories, dupPairKey, initials } from "../contactUtils";
+import AutoGrowTextarea from "./AutoGrowTextarea";
 
 interface Props {
   clusters: Contact[][];
@@ -247,7 +248,7 @@ function MergeEditor({ cluster, onCancel, onMerge }: {
 
         {section("Notes", (
           <>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} style={{ width: "100%", resize: "vertical" }} />
+            <AutoGrowTextarea value={notes} resetKey={keeperId} onChange={(e) => setNotes(e.target.value)} style={{ width: "100%" }} />
             {otherNotes.map((c) => (
               <button key={c.id} onClick={() => setNotes((n) => (n ? `${n}\n\n${c.notes}` : c.notes))} style={{ marginTop: 6, fontSize: 12 }}>
                 + Append note from “{c.fn || "other"}”
