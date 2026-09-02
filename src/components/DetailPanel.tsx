@@ -210,7 +210,20 @@ export default function DetailPanel({ task, lists, subtasks, allCategories = [],
         <div>
           <label>Start date</label>
           <div className="date-time-pair">
-            <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); if (!e.target.value) setStartTime(""); markDirty(); }} />
+            <input type="date" value={startDate} onChange={(e) => {
+              const v = e.target.value;
+              setStartDate(v);
+              if (!v) {
+                setStartTime("");
+              } else if (!dueDate) {
+                // Setting a start date defaults the due date to the same day
+                // (only when due is still blank -- never overwrites a chosen
+                // one). A due time isn't defaulted here; that still happens
+                // when a start TIME is entered, just below.
+                setDueDate(v);
+              }
+              markDirty();
+            }} />
             <input type="time" value={startTime} disabled={!startDate} title={startDate ? "Optional time" : "Set a date first"}
               onChange={(e) => {
                 const t = e.target.value;

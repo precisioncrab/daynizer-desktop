@@ -400,6 +400,36 @@ input, textarea, select { user-select: text; }
   --ec-button-active-bg-color: #4a90d9;
 }
 .calendar-view-grid .task-bar { opacity: 0.85; }
+/* Keep the drag/resize edge handles above the event's own (sticky) title, so
+   hovering an edge always shows the resize cursor (the double arrow). Without
+   this the sticky title paints over the START-edge handle -- the top edge of a
+   timed block in week/day, and the LEFT edge of an all-day bar -- leaving that
+   edge showing the move/pointer cursor instead of the stretch cue. */
+.calendar-view-grid .ec-resizer { z-index: 5; }
+/* Overlapping timed items get split into narrow side-by-side columns
+   (slotEventOverlap:false), leaving each column's edges too thin to grab for a
+   resize -- and a short one too stubby. Pop the SELECTED item out to the full
+   column width and above its neighbours, so once you click a bar you can grab
+   its edge and stretch it. Clicking empty space deselects and returns it to the
+   shared column layout. (Library width/left are non-!important inline styles,
+   so these !important rules override them; scoped to the hour grid, where the
+   column split happens -- month/all-day bars are already full width.) */
+.calendar-view-grid .ec-time-grid .ec-body .ec-event.ec-selected {
+  inset-inline-start: 0 !important;
+  inline-size: calc(100% - var(--ec-event-col-gap)) !important;
+  z-index: 20 !important;
+}
+/* Left/right grips for stretching a TIMED event across days in week view -- a
+   custom gesture (the library only resizes timed events vertically). Thin
+   full-height strips on the owning segment's edges, ew-resize like the
+   month-view across-days stretch. Above the vertical resizers so a corner
+   prefers the horizontal (across-days) drag. */
+.calendar-view-grid .ec-hgrip {
+  position: absolute; inset-block: 0; inline-size: 8px;
+  cursor: ew-resize; z-index: 30;
+}
+.calendar-view-grid .ec-hgrip-end { inset-inline-end: -1px; }
+.calendar-view-grid .ec-hgrip-start { inset-inline-start: -1px; }
 /* Generated recurrence occurrences: read-only "ghost" bars, drawn distinctly
    from individually-stored items -- dimmer, dashed outline, and a faint
    diagonal hatch so a repeating series clearly reads as generated, not as a
