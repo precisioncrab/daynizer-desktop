@@ -1,44 +1,39 @@
-Daynizer v0.5.0 — list management, contacts polish, and reliability fixes
+Daynizer v0.6.0 — calendar stretching, multi-day events, and timed tasks
 
-This release adds proper list management (unlink vs. delete, with server-side deletion),
-several contacts improvements, and a batch of sync-correctness and desktop-behavior fixes on
-top of 0.4.0. Daynizer is still beta.
+This release focuses on making the week/day calendar directly editable by mouse, adds timed
+tasks, defaults the due date sensibly, and fixes the Thunderbird add-on's default-list setting.
+Builds on 0.5.x. Daynizer is still beta.
 
-## Lists
-- **Unlink vs. Delete.** The list right-click menu now has two clear actions. **Unlink** makes a
-  linked list local-only — your tasks stay both on this computer and on the server, but that list
-  stops syncing. **Delete** removes the list and its tasks from Daynizer, and from the server too
-  when the list is linked. (On DAViCal-based servers, including Synology Calendar, the server
-  rejects whole-calendar deletion — Daynizer deletes locally and tells you the server copy remains.)
-- **Renames reach the server.** Renaming a list now pushes the new name to the server's calendar
-  collection instead of staying local.
+## Calendar — resize and stretch
+- **Stretch an event from either edge.** Events are now resizable from both edges, not just the
+  end. In week/day view drag a timed event's top or bottom edge (up/down) to change its start or
+  end time; in month view drag either side of an all-day bar (left/right) to change which days it
+  covers.
+- **Drag a timed event across days.** Grab the left or right edge of a timed event in week view
+  and pull it sideways to make it span multiple days (e.g. a job running Thu 8 AM -> Sat 5 PM),
+  rendered as day-by-day segments. Pull it back to shrink. It previews live as you drag.
+- **The resize cursor now shows on every edge.** Hovering an edge reliably shows the double-arrow
+  stretch cursor instead of the move hand -- previously the event's own title could cover the
+  start edge.
+- **Click a squeezed event to work with it.** When overlapping items are packed into narrow
+  side-by-side columns, selecting one now pops it out to the full column width and to the front,
+  so its edges are easy to grab.
 
-## Contacts
-- **Anniversary** field added to the contact editor, alongside Birthday (with the same optional-year
-  handling), and it syncs over CardDAV.
-- **Contact avatars** — two-letter initials on a name-hued disc, or the contact's photo when present.
-- The personal **email type** now reads "personal" instead of "home".
-- **Merge duplicates** now confirms the merge and returns you to the contacts list; when several
-  duplicate groups exist it keeps you on the duplicates list until you've resolved them all.
-- Removed the contact **favorites/star** feature — Android/CardDAV has no representation for it, so
-  it couldn't round-trip.
+## Calendar — timed tasks
+- **Tasks with a time show as time blocks.** A task created at a specific time (or given start/due
+  times) now appears as a block at that time in week/day view, instead of always landing in the
+  all-day row. "Due date only" and "Start date only" each show a block at their own time; the
+  Start-Due range shows the full span. Date-only tasks, and month view, keep the all-day bar.
 
-## Sync correctness
-- **Deleted tasks no longer come back.** Fixed a case where deleting a task and syncing could
-  re-create it (the pull loop ignored a soft-deleted row that hadn't pushed yet).
-- **Subtasks created on the server** now stay nested when pulled, instead of occasionally orphaning
-  to the top level.
-- Fixed adding a category/tag to a task not always saving.
-- Nextcloud fixes: a calendar-color crash, list-connect errors, and contacts that only had a display
-  name (FN) now import correctly.
+## Tasks
+- **Due date follows the start date.** Setting a start date now fills in the due date to the same
+  day when it's still blank -- it never overwrites a due date you've already chosen.
 
-## Desktop behavior
-- **One instance only.** Launching Daynizer a second time now focuses the existing window instead of
-  starting a second process — two copies could contend on the shared database and freeze the UI.
-- **Reminders bring the app forward.** Clicking a reminder notification (or the tray icon) now raises
-  the window to the foreground and jumps to the item, even when the app was minimized or hidden.
-- The UI stays responsive during large contact syncs.
+## Notes fields
+- Note fields on tasks and events auto-grow to fit what you type, with a corner toggle to
+  collapse or expand them.
 
-## Calendar
-- Recurring events and tasks now redraw immediately when you page to another month or switch views,
-  instead of only appearing after you clicked one.
+## Thunderbird add-on
+- **Default list / default calendar now stick.** The add-on now stores its settings, so your
+  chosen default task list and default event calendar persist across reloads and are honored when
+  you create a task or event from the calendar view (previously these were ignored in the add-on).

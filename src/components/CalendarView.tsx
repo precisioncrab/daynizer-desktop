@@ -45,6 +45,13 @@ function nextDay(dateStr: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** True when a stored value carries a time-of-day (a full datetime) rather
+ *  than a date-only "YYYY-MM-DD". Timed tasks/events draw as time-grid blocks;
+ *  date-only ones stay all-day bars. */
+function hasTime(v: string | null | undefined): boolean {
+  return !!v && v.length > 10;
+}
+
 function splitTags(tags: string): string[] {
   return tags.split(",").map((t) => t.trim()).filter(Boolean);
 }
@@ -75,6 +82,27 @@ function toLocalFloating(v: string): string {
  *  sees, not a UTC-shifted one. */
 function localDay(v: string): string {
   return toLocalFloating(v).slice(0, 10);
+}
+
+/** Move a stored timed value onto a different calendar DAY while keeping its
+ *  local wall-clock time-of-day, returning a UTC ISO string (the stored shape
+ *  for timed events). Used by the horizontal "span across days" drag, which
+ *  changes only the day the start/end falls on. */
+function withDayLocal(stored: string, targetDate: Date): string {
+  const local = toLocalFloating(stored);
+  const time = local.length > 10 ? local.slice(10) : "T00:00:00";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const ds = `${targetDate.getFullYear()}-${pad(targetDate.getMonth() + 1)}-${pad(targetDate.getDate())}`;
+  return new Date(`${ds}${time}`).toISOString();
+}
+/** Local-midnight epoch of a stored value's day -- for comparing which day two
+ *  values fall on (drag clamping so end never precedes start, and vice versa). */
+function dayEpochOf(stored: string): number {
+  return new Date(`${localDay(stored)}T00:00:00`).getTime();
+}
+/** A Date at local midnight of a stored value's day. */
+function dayDateOf(stored: string): Date {
+  return new Date(`${localDay(stored)}T00:00:00`);
 }
 
 /** "YYYY-MM-DD" from a Date's LOCAL wall-clock date -- deliberately not
@@ -171,6 +199,14 @@ export default function CalendarView({
   useEffect(() => { onUpdateTaskRef.current = onUpdateTask; });
   useEffect(() => { eventsRef.current = events; });
   useEffect(() => { tasksRef.current = tasks; });
+  // Live preview of the event currently being dragged wider/narrower across
+  // days (custom horizontal resize -- see the grip handlers in the mount
+  // effect). buildEcEvents substitutes these dates for that one event while a
+  // drag is in progress; null when idle.
+  const hPreviewRef = useRef<{ id: string; start_date: string; end_date: string } | null>(null);
+  // Latest buildEcEvents, so the once-wired grip drag can rebuild with current
+  // data (the mount effect's own closure is frozen at first render).
+  const buildEcEventsRef = useRef<() => any[]>(() => []);
   const [categoryFilter, setCategoryFilter] = useState(() => localStorage.getItem("calendarCategoryFilter") || "all");
   const [displayMode, setDisplayMode] = useState<DisplayMode>(
     () => (localStorage.getItem("calendarTaskDisplayMode") as DisplayMode) || "due"
@@ -201,6 +237,7 @@ export default function CalendarView({
   useEffect(() => { localStorage.setItem("calendarEventDisplayMode", eventDisplayMode); }, [eventDisplayMode]);
   const displayModeRef = useRef(displayMode);
   useEffect(() => { displayModeRef.current = displayMode; });
+  useEffect(() => { buildEcEventsRef.current = buildEcEvents; });
 
   const showTasks = calendarShow !== "events";
   const showEvents = calendarShow !== "tasks";
@@ -234,8 +271,19 @@ export default function CalendarView({
 
   function buildEcEvents() {
     const out: any[] = [];
+    // Timed bars only make sense where hours are shown. Month view has no time
+    // grid, so timed tasks/events stay all-day bars there; week/day draw them
+    // as blocks at their time. (The reactive rebuild effect lists calView as a
+    // dep so switching views re-expands with the right shape.)
+    const isTimeGrid = calView !== "dayGridMonth";
+    // While a horizontal (across-days) drag is in progress, render the dragged
+    // event with its preview dates so the multi-day span updates live.
+    const hp = hPreviewRef.current;
+    const eventsForRender = hp
+      ? events.map((ev) => (ev.id === hp.id ? { ...ev, start_date: hp.start_date, end_date: hp.end_date } : ev))
+      : events;
     if (showEvents) {
-      for (const e of events) {
+      for (const e of eventsForRender) {
         if (listFilter !== "all" && e.list_id !== listFilter) continue;
         if (!matchesCategory(e.tags)) continue;
         const recurring = !!e.recurrence;
@@ -273,7 +321,17 @@ export default function CalendarView({
           } else if (allDay) {
             lStart = localDay(startStored); lEnd = nextDay(localDay(endStored)); lAllDay = true;
           } else {
-            lStart = toLocalFloating(startStored); lEnd = toLocalFloating(endStored); lAllDay = false;
+            lStart = toLocalFloating(startStored);
+            lEnd = toLocalFloating(endStored);
+            lAllDay = false;
+            // A timed event with no (or a non-positive) duration renders as a
+            // zero-height sliver in week/day view, leaving no grabbable bottom
+            // edge to stretch. Give it a 1-hour default span so the resize
+            // handle is always hittable. Display only -- the stored end_date is
+            // untouched; a real drag writes it back via eventResize below.
+            if (new Date(lEnd).getTime() <= new Date(lStart).getTime()) {
+              lEnd = toLocalFloating(shiftStored(startStored, 3600000));
+            }
           }
           // Only the full "range" view is drag/resize-editable -- there each edge
           // maps to a real date field. The collapsed single-day modes are a
@@ -297,6 +355,14 @@ export default function CalendarView({
               ...(recurring ? ["ec-recurring"] : [])
             ],
             editable,
+            // State the drag/resize flags per event rather than leaning on the
+            // library's global fallback: in @event-calendar/core an event's
+            // editable is only consulted AFTER the global eventStartEditable/
+            // eventDurationEditable, so the collapsed single-day modes never
+            // actually locked. Being explicit makes the full "range" view (and
+            // only it) draggable + edge-resizable, including in week/day view.
+            startEditable: editable,
+            durationEditable: editable,
             extendedProps: { kind: "event", location: e.location, masterId: e.id, recurring, occurrenceStart: recurring ? occStart : null }
           });
         });
@@ -312,27 +378,43 @@ export default function CalendarView({
         // db.ts's completion roll-forward); the same interval is applied to
         // whichever field(s) the current display mode actually draws.
         const anchor = t.due_date || t.start_date;
+        const classNamesFor = () => [
+          "task-bar",
+          ...(t.id === selectedTaskId ? ["ec-selected"] : []),
+          ...(recurring ? ["ec-recurring"] : [])
+        ];
         if (displayMode === "start") {
           const startOnly = t.start_date || t.due_date;
           if (!startOnly) continue;
           const deltas = deltasFor(t.recurrence, anchor || startOnly);
           deltas.forEach((d, i) => {
             const s = shiftStored(startOnly, d);
+            // A task with a start time draws as a block at that time in week/
+            // day view (was always all-day before, so a timed task created in
+            // the day view landed in the all-day row). Span start->due when a
+            // due time also exists and lands later; otherwise a 1-hour default.
+            let lStart: string, lEnd: string, lAllDay: boolean;
+            if (isTimeGrid && hasTime(s)) {
+              // "Start date only" draws the START alone -- a timed start is a
+              // 1-hour block at the start time. It must NOT reach for the due
+              // date, or the bar would stop respecting this single-date filter.
+              lStart = toLocalFloating(s);
+              lEnd = toLocalFloating(shiftStored(s, 3600000));
+              lAllDay = false;
+            } else {
+              lStart = s; lEnd = nextDay(s); lAllDay = true;
+            }
             out.push({
               id: recurring ? `task-${t.id}::${i}` : `task-${t.id}`,
               title: t.title,
-              start: s,
-              end: nextDay(s),
-              allDay: true,
+              start: lStart,
+              end: lEnd,
+              allDay: lAllDay,
               backgroundColor: colorFor(t.list_id),
-              classNames: [
-                "task-bar",
-                ...(t.id === selectedTaskId ? ["ec-selected"] : []),
-                ...(recurring ? ["ec-recurring"] : [])
-              ],
+              classNames: classNamesFor(),
               // Draggable to reschedule; not resizable in start/due mode -- a
-              // single-day bar has no second date field to grow into (only the
-              // start-due "range" mode does). Recurring occurrences stay locked.
+              // single-day anchor has no second date field to grow into (only
+              // the start-due "range" mode does). Recurring occurrences locked.
               editable: !recurring,
               startEditable: !recurring,
               durationEditable: false,
@@ -347,21 +429,41 @@ export default function CalendarView({
         const deltas = deltasFor(t.recurrence, anchor || due);
         deltas.forEach((d, i) => {
           const shiftedDue = shiftStored(due, d);
+          const shiftedStart = shiftStored(start, d);
+          // Timed rendering when the drawn field(s) carry a time-of-day: range
+          // spans start->due; due-only draws start->due if a start time exists
+          // and precedes due, else a 1-hour block at the due time. Date-only
+          // tasks (and month view) keep the all-day bar.
+          const timed = isTimeGrid && (hasTime(shiftedDue) || (displayMode === "range" && hasTime(shiftedStart)));
+          let lStart: string, lEnd: string, lAllDay: boolean;
+          if (timed && displayMode === "range") {
+            lStart = toLocalFloating(shiftedStart);
+            lEnd = toLocalFloating(shiftedDue);
+            if (new Date(lEnd).getTime() <= new Date(lStart).getTime()) {
+              lEnd = toLocalFloating(shiftStored(hasTime(shiftedDue) ? shiftedDue : shiftedStart, 3600000));
+            }
+            lAllDay = false;
+          } else if (timed) {
+            // "Due date only" draws the DUE alone -- a timed due is a 1-hour
+            // block at the due time. It must NOT reach for the start date, or
+            // the bar would span start->due and stop respecting this filter.
+            lStart = toLocalFloating(shiftedDue);
+            lEnd = toLocalFloating(shiftStored(shiftedDue, 3600000));
+            lAllDay = false;
+          } else {
+            lStart = shiftedStart; lEnd = nextDay(shiftedDue); lAllDay = true;
+          }
           out.push({
             id: recurring ? `task-${t.id}::${i}` : `task-${t.id}`,
             title: t.title,
-            start: shiftStored(start, d),
-            end: nextDay(shiftedDue),
-            allDay: true,
+            start: lStart,
+            end: lEnd,
+            allDay: lAllDay,
             backgroundColor: colorFor(t.list_id),
-            classNames: [
-              "task-bar",
-              ...(t.id === selectedTaskId ? ["ec-selected"] : []),
-              ...(recurring ? ["ec-recurring"] : [])
-            ],
+            classNames: classNamesFor(),
             // Draggable to reschedule. Resizable only in "range" mode, where the
-            // bar spans start_date..due_date and each edge maps to a real field;
-            // "due" mode is a single-day bar with nothing to resize into.
+            // bar spans start_date..due_date and each edge maps to a real field
+            // (works for timed range blocks too -- eventResize keeps datetimes).
             editable: !recurring,
             startEditable: !recurring,
             durationEditable: !recurring && displayMode === "range",
@@ -391,6 +493,13 @@ export default function CalendarView({
       editable: true,
       eventStartEditable: true,
       eventDurationEditable: true,
+      // Put a resize handle on BOTH edges, not just the end. Without this the
+      // library only draws the end-edge handle (bottom in week/day, right in
+      // month), so the start edge fell through to the drag/move cursor -- a
+      // bar looked un-stretchable from its top/left. Now hovering either edge
+      // shows the resize cursor (up/down in the hourly grid, left/right across
+      // day bars); eventResize already maps the start edge to start_date.
+      eventResizableFromStart: true,
       // Default `true` stacks same-time events on top of each other with a
       // slight offset, which makes the ones underneath hard to click in
       // week/day view. `false` lays intersecting events side by side in
@@ -407,6 +516,20 @@ export default function CalendarView({
         setRangeVersion((v) => v + 1);
       },
       events: buildEcEvents(),
+      // Attach the custom horizontal "span across days" grips as each timed
+      // event segment mounts (see mkGrip/startHDrag below). Only week view,
+      // only real events, and only on the segment owning the true start/end.
+      eventDidMount(info: any) {
+        if (info?.view?.type !== "timeGridWeek") return;
+        const ev = info.event;
+        if (ev.allDay) return;
+        const props = ev.extendedProps || {};
+        if (props.kind !== "event" || props.recurring) return;
+        const id = props.masterId ?? String(ev.id).slice(6);
+        const elx: HTMLElement = info.el;
+        if (!elx.classList.contains("ec-end-clipped")) elx.appendChild(mkGrip("end", id));
+        if (!elx.classList.contains("ec-start-clipped")) elx.appendChild(mkGrip("start", id));
+      },
       // A day with a lot of tasks/events stretches its whole week row taller
       // (library behavior, unchanged) -- `dayMaxEvents` turned out
       // unreliable here (`true` broke an unrelated week's layout, a fixed
@@ -532,6 +655,59 @@ export default function CalendarView({
     // month navigation. Both are attached as plain DOM listeners since the
     // Interaction plugin only offers a single-click dateClick.
     const el = elRef.current;
+    // ---- Horizontal "span across days" resize for TIMED events ----
+    // The calendar library resizes timed events only vertically (by time).
+    // These grips sit on the left/right edges of the segment that owns the
+    // event's true start/end; dragging one moves that endpoint onto whatever
+    // day is under the pointer (keeping its time-of-day), so a one-day event
+    // can be stretched to span several days -- and pulled back. Live preview
+    // via hPreviewRef; persisted on release through the same update path as a
+    // normal resize.
+    function mkGrip(edge: "start" | "end", id: string): HTMLDivElement {
+      const g = document.createElement("div");
+      g.className = `ec-hgrip ec-hgrip-${edge}`;
+      g.addEventListener("pointerdown", (je) => startHDrag(je, edge, id));
+      return g;
+    }
+    function startHDrag(jsEvent: PointerEvent, edge: "start" | "end", id: string) {
+      jsEvent.preventDefault();
+      jsEvent.stopPropagation(); // stop the library's own drag/resize from also starting
+      const ev0 = eventsRef.current.find((x) => x.id === id);
+      if (!ev0 || ev0.recurrence) return;
+      hPreviewRef.current = { id, start_date: ev0.start_date, end_date: ev0.end_date || ev0.start_date };
+      const rebuild = () => ecRef.current?.setOption("events", buildEcEventsRef.current());
+      const onMove = (mv: PointerEvent) => {
+        const info = ecRef.current?.dateFromPoint(mv.clientX, mv.clientY);
+        const cur = hPreviewRef.current;
+        if (!info?.date || !cur) return;
+        if (edge === "end") {
+          let ne = withDayLocal(cur.end_date, info.date);
+          if (dayEpochOf(ne) < dayEpochOf(cur.start_date)) ne = withDayLocal(cur.end_date, dayDateOf(cur.start_date));
+          cur.end_date = ne;
+        } else {
+          let ns = withDayLocal(cur.start_date, info.date);
+          if (dayEpochOf(ns) > dayEpochOf(cur.end_date)) ns = withDayLocal(cur.start_date, dayDateOf(cur.end_date));
+          cur.start_date = ns;
+        }
+        rebuild();
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        const pv = hPreviewRef.current;
+        hPreviewRef.current = null;
+        if (pv) {
+          const orig = eventsRef.current.find((x) => x.id === pv.id);
+          const patch: Partial<CalendarEvent> = {};
+          if (orig && pv.start_date !== orig.start_date) patch.start_date = pv.start_date;
+          if (orig && pv.end_date !== (orig.end_date || orig.start_date)) patch.end_date = pv.end_date;
+          if (Object.keys(patch).length) onUpdateEventRef.current(pv.id, patch);
+        }
+        rebuild();
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    }
     function isOnEvent(target: EventTarget | null): boolean {
       return !!(target as HTMLElement)?.closest?.(".ec-event");
     }
@@ -576,7 +752,7 @@ export default function CalendarView({
     if (!ready || !ecRef.current) return;
     ecRef.current.setOption("events", buildEcEvents());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, rangeVersion, events, tasks, calendarShow, lists, categoryFilter, displayMode, eventDisplayMode, listFilter, selectedTaskId, selectedEventId]);
+  }, [ready, rangeVersion, events, tasks, calendarShow, lists, categoryFilter, displayMode, eventDisplayMode, listFilter, selectedTaskId, selectedEventId, calView]);
 
   useEffect(() => {
     if (!ready || !ecRef.current) return;
