@@ -400,23 +400,10 @@ function migrate(db: DatabaseSync) {
     }
   }
 
-  const listCount = db.prepare("SELECT COUNT(*) AS c FROM lists").get() as { c: number };
-  if (listCount.c === 0) {
-    const now = new Date().toISOString();
-    db.prepare(
-      `INSERT INTO lists (id, name, color, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(nanoid(), "Tasks", "#4a90d9", 0, now, now);
-  }
-
-  // Ensure a default address book exists so new contacts always have a home
-  // (link it to a CardDAV address book later to sync).
-  const bookCount = db.prepare("SELECT COUNT(*) AS c FROM address_books").get() as { c: number };
-  if (bookCount.c === 0) {
-    const now = new Date().toISOString();
-    db.prepare(
-      `INSERT INTO address_books (id, name, color, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(nanoid(), "Contacts", "#4a90d9", 0, now, now);
-  }
+  // NOTE: we deliberately do NOT seed a local "Tasks" list or "Contacts" address
+  // book here. The built-in server is on by default and provisions a server-backed
+  // Calendar + Contacts, so a purely-local default just clutters a fresh profile
+  // with unsynced lists. A server-less user creates their own local list on demand.
 }
 
 const nowIso = () => new Date().toISOString();
@@ -494,13 +481,26 @@ function assertBindable(context: string, columns: string[], values: unknown[]): 
   }
 }
 
-export function listCreate(name: string, color = "#4a90d9"): TaskList {
+/** Default swatch palette for new lists / calendars / address books. New
+ *  collections rotate through it (by position) so a fresh set isn't all blue;
+ *  the caller can still pass an explicit color (from the create form or a
+ *  right-click "Change colour"). */
+export const COLLECTION_PALETTE = [
+  "#4a90d9", "#e5484d", "#e8a23d", "#3fb950", "#a371f7", "#db61a2", "#6f7378"
+];
+function pickCollectionColor(index: number): string {
+  return COLLECTION_PALETTE[((index % COLLECTION_PALETTE.length) + COLLECTION_PALETTE.length) % COLLECTION_PALETTE.length];
+}
+
+export function listCreate(name: string, color?: string): TaskList {
   const db = getDb();
   const id = nanoid();
   const now = nowIso();
   const maxOrder = (db.prepare(`SELECT COALESCE(MAX(sort_order), -1) AS m FROM lists`).get() as any).m as number;
+  const order = maxOrder + 1;
+  const finalColor = color ?? pickCollectionColor(order);
   const cols = ["id", "name", "color", "sort_order", "created_at", "updated_at"];
-  const vals = [id, name, color, maxOrder + 1, now, now];
+  const vals = [id, name, finalColor, order, now, now];
   assertBindable(`List "${name}"`, cols, vals);
   db.prepare(
     `INSERT INTO lists (id, name, color, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
@@ -1299,14 +1299,16 @@ export function addressBooksAll(): AddressBook[] {
   return getDb().prepare(`SELECT * FROM address_books ORDER BY sort_order ASC, name ASC`).all() as unknown as AddressBook[];
 }
 
-export function addressBookCreate(name: string, color = "#4a90d9"): AddressBook {
+export function addressBookCreate(name: string, color?: string): AddressBook {
   const db = getDb();
   const id = nanoid();
   const now = nowIso();
   const maxOrder = (db.prepare(`SELECT COALESCE(MAX(sort_order), -1) AS m FROM address_books`).get() as any).m as number;
+  const order = maxOrder + 1;
+  const finalColor = color ?? pickCollectionColor(order);
   db.prepare(
     `INSERT INTO address_books (id, name, color, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(id, name, color, maxOrder + 1, now, now);
+  ).run(id, name, finalColor, order, now, now);
   return db.prepare(`SELECT * FROM address_books WHERE id = ?`).get(id) as unknown as AddressBook;
 }
 

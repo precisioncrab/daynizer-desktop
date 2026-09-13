@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import QRCode from "qrcode";
 import { CaldavAccountPublic, DiscoveredCalendar, DiscoveredAddressBook, AddressBook, TaskList, ServerStatus, ServerInfo } from "../types";
 
 /** Renderer-side twin of db.ts's davUrlKey: normalize a CalDAV/CardDAV URL so
@@ -87,6 +88,7 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
   const [showSrvPass, setShowSrvPass] = useState(false);
   const [srvBusy, setSrvBusy] = useState(false);
   const [srvMsg, setSrvMsg] = useState<string | null>(null);
+  const [srvQr, setSrvQr] = useState<string | null>(null); // pairing QR (data URL), or null
 
   async function loadServer() {
     if (!window.api.server) return;
@@ -106,6 +108,31 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
       setSrv((prev) => (prev ? { ...prev, ...s } : prev));
     });
   }, []);
+
+  /** Build the DAVx5 auto-config URI for phone pairing. The `caldav://` scheme
+   *  maps to plain HTTP (what the LAN server uses); DAVx5 discovers BOTH calendars
+   *  and contacts from this one URL. Credentials are embedded because a QR carries
+   *  no "extras" — fine for a LAN-only account. Returns null until there's a
+   *  reachable (non-loopback) LAN address. */
+  function pairingUri(info: ServerInfo | null): string | null {
+    if (!info?.running || !info.baseUrl) return null;
+    let host: string;
+    try { host = new URL(info.baseUrl).host; } catch { return null; }
+    if (host.startsWith("127.") || host.toLowerCase().startsWith("localhost")) return null;
+    const user = encodeURIComponent(info.username || "");
+    const pass = encodeURIComponent(info.password || "");
+    return `caldav://${user}:${pass}@${host}/`;
+  }
+  // Regenerate the pairing QR whenever the reachable address or credentials change.
+  useEffect(() => {
+    const uri = pairingUri(srv);
+    if (!uri) { setSrvQr(null); return; }
+    let cancelled = false;
+    QRCode.toDataURL(uri, { width: 220, margin: 1, errorCorrectionLevel: "M", color: { dark: "#000000", light: "#ffffff" } })
+      .then((url) => { if (!cancelled) setSrvQr(url); })
+      .catch(() => { if (!cancelled) setSrvQr(null); });
+    return () => { cancelled = true; };
+  }, [srv?.running, srv?.baseUrl, srv?.username, srv?.password]);
 
   async function srvToggle(on: boolean) {
     if (!window.api.server) return;
@@ -1008,6 +1035,42 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
                       )}
                     </div>
                   )}
+
+                  {srvQr ? (
+                    <div style={{ marginTop: 16 }}>
+                      <h4 style={{ margin: "0 0 6px" }}>Scan to set up your Android phone</h4>
+                      <div style={{ display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+                        <img
+                          src={srvQr}
+                          width={200}
+                          height={200}
+                          alt="QR code that configures DAVx5 with this sync server"
+                          style={{ background: "#fff", padding: 8, borderRadius: 8, flex: "0 0 auto" }}
+                        />
+                        <div style={{ fontSize: 12, color: "#9aa0a6", maxWidth: 300, lineHeight: 1.6 }}>
+                          <strong>Install DAVx5 first</strong> — the scan opens straight into it. Then
+                          open a QR scanner (<strong>Binary Eye</strong>, free, is the reliable one),
+                          scan this, and tap the link: DAVx5 opens with the address, username and
+                          password already filled in. Finish, then tick the calendars, contacts and
+                          task lists to sync. Install <strong>Tasks.org</strong> for the task lists.
+                          <div style={{ marginTop: 8 }}>
+                            <button onClick={() => srvCopy(pairingUri(srv) ?? "", "Pairing link")}>Copy pairing link</button>
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 11 }}>
+                            Make sure the phone is on the same Wi-Fi{srv.platform === "win32" ? " and you've allowed the firewall above" : ""}.
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 11 }}>
+                            On <strong>iPhone</strong> there's no scan setup — add the account by hand
+                            with the Apple Calendar / Contacts steps below.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : srv.baseUrl && new URL(srv.baseUrl).hostname.startsWith("127.") ? (
+                    <div className="status" style={{ marginTop: 12, color: "#e8a23d" }}>
+                      Connect this computer to Wi-Fi or your network to show a phone-pairing QR code.
+                    </div>
+                  ) : null}
                 </>
               )}
 
