@@ -12,6 +12,7 @@ const PALETTE: { name: string; color: string }[] = [
   { name: "Pink", color: "#db61a2" },
   { name: "Gray", color: "#6f7378" }
 ];
+const randomSwatch = () => PALETTE[Math.floor(Math.random() * PALETTE.length)].color;
 
 interface Props {
   addressBooks: AddressBook[];
@@ -19,8 +20,9 @@ interface Props {
   accounts: { id: string; label: string }[];
   filter: ContactFilter;
   onSelect: (f: ContactFilter) => void;
-  onCreateBook: (name: string) => void;
-  onCreateServerBook: (name: string, accountId: string) => Promise<void>;
+  onCreateBook: (name: string, color?: string) => void;
+  onCreateServerBook: (name: string, accountId: string, color?: string) => Promise<void>;
+  onSetBookColor: (id: string, color: string) => void;
   onRenameBook: (id: string, name: string) => void;
   labelColors: LabelColors;
   onSetLabelColor: (label: string, color: string | null) => void;
@@ -35,11 +37,12 @@ interface Props {
 }
 
 export default function ContactsSidebar({
-  addressBooks, contacts, accounts, filter, onSelect, onCreateBook, onCreateServerBook, onRenameBook, labelColors, onSetLabelColor, onDeleteLabel,
+  addressBooks, contacts, accounts, filter, onSelect, onCreateBook, onCreateServerBook, onSetBookColor, onRenameBook, labelColors, onSetLabelColor, onDeleteLabel,
   onDisconnectBook, onDeleteBook, onSync, syncing, onOpenSettings, collapsed, onToggleCollapsed
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
+  const [newColor, setNewColor] = useState(randomSwatch()); // color for the book being created
   const [bookTarget, setBookTarget] = useState("local"); // "local" or accountId
   const [labelMenu, setLabelMenu] = useState<{ x: number; y: number; label: string } | null>(null);
   const [bookMenu, setBookMenu] = useState<{ x: number; y: number; book: AddressBook } | null>(null);
@@ -60,6 +63,7 @@ export default function ContactsSidebar({
   function openAddBook() {
     setBookTarget(accounts.length > 0 ? accounts[0].id : "local");
     setName("");
+    setNewColor(randomSwatch());
     setAdding(true);
   }
 
@@ -85,10 +89,11 @@ export default function ContactsSidebar({
     const target = bookTarget;
     // Close + clear immediately (creating a server book awaits a round-trip);
     // reset first, then work -- mirrors the Calendar/List sidebar.
+    const color = newColor;
     setName(""); setBookTarget("local"); setAdding(false);
     if (trimmed) {
-      if (target !== "local") await onCreateServerBook(trimmed, target);
-      else onCreateBook(trimmed);
+      if (target !== "local") await onCreateServerBook(trimmed, target, color);
+      else onCreateBook(trimmed, color);
     }
   }
 
@@ -151,6 +156,21 @@ export default function ContactsSidebar({
               onKeyDown={(e) => { if (e.key === "Enter") submitNewBook(); if (e.key === "Escape") { setAdding(false); setName(""); setBookTarget("local"); } }}
               onBlur={accounts.length === 0 ? submitNewBook : undefined}
             />
+            <div style={{ display: "flex", gap: 5, marginTop: 6, alignItems: "center" }}>
+              {PALETTE.map((p) => (
+                <button
+                  key={p.color}
+                  type="button"
+                  title={p.name}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setNewColor(p.color)}
+                  style={{
+                    width: 16, height: 16, borderRadius: "50%", background: p.color, cursor: "pointer", padding: 0,
+                    border: newColor === p.color ? "2px solid #fff" : "2px solid transparent"
+                  }}
+                />
+              ))}
+            </div>
             {accounts.length > 0 && (
               <div style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center" }}>
                 <select
@@ -216,6 +236,7 @@ export default function ContactsSidebar({
           onClose={() => setBookMenu(null)}
           items={[
             { label: "Rename", onClick: () => { setEditingBookId(bookMenu.book.id); setEditName(bookMenu.book.name); } },
+            ...PALETTE.map((p) => ({ label: `● ${p.name}`, onClick: () => onSetBookColor(bookMenu.book.id, p.color) })),
             ...(bookMenu.book.carddav_addressbook_url
               ? [{ label: "Disconnect from CardDAV", onClick: () => onDisconnectBook(bookMenu.book) }]
               : []),

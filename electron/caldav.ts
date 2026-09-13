@@ -343,6 +343,48 @@ export async function pushCalendarName(account: CaldavAccount, calendarUrl: stri
   if (!ok) throw new Error(`Server rejected displayname change (${JSON.stringify(res)})`);
 }
 
+/** Normalize an app color (#RGB / #RRGGBB / #RRGGBBAA) to Apple's #RRGGBBAA
+ *  form, which is what the CalDAV `calendar-color` property expects and what
+ *  DAVx5 / Apple Calendar read. Returns null for anything unparseable. */
+function toAppleColor(c: string): string | null {
+  let h = (c || "").trim();
+  if (!h.startsWith("#")) return null;
+  h = h.slice(1);
+  if (h.length === 3) h = h.split("").map((x) => x + x).join(""); // #RGB -> RRGGBB
+  if (h.length === 6) h = h + "FF";                               // add full opacity
+  if (h.length !== 8 || !/^[0-9a-fA-F]{8}$/.test(h)) return null;
+  return `#${h.toUpperCase()}`;
+}
+
+/** Push a list's color to the server as the calendar collection's Apple
+ *  `calendar-color` property via PROPPATCH, so a color set in the app travels to
+ *  other devices (DAVx5, Apple Calendar, another Daynizer) instead of staying
+ *  local. Mirrors pushCalendarName: best-effort, logged + thrown, and the caller
+ *  swallows any failure so the local color still stands. */
+export async function pushCalendarColor(account: CaldavAccount, calendarUrl: string, color: string): Promise<void> {
+  const value = toAppleColor(color);
+  if (!value) return; // nothing sensible to send
+  const client = await clientFor(account);
+  const body =
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<d:propertyupdate xmlns:d="DAV:" xmlns:ical="http://apple.com/ns/ical/"><d:set><d:prop>` +
+    `<ical:calendar-color>${xmlEscape(value)}</ical:calendar-color>` +
+    `</d:prop></d:set></d:propertyupdate>`;
+  const res = await client.davRequest({
+    url: calendarUrl,
+    init: {
+      method: "PROPPATCH",
+      headers: { "content-type": "application/xml; charset=utf-8" },
+      body
+    },
+    convertIncoming: false,
+    parseOutgoing: false
+  });
+  const ok = !Array.isArray(res) || res.every((r) => r.ok !== false && (r.status ? r.status < 400 : true));
+  syncLog(`PROPPATCH calendar-color ${calendarUrl} -> ${value}: ${ok ? "ok" : JSON.stringify(res)}`);
+  if (!ok) throw new Error(`Server rejected calendar-color change (${JSON.stringify(res)})`);
+}
+
 /** Remove the calendar link from a list (sets it back to local-only). */
 export function unlinkList(listId: string) {
   listUpdate(listId, {

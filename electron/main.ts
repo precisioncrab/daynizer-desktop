@@ -50,7 +50,7 @@ import {
   contactsMerge,
   dedupeDatabase
 } from "./db.js";
-import { testConnection, discoverCalendars, linkListToCalendar, unlinkList, syncAccount, createServerCalendar, deleteServerCalendar, encryptPassword, connectCalendar, syncLog, pushCalendarName } from "./caldav.js";
+import { testConnection, discoverCalendars, linkListToCalendar, unlinkList, syncAccount, createServerCalendar, deleteServerCalendar, encryptPassword, connectCalendar, syncLog, pushCalendarName, pushCalendarColor } from "./caldav.js";
 import { taskToVTodo, eventToVEvent, bundleIcs } from "./ical.js";
 import { discoverAddressBooks, linkAddressBook, unlinkAddressBook, syncAccountContacts, connectAddressBook, importVCards, createServerAddressBook, pushAddressBookName } from "./carddav.js";
 import { serverManager, type ServerStatus } from "./serverManager.js";
@@ -60,10 +60,20 @@ const isDev = !app.isPackaged;
 // The experimental build is packaged with productName "Daynizer (Experimental)",
 // so electron-builder names its exe/install dir accordingly. Detect it from the exe
 // path (no build-time flag needed) so it can wear the distinct orange icon + identity,
-// the same way dev runs do — handy since it shares the stable app's database.
+// the same way dev runs do.
 const isExperimental = /experimental/i.test(app.getPath("exe"));
 // Runs that should look distinct from an installed production build (orange icon).
 const isDistinctBuild = isDev || isExperimental;
+
+// Isolate non-production builds' DATA from the installed stable app. Dev +
+// experimental used to share %APPDATA%\tasks-desktop with stable, so a "fresh
+// profile" test was impossible without wiping the real app's database. Give them
+// their own userData dir (independent DB + built-in-server data, resettable
+// freely); stable keeps tasks-desktop untouched. MUST run before app-ready and
+// before any getPath("userData") below. Delete this folder to reset to first-run.
+if (isDistinctBuild) {
+  app.setPath("userData", path.join(app.getPath("appData"), isDev ? "daynizer-dev" : "daynizer-experimental"));
+}
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -138,6 +148,44 @@ const SELF_ACCOUNT_ID_KEY = "serverSelfAccountId";
 const SELF_ACCOUNT_SIG_KEY = "serverSelfSig";
 let selfAccountBusy = false;
 
+/** Re-point the self-account's linked lists/books at `base`'s origin. The
+ *  built-in server's port can differ between runs (the preferred port may be
+ *  busy at launch → an ephemeral port is used), but linked collections store
+ *  ABSOLUTE URLs with the port baked in, so a list provisioned on one port
+ *  otherwise fails with "fetch failed" against the dead port next launch. The
+ *  collection path is unchanged — only scheme/host/port move — so we clear the
+ *  ctag to force a clean re-compare. Idempotent: a no-op when origins match. */
+function rehomeSelfCollections(accountId: string, base: string): void {
+  const rehome = (url: string): string | null => {
+    try {
+      const o = new URL(url);
+      const b = new URL(base);
+      if (o.origin === b.origin) return null;
+      o.protocol = b.protocol;
+      o.host = b.host; // host includes the port
+      return o.toString();
+    } catch { return null; }
+  };
+  try {
+    for (const l of listsAll()) {
+      if (l.caldav_account_id !== accountId || !l.caldav_calendar_url) continue;
+      const fixed = rehome(l.caldav_calendar_url);
+      if (fixed) {
+        listUpdate(l.id, { caldav_calendar_url: fixed, caldav_ctag: null } as any);
+        syncLog(`self-account: re-homed list "${l.name}" → ${fixed}`);
+      }
+    }
+    for (const b of addressBooksAll()) {
+      if (b.carddav_account_id !== accountId || !b.carddav_addressbook_url) continue;
+      const fixed = rehome(b.carddav_addressbook_url);
+      if (fixed) {
+        addressBookUpdate(b.id, { carddav_addressbook_url: fixed, carddav_ctag: null } as any);
+        syncLog(`self-account: re-homed book "${b.name}" → ${fixed}`);
+      }
+    }
+  } catch (err: any) { syncLog(`self-account: re-home collections: ${err?.message || err}`); }
+}
+
 async function ensureSelfAccount(): Promise<void> {
   if (!serverManager.isEnabled() || selfAccountBusy) return;
   const info = serverManager.getInfo();
@@ -146,6 +194,9 @@ async function ensureSelfAccount(): Promise<void> {
   const sig = `${info.localUrl}|${info.username}|${info.password}`;
   const selfId = getSetting(SELF_ACCOUNT_ID_KEY);
   const existing = selfId ? accountsAll().find((a) => a.id === selfId) : undefined;
+  // Heal any collections still pinned to a previous port BEFORE the sig gate, so a
+  // stuck account self-repairs even when the sig looks unchanged.
+  if (existing) rehomeSelfCollections(existing.id, info.localUrl);
   // Nothing to do if the config is unchanged AND the account still exists.
   if (sig === getSetting(SELF_ACCOUNT_SIG_KEY) && existing) return;
 
@@ -698,6 +749,23 @@ function registerIpc() {
           await pushCalendarName(account, updated.caldav_calendar_url, updated.name);
         } catch (err) {
           console.error("Failed to push list rename to server:", err);
+        }
+      }
+    }
+    // A color change on a linked list is pushed too, as the Apple `calendar-color`
+    // property, so colors travel to other devices (DAVx5, Apple, another Daynizer)
+    // instead of staying local. Best-effort, same as the rename push above.
+    if (
+      patch && typeof patch.color === "string" &&
+      before && patch.color !== before.color &&
+      updated.caldav_account_id && updated.caldav_calendar_url
+    ) {
+      const account = accountsAll().find((a) => a.id === updated.caldav_account_id);
+      if (account) {
+        try {
+          await pushCalendarColor(account, updated.caldav_calendar_url, updated.color);
+        } catch (err) {
+          console.error("Failed to push list color to server:", err);
         }
       }
     }

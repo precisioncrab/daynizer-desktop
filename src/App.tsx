@@ -577,8 +577,13 @@ export default function App() {
     scheduleDirtySync();
   }
 
-  async function createAddressBook(name: string) {
-    await window.api.addressbooks?.create(name);
+  async function createAddressBook(name: string, color?: string) {
+    await window.api.addressbooks?.create(name, color);
+    await loadAddressBooks();
+  }
+
+  async function setBookColor(id: string, color: string) {
+    await window.api.addressbooks?.update(id, { color } as Partial<AddressBook>);
     await loadAddressBooks();
   }
 
@@ -589,12 +594,14 @@ export default function App() {
     await loadAddressBooks();
   }
 
-  async function createServerBook(name: string, accountId: string) {
+  async function createServerBook(name: string, accountId: string, color?: string) {
     // Fall back to a local book if this build's bridge has no server-create
     // (e.g. the Thunderbird add-on shim), so the choice never silently no-ops.
-    if (!window.api.addressbooks?.createServer) { await createAddressBook(name); return; }
+    if (!window.api.addressbooks?.createServer) { await createAddressBook(name, color); return; }
     try {
-      await window.api.addressbooks.createServer(accountId, name);
+      const newBook: any = await window.api.addressbooks.createServer(accountId, name);
+      // Stamp the chosen color locally (the server book carries none of its own).
+      if (color && newBook?.id) await window.api.addressbooks.update(newBook.id, { color } as Partial<AddressBook>);
       await loadAddressBooks();
       setSyncMsg(`Created "${name}" on server — syncing…`);
       await syncAccountNow(accountId);
@@ -857,14 +864,17 @@ export default function App() {
     lastActionRef.current = async () => { await window.api.tasks.delete(t.id, true); };
   }
 
-  async function createList(name: string) {
-    await window.api.lists.create(name);
+  async function createList(name: string, color?: string) {
+    await window.api.lists.create(name, color);
     await loadLists();
   }
 
-  async function createServerList(name: string, accountId: string) {
+  async function createServerList(name: string, accountId: string, color?: string) {
     try {
       const newList = await window.api.accounts.createServerCalendar(accountId, name);
+      // The server collection has no color of its own; stamp the chosen (or a
+      // varied auto) color onto the local list so it isn't just another blue one.
+      if (color) await window.api.lists.update(newList.id, { color } as Partial<TaskList>);
       await loadLists();
       setScope(newList.id);
       setSyncMsg(`Created "${name}" on server — syncing…`);
@@ -875,6 +885,11 @@ export default function App() {
       setSyncMsg(`Server list creation failed: ${err?.message || err}`);
       setTimeout(() => setSyncMsg(null), 6000);
     }
+  }
+
+  async function setListColor(id: string, color: string) {
+    await window.api.lists.update(id, { color } as Partial<TaskList>);
+    await loadLists();
   }
 
   // "Delete": remove the list and its tasks from Daynizer, AND from the server
@@ -1036,6 +1051,7 @@ export default function App() {
           onSelect={setContactFilter}
           onCreateBook={createAddressBook}
           onCreateServerBook={createServerBook}
+          onSetBookColor={setBookColor}
           onRenameBook={renameAddressBook}
           labelColors={labelColors}
           onSetLabelColor={setLabelColor}
@@ -1057,6 +1073,7 @@ export default function App() {
         onSelect={setScope}
         onCreateList={createList}
         onCreateServerList={createServerList}
+        onSetListColor={setListColor}
         onDeleteList={deleteList}
         onRemoveList={removeList}
         onRenameList={renameList}
