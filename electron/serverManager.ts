@@ -464,10 +464,15 @@ class ServerManager {
   async setCredentials(opts: { username?: string; password?: string }): Promise<ServerStatus> {
     const username = (opts.username ?? "").trim();
     const password = opts.password ?? "";
+    // Remember the outgoing username so a first-run change can clean up the
+    // storage the previous user left behind (see purgeUserStorage below).
+    const previousUser = getSetting(KEY_USER) || DEFAULT_USER;
+    let usernameChanged = false;
     if (opts.username !== undefined) {
       if (!/^[A-Za-z0-9._-]{1,64}$/.test(username)) {
         throw new Error("Username may use letters, numbers, dot, dash and underscore (max 64).");
       }
+      usernameChanged = username !== previousUser;
       settingSet(KEY_USER, username);
     }
     if (opts.password !== undefined) {
@@ -480,7 +485,40 @@ class ServerManager {
     this.writeUsersFile(user, pw);
     if (this.userWantsServer()) await this.restart();
     else this.emit();
+    // During first-run setup the username may be changed on the setup card. That
+    // re-homes the client to /<newuser>/ and auto-provisions fresh Calendar +
+    // Contacts there, but Radicale keeps the old user's collections on disk under
+    // collection-root/<previousUser>/ — and with owner_only rights the client,
+    // now authenticated as the new user, can never reach them over CalDAV to
+    // remove them. So they linger as an orphaned collection-root/<previousUser>/
+    // beside the live user. Delete that directory directly from storage. Gated on
+    // first-run (never configured): the old collections there are just the empty
+    // auto-provisioned defaults, so this can't touch data from a deliberate later
+    // "start fresh" (whose documented behavior is to leave the old data behind).
+    // Done AFTER the restart so the server is no longer serving the old principal
+    // (no open file handles on that tree to block the delete on Windows).
+    if (usernameChanged && !this.isConfigured()) {
+      this.purgeUserStorage(previousUser);
+    }
     return this.getStatus();
+  }
+
+  /** Remove one Radicale user's on-disk collection tree
+   *  (collection-root/<user>/). Best-effort and never throws — a cleanup failure
+   *  must not break a credential change. The username is validated against the
+   *  same charset setCredentials enforces (no slashes / dots-only / traversal) so
+   *  the join can't escape the collections directory. */
+  private purgeUserStorage(user: string): void {
+    try {
+      if (!/^[A-Za-z0-9._-]{1,64}$/.test(user) || user === "." || user === "..") return;
+      const dir = path.join(this.collectionsDir, "collection-root", user);
+      if (fs.existsSync(dir)) {
+        fs.rmSync(dir, { recursive: true, force: true });
+        this.log(`removed orphaned storage for previous user "${user}"`);
+      }
+    } catch (err: any) {
+      this.log(`could not remove old user storage "${user}": ${err?.message || err}`);
+    }
   }
 
   /** Generate a fresh strong password (returns it via the resulting info). */
