@@ -7,9 +7,12 @@ adds a full calendar and contacts manager on top — all two-way syncable with t
 Tasks.org-compatible setup you already use on mobile (DAVx5 / Nextcloud / Synology / any
 CalDAV+CardDAV server). Built with Electron + React + TypeScript.
 
-> **Beta software (v0.4.x).** Daynizer is still in active development and hasn't reached a stable
-> 1.0. Expect rough edges, and keep a backup of anything important — while sync is two-way, don't
-> rely on this as the only copy of your data yet. Bug reports are welcome on the
+> **Beta software.** Daynizer is still in active development and hasn't reached a stable 1.0. The
+> current **experimental preview is v0.7.0, Windows only** — it adds the new **built-in sync server**
+> (see below) and is an unsigned pre-release (Windows SmartScreen will warn; click *More info → Run
+> anyway*). Stable cross-platform builds are **v0.6.0**; Linux and macOS builds of the v0.7.0 server
+> preview are on the way. Expect rough edges, and keep a backup of anything important — while sync is
+> two-way, don't rely on this as the only copy of your data yet. Bug reports are welcome on the
 > [issue tracker](https://github.com/precisioncrab/daynizer-desktop/issues).
 
 ## What Daynizer does
@@ -38,6 +41,13 @@ Download `Daynizer-Setup-x.y.z.exe` and run it. It installs per-user (no admin p
 The Windows app also **updates itself**: it checks this repo's releases on startup, downloads new
 versions in the background, and offers "Restart to update" in Settings, so you only download the
 installer once. To remove it: Windows Settings → Apps → Installed apps → Daynizer → Uninstall.
+
+> **Want the built-in sync server?** Grab the experimental preview
+> `Daynizer-Experimental-Setup-0.7.0.exe` from the pre-release on the
+> [Releases page](https://github.com/precisioncrab/daynizer-desktop/releases). It installs alongside the
+> stable app as **Daynizer (Experimental)** (its own orange icon and settings), so you can try it without
+> touching your stable install. It's unsigned, so Windows SmartScreen warns once — click *More info → Run
+> anyway*.
 
 ### Debian / Ubuntu (.deb)
 
@@ -87,35 +97,44 @@ Applications.
 
 ## Built-in sync server (no external server needed)
 
-Don't have a CalDAV/CardDAV server? Daynizer can run its own. When you turn it on, Daynizer starts a
-bundled sync server in the background, wires *itself* up to it automatically, and gives you one address
-you can point your phone and other computers at — so your tasks, calendar, and contacts sync across your
-devices with no third-party account, no NAS, and no cloud.
+Don't have a CalDAV/CardDAV server? Daynizer runs its own — **on by default**. It starts a bundled sync
+server in the background, wires *itself* up to it automatically, and gives you one address you can point
+your phone and other computers at — so your tasks, calendar, and contacts sync across your devices with
+no third-party account, no NAS, and no cloud.
 
-**Turn it on:** open **Settings → Sync Server** and tick **Run the built-in sync server**. That's it —
-Daynizer creates a "Built-in server" account for itself with default Calendar and Contacts lists, and
-the server keeps running in the background (and in the tray when the window is closed). The pane shows
-the one **address** to use, plus the **username** and **password** (both editable and copyable).
+**It's optional.** You never have to use the built-in server — turn it off in **Settings → Sync Server**
+and point Daynizer at your own CalDAV/CardDAV server instead (Synology, Nextcloud, Baïkal, Radicale, …;
+see the next section). It's simply on out of the box so that sync works with zero setup for people who
+don't run their own server.
 
-**Add your other devices:** point any CalDAV/CardDAV app at the address shown — the **same address serves
-both calendars and contacts**, and clients discover both from it:
+**Nothing to set up.** On first run Daynizer creates a "Built-in server" account for itself with default
+Calendar and Contacts lists, and the server just runs — in the background, and in the tray when the window
+is closed (it can also start hidden at login). Open **Settings → Sync Server** to see the **address**,
+**username**, and **password** (all editable and copyable), a **QR code** for pairing a phone, and when a
+device last synced.
 
-- **Android:** [DAVx5](https://www.davx5.com/) with the address + username/password, then **Tasks.org**
-  (or OpenTasks) for the task lists.
+**Add your phone in seconds:** open **Settings → Sync Server** and **scan the QR code** with
+[DAVx5](https://www.davx5.com/) on Android, then add **Tasks.org** (or OpenTasks) for the task lists. For
+other clients, point them at the address shown — the **same address serves both calendars and contacts**:
+
 - **iPhone / macOS:** Settings → add an **Advanced CalDAV account** (and a **CardDAV account**) using the
-  server IP, port, username, and password (turn SSL off for a plain-`http` LAN address).
+  server address, username, and password.
 - **Thunderbird / another Daynizer:** paste the address and credentials into a new network calendar /
   address book, or into another Daynizer's **Add account** form.
 
 Both devices must be on the **same network**. The server uses port **5232** by default (changeable in the
-pane); if it's ever in use, Daynizer picks another and tells you. On Windows you may need to allow the port
-through the firewall the first time. Step-by-step instructions for each app are in **Settings → Sync
-Server → How to connect**, and online at
+pane); if it's ever in use, Daynizer picks another and tells you. On Windows there's a one-click button to
+allow it through the firewall the first time. Step-by-step instructions for each app are in **Settings →
+Sync Server → How to connect**, and online at
 [precisioncrab.com/daynizer/connect](https://precisioncrab.com/daynizer/connect/).
 
-> The built-in server is for your **own devices on your own network**. It's plain HTTP on the LAN (fine
-> for a trusted home network; DAVx5 shows a one-time warning). Exposing it to the public internet is not
-> recommended.
+> **Secure by default.** The built-in server uses **HTTPS with a self-signed certificate**, so Tasks.org's
+> direct CalDAV — which refuses plain HTTP on modern Android — connects over `caldavs://`. Your client
+> trusts the certificate once, on first connection. It's meant for your **own devices on your own
+> network**; exposing it to the public internet is not recommended.
+
+> **Windows only for now.** The bundled server currently ships in the Windows build; Linux and macOS
+> builds are in progress.
 
 ## Connecting a CalDAV / CardDAV server (Synology, Nextcloud, …)
 
