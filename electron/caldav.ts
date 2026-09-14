@@ -585,12 +585,17 @@ export interface SyncResult {
 export async function syncAccount(account: CaldavAccount): Promise<SyncResult[]> {
   const client = await clientFor(account);
 
-  // Best-effort: pull calendar colors from server and apply them to linked lists.
+  // Best-effort: pull calendar colors from server and apply them to linked lists
+  // on EVERY sync, so a color changed on another device (or another Daynizer
+  // instance) repaints here without a reconnect. Match by davUrlKey, not the raw
+  // URL string: the built-in server's port/scheme can move between runs (C4 TLS +
+  // port re-homing), so an exact-string lookup would silently miss and the color
+  // would never refresh.
   try {
     const calendars = await client.fetchCalendars();
-    const calByUrl = new Map(calendars.map((c) => [String(c.url), c]));
+    const calByKey = new Map(calendars.map((c) => [davUrlKey(String(c.url)), c]));
     for (const list of listsAll().filter((l) => l.caldav_account_id === account.id && l.caldav_calendar_url)) {
-      const cal = calByUrl.get(list.caldav_calendar_url!);
+      const cal = calByKey.get(davUrlKey(list.caldav_calendar_url!));
       const color = normalizeCalendarColor(cal?.calendarColor);
       if (color) listUpdate(list.id, { color } as Partial<TaskList>);
     }
@@ -1084,7 +1089,12 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
       if ((tPushIdx++ % 20) === 0) await yieldTick();
       if (local.deleted) continue;
       if (!local.caldav_uid) {
-        const uid = newUid();
+        // Use the DETERMINISTIC uid (`${id}@tasks-desktop`) rather than a random
+        // one, so subtask nesting is order-independent: a child pushed before its
+        // parent computes the parent's RELATED-TO via effectiveUid() → the same
+        // `${parentId}@tasks-desktop`, and when the parent is pushed here it lands
+        // on that exact uid instead of a random one that would never match.
+        const uid = effectiveUid(local);
         const offsets = remindersForOwner("task", local.id).map((r) => r.offset_minutes);
         const { ics } = taskToVTodo(local, uid, offsets, parentUidFor(local));
         const filename = `${uid}.ics`;

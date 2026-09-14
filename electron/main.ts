@@ -194,6 +194,23 @@ async function ensureSelfAccount(): Promise<void> {
   const sig = `${info.localUrl}|${info.username}|${info.password}`;
   const selfId = getSetting(SELF_ACCOUNT_ID_KEY);
   const existing = selfId ? accountsAll().find((a) => a.id === selfId) : undefined;
+  // Username (principal) change on the built-in server: the signature stores
+  // localUrl|username|password, so a differing middle field means the server's
+  // /<user>/ home moved. The self-account's lists/books are still linked to the
+  // OLD principal path — and rehomeSelfCollections only rewrites scheme/host/port,
+  // not the path — so once we re-provision under the new principal they would
+  // linger as broken duplicates. During first-run setup (the expected time for a
+  // username change, while these are still the empty auto-provisioned defaults),
+  // drop them so re-provisioning below is clean. Post-first-run they are left
+  // alone (a deliberate "start fresh" keeps the old data as local lists).
+  if (existing) {
+    const prevUser = (getSetting(SELF_ACCOUNT_SIG_KEY).split("|")[1] || "");
+    if (prevUser && prevUser !== info.username && !serverManager.isConfigured()) {
+      for (const l of listsAll()) if (l.caldav_account_id === existing.id) listDelete(l.id);
+      for (const b of addressBooksAll()) if (b.carddav_account_id === existing.id) addressBookDelete(b.id);
+      syncLog(`self-account: username ${prevUser} → ${info.username} on first run — cleared the old principal's auto-provisioned collections`);
+    }
+  }
   // Heal any collections still pinned to a previous port BEFORE the sig gate, so a
   // stuck account self-repairs even when the sig looks unchanged.
   if (existing) rehomeSelfCollections(existing.id, info.localUrl);

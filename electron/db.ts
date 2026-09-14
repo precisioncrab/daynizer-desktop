@@ -772,6 +772,19 @@ export function taskUpdate(id: string, patch: Partial<Task>): Task {
   // A new due date (edit, snooze, recurrence advance, or a change pulled from
   // the server) gets a fresh reminder.
   if (patch.due_date !== undefined && patch.due_date !== current.due_date) merged.notified_at = null;
+  // A real user list change (never a sync write, which carries caldav_etag).
+  const listChanged = !isSyncUpdate && patch.list_id !== undefined && merged.list_id !== current.list_id;
+  // Re-home this task when it moves to another list AND already exists on the
+  // server: a CalDAV object can't move between collections in place, so leave a
+  // tombstone on the OLD list (the delete-push removes the old server object) and
+  // clear this row's CalDAV identity so it is recreated fresh on the new list.
+  // Unsynced tasks (no caldav_uid) just move — nothing to clean up on the server.
+  if (listChanged && current.caldav_uid) {
+    tombstoneMovedObject(current.list_id, current.title, current.caldav_uid, current.caldav_href, current.caldav_etag);
+    merged.caldav_uid = null;
+    merged.caldav_href = null;
+    merged.caldav_etag = null;
+  }
   db.prepare(
     `UPDATE tasks SET list_id=?, parent_id=?, title=?, notes=?, due_date=?, start_date=?,
      priority=?, completed=?, completed_at=?, recurrence=?, tags=?, sort_order=?,
@@ -804,7 +817,58 @@ export function taskUpdate(id: string, patch: Partial<Task>): Task {
   // a brand-new task -- but only on that specific transition, not every edit,
   // so a deliberately-deleted reminder doesn't come back.
   if (patch.due_date !== undefined && !current.due_date && merged.due_date) ensureDefaultReminder("task", id);
+  // Moving a task to another list must take its subtasks with it. A parent and
+  // its children have to share one CalDAV collection: RELATED-TO nesting does not
+  // cross collections, so a parent on list B whose subtasks stayed on list A
+  // arrives FLAT in Tasks.org (and other clients).
+  if (listChanged) {
+    moveSubtreeToList(id, merged.list_id);
+  }
   return taskGet(id)!;
+}
+
+/** Move every descendant of `parentId` onto `listId`, marking each dirty so the
+ *  next sync re-homes it. Recurses so nested subtasks follow too. Kept as a
+ *  focused raw-SQL walk (rather than recursive taskUpdate calls) so it only ever
+ *  touches list_id/dirty and can't perturb other fields, sequence, or reminders.
+ *  Skips soft-deleted rows so pending deletions on the old list are undisturbed. */
+function moveSubtreeToList(parentId: string, listId: string): void {
+  const db = getDb();
+  const children = db
+    .prepare(`SELECT id, list_id, title, caldav_uid, caldav_href, caldav_etag FROM tasks WHERE parent_id = ? AND deleted = 0`)
+    .all(parentId) as Array<{ id: string; list_id: string; title: string; caldav_uid: string | null; caldav_href: string | null; caldav_etag: string | null }>;
+  for (const child of children) {
+    if (child.list_id !== listId) {
+      if (child.caldav_uid) {
+        // Already on the server under the old list — tombstone the old object and
+        // clear this row's identity so it re-creates, nested, on the new list.
+        tombstoneMovedObject(child.list_id, child.title, child.caldav_uid, child.caldav_href, child.caldav_etag);
+        db.prepare(
+          `UPDATE tasks SET list_id = ?, caldav_uid = NULL, caldav_href = NULL, caldav_etag = NULL, dirty = 1, updated_at = ? WHERE id = ?`
+        ).run(listId, nowIso(), child.id);
+      } else {
+        db.prepare(`UPDATE tasks SET list_id = ?, dirty = 1, updated_at = ? WHERE id = ?`)
+          .run(listId, nowIso(), child.id);
+      }
+    }
+    // Recurse regardless, so a grandchild that lagged behind still follows.
+    moveSubtreeToList(child.id, listId);
+  }
+}
+
+/** Leave a soft-deleted tombstone on `oldListId` carrying a moved task's former
+ *  CalDAV identity, so the old list's delete-push (`deleted = 1 AND caldav_uid IS
+ *  NOT NULL`) removes that object from the old collection and then hard-deletes
+ *  the tombstone. This is how a synced task "moves" between collections: delete
+ *  from the old, recreate in the new (CalDAV has no in-place move). The row is
+ *  parentless and deleted, so it never shows in the UI or in a subtree walk. */
+function tombstoneMovedObject(oldListId: string, title: string, uid: string, href: string | null, etag: string | null): void {
+  const db = getDb();
+  const now = nowIso();
+  db.prepare(
+    `INSERT INTO tasks (id, list_id, parent_id, title, notes, due_date, start_date, priority, completed, completed_at, recurrence, tags, sort_order, caldav_uid, caldav_href, caldav_etag, deleted, dirty, created_at, updated_at)
+     VALUES (?, ?, NULL, ?, '', NULL, NULL, 0, 0, NULL, NULL, '', 0, ?, ?, ?, 1, 0, ?, ?)`
+  ).run(nanoid(), oldListId, title, uid, href, etag, now, now);
 }
 
 /** Next occurrence strictly after `due` per the task's RRULE, in the same
