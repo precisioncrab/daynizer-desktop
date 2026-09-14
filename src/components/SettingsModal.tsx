@@ -109,19 +109,22 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
     });
   }, []);
 
-  /** Build the DAVx5 auto-config URI for phone pairing. The `caldav://` scheme
-   *  maps to plain HTTP (what the LAN server uses); DAVx5 discovers BOTH calendars
-   *  and contacts from this one URL. Credentials are embedded because a QR carries
-   *  no "extras" — fine for a LAN-only account. Returns null until there's a
-   *  reachable (non-loopback) LAN address. */
+  /** Build the DAVx5 auto-config URI for phone pairing. The scheme follows the
+   *  server: `caldavs://` for HTTPS (the default now that the built-in server
+   *  serves TLS — C4), `caldav://` if it ever falls back to plain HTTP. DAVx5
+   *  discovers BOTH calendars and contacts from this one URL. Credentials are
+   *  embedded because a QR carries no "extras" — fine for a LAN-only account.
+   *  Returns null until there's a reachable (non-loopback) LAN address. */
   function pairingUri(info: ServerInfo | null): string | null {
     if (!info?.running || !info.baseUrl) return null;
-    let host: string;
-    try { host = new URL(info.baseUrl).host; } catch { return null; }
+    let url: URL;
+    try { url = new URL(info.baseUrl); } catch { return null; }
+    const host = url.host;
     if (host.startsWith("127.") || host.toLowerCase().startsWith("localhost")) return null;
+    const scheme = url.protocol === "https:" ? "caldavs" : "caldav";
     const user = encodeURIComponent(info.username || "");
     const pass = encodeURIComponent(info.password || "");
-    return `caldav://${user}:${pass}@${host}/`;
+    return `${scheme}://${user}:${pass}@${host}/`;
   }
   // Regenerate the pairing QR whenever the reachable address or credentials change.
   useEffect(() => {

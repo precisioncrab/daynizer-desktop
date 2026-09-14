@@ -21,9 +21,15 @@ import fs from "node:fs";
 import os from "node:os";
 import net from "node:net";
 import http from "node:http";
+import https from "node:https";
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, X509Certificate } from "node:crypto";
 import bcrypt from "bcryptjs";
+// Pure-JS self-signed cert generator (wraps node-forge). Used to give the
+// bundled server a TLS cert so external clients (Tasks.org direct CalDAV on
+// modern Android) will talk to it — plain HTTP is refused there as "cleartext
+// communication not permitted". See C4 in NEXT.md.
+import selfsigned from "selfsigned";
 import { settingsAll, settingSet } from "./db.js";
 
 /** Master switch for the built-in server. OFF until B2/B3 are proven end-to-end.
@@ -88,11 +94,15 @@ class ServerManager {
   private starting = false;
   private lastActivity: number | null = null; // last request from a non-loopback client
 
+  private tls = false;             // true once a run comes up on HTTPS (else HTTP fallback)
+
   // Resolved lazily once app paths are known.
   private get dataDir() { return path.join(app.getPath("userData"), "sync-server"); }
   private get configPath() { return path.join(this.dataDir, "config"); }
   private get usersPath() { return path.join(this.dataDir, "users"); }
   private get collectionsDir() { return path.join(this.dataDir, "collections"); }
+  private get certPath() { return path.join(this.dataDir, "cert.pem"); }
+  private get keyPath() { return path.join(this.dataDir, "key.pem"); }
 
   private log(line: string) { this.deps?.log(`[server] ${line}`); }
 
@@ -123,6 +133,10 @@ class ServerManager {
   isConfigured() { return getSetting(KEY_CONFIGURED) === "1"; }
   private preferredPort() { return Number(getSetting(KEY_PORT)) || DEFAULT_PORT; }
 
+  /** URL scheme the server is currently reachable on ("https" once TLS is up,
+   *  "http" while it isn't running yet or after a graceful TLS fallback). */
+  private scheme() { return this.tls ? "https" : "http"; }
+
   getStatus(): ServerStatus {
     const running = this.running && this.port != null;
     return {
@@ -133,8 +147,8 @@ class ServerManager {
       configured: this.isConfigured(),
       port: this.port,
       preferredPort: this.preferredPort(),
-      baseUrl: running ? `http://${lanIp()}:${this.port}/` : null,
-      localUrl: running ? `http://127.0.0.1:${this.port}/` : null,
+      baseUrl: running ? `${this.scheme()}://${lanIp()}:${this.port}/` : null,
+      localUrl: running ? `${this.scheme()}://127.0.0.1:${this.port}/` : null,
       username: getSetting(KEY_USER) || DEFAULT_USER,
       error: this.error,
       note: this.note,
@@ -183,15 +197,27 @@ class ServerManager {
   }
 
   /** Render config.template's placeholders and write the runtime config file.
-   *  Kept in sync with server/config.template (the canonical, hand-test copy). */
-  private writeConfig(port: number) {
+   *  Kept in sync with server/config.template (the canonical, hand-test copy).
+   *  When `tls` is set, Radicale serves HTTPS with the generated self-signed
+   *  cert/key (C4); when null it stays on plain HTTP (graceful fallback). */
+  private writeConfig(port: number, tls: { certPath: string; keyPath: string } | null) {
     fs.mkdirSync(this.collectionsDir, { recursive: true });
     // Forward slashes work on Windows Python and sidestep any backslash/`%`
     // escaping questions in Radicale's configparser.
     const fwd = (p: string) => p.replace(/\\/g, "/");
-    const config = [
+    const server = [
       "[server]",
       `hosts = 0.0.0.0:${port}`,
+    ];
+    if (tls) {
+      server.push(
+        "ssl = True",
+        `certificate = ${fwd(tls.certPath)}`,
+        `key = ${fwd(tls.keyPath)}`,
+      );
+    }
+    const config = [
+      ...server,
       "[auth]",
       "type = htpasswd",
       `htpasswd_filename = ${fwd(this.usersPath)}`,
@@ -205,6 +231,62 @@ class ServerManager {
       ""
     ].join("\n");
     fs.writeFileSync(this.configPath, config, "utf8");
+  }
+
+  /** Ensure a self-signed cert + key exist on disk (generating them once, with a
+   *  multi-year lifetime), and return their paths. Regenerates when either file
+   *  is missing or the cert is within 30 days of expiry. SANs cover localhost,
+   *  127.0.0.1 and the current LAN IP so clients reach it by any of those.
+   *  Returns null (and leaves the server on HTTP) if generation fails for any
+   *  reason — never throws, so a cert problem can't brick the server. */
+  private ensureCert(): { certPath: string; keyPath: string } | null {
+    try {
+      fs.mkdirSync(this.dataDir, { recursive: true });
+      let needGen = true;
+      if (fs.existsSync(this.certPath) && fs.existsSync(this.keyPath)) {
+        try {
+          const x = new X509Certificate(fs.readFileSync(this.certPath));
+          // validTo is a parseable date string; regenerate ~30 days before expiry.
+          const expMs = Date.parse(x.validTo);
+          needGen = !Number.isFinite(expMs) || expMs - Date.now() < 30 * 24 * 60 * 60 * 1000;
+        } catch {
+          needGen = true; // unreadable/corrupt — regenerate
+        }
+      }
+      if (needGen) {
+        const ip = lanIp();
+        const altNames: Array<{ type: number; value?: string; ip?: string }> = [
+          { type: 2, value: "localhost" }, // DNS
+          { type: 7, ip: "127.0.0.1" },    // IP
+        ];
+        if (ip && ip !== "127.0.0.1") altNames.push({ type: 7, ip });
+        const pems = selfsigned.generate(
+          [{ name: "commonName", value: "Daynizer Sync Server" }],
+          {
+            days: 3650, // ~10 years; clients trust-on-first-use, so a long life avoids churn
+            keySize: 2048,
+            algorithm: "sha256",
+            extensions: [
+              { name: "basicConstraints", cA: false },
+              {
+                name: "keyUsage",
+                digitalSignature: true,
+                keyEncipherment: true,
+              },
+              { name: "extKeyUsage", serverAuth: true },
+              { name: "subjectAltName", altNames },
+            ],
+          }
+        );
+        fs.writeFileSync(this.certPath, pems.cert, { encoding: "utf8", mode: 0o600 });
+        fs.writeFileSync(this.keyPath, pems.private, { encoding: "utf8", mode: 0o600 });
+        this.log(`generated self-signed cert (SAN: localhost, 127.0.0.1${ip && ip !== "127.0.0.1" ? `, ${ip}` : ""})`);
+      }
+      return { certPath: this.certPath, keyPath: this.keyPath };
+    } catch (err: any) {
+      this.log(`cert generation failed (${err?.message || err}) — falling back to HTTP`);
+      return null;
+    }
   }
 
   /** Pick the user's preferred port if free, else grab a fresh ephemeral one for
@@ -236,9 +318,13 @@ class ServerManager {
       const { user, password } = this.ensureCredentials();
       this.port = await this.choosePort();
       this.writeUsersFile(user, password);
-      this.writeConfig(this.port);
+      // TLS on by default; ensureCert() returns null (→ plain HTTP) only if cert
+      // generation fails, so a broken cert can never stop the server starting.
+      const cert = this.ensureCert();
+      this.tls = cert !== null;
+      this.writeConfig(this.port, cert);
 
-      this.log(`spawning ${path.basename(bin)} on 0.0.0.0:${this.port} (user ${user})`);
+      this.log(`spawning ${path.basename(bin)} on 0.0.0.0:${this.port} (user ${user}, ${this.tls ? "https" : "http"})`);
       const child = spawn(bin, ["--config", this.configPath], {
         cwd: path.dirname(bin),   // onedir: keep the launcher next to its _internal
         stdio: ["ignore", "pipe", "pipe"],
@@ -308,9 +394,10 @@ class ServerManager {
   private waitForHealthy(port: number): Promise<boolean> {
     const deadline = Date.now() + HEALTH_TIMEOUT_MS;
     return new Promise((resolve) => {
+      const useTls = this.tls;
       const tick = () => {
         if (this.stopping) return resolve(false);
-        pingHttp(port).then((ok) => {
+        pingHttp(port, useTls).then((ok) => {
           if (ok) return resolve(true);
           if (Date.now() >= deadline) return resolve(false);
           setTimeout(tick, HEALTH_POLL_MS);
@@ -454,13 +541,15 @@ function ephemeralPort(): Promise<number> {
   });
 }
 
-/** Resolve true if 127.0.0.1:<port> returns ANY HTTP response. */
-function pingHttp(port: number): Promise<boolean> {
+/** Resolve true if 127.0.0.1:<port> returns ANY HTTP(S) response. Over HTTPS the
+ *  server's cert is self-signed, so verification is disabled for this loopback
+ *  health probe (rejectUnauthorized:false). */
+function pingHttp(port: number, tls: boolean): Promise<boolean> {
   return new Promise((resolve) => {
-    const req = http.get({ host: "127.0.0.1", port, path: "/", timeout: 2_000 }, (res) => {
-      res.resume();
-      resolve(true);
-    });
+    const opts = { host: "127.0.0.1", port, path: "/", timeout: 2_000 };
+    const req = tls
+      ? https.get({ ...opts, rejectUnauthorized: false }, (res) => { res.resume(); resolve(true); })
+      : http.get(opts, (res) => { res.resume(); resolve(true); });
     req.on("error", () => resolve(false));
     req.on("timeout", () => { req.destroy(); resolve(false); });
   });
