@@ -23,7 +23,7 @@ import {
 } from "./db.js";
 import { parseVCard, parseGroupCard, contactToVCard, displayName, ParsedContact } from "./vcard.js";
 // Reuse the CalDAV account plumbing: same server credentials + logging.
-import { decryptPassword, syncLog } from "./caldav.js";
+import { decryptPassword, syncLog, loopbackFetchFor } from "./caldav.js";
 
 /** Compare two object URLs by path only (servers report absolute or relative). */
 function samePath(a: string, b: string): boolean {
@@ -32,16 +32,21 @@ function samePath(a: string, b: string): boolean {
 }
 
 async function clientFor(account: CaldavAccount): Promise<Client> {
+  // CardDAV lives at a different address than CalDAV on some servers (e.g.
+  // Synology), so prefer the account's dedicated carddav_url when set.
+  const serverUrl = account.carddav_url || account.server_url;
   return createDAVClient({
-    // CardDAV lives at a different address than CalDAV on some servers (e.g.
-    // Synology), so prefer the account's dedicated carddav_url when set.
-    serverUrl: account.carddav_url || account.server_url,
+    serverUrl,
     credentials: {
       username: account.username,
       password: decryptPassword(account.password_enc)
     },
     authMethod: "Basic",
-    defaultAccountType: "carddav"
+    defaultAccountType: "carddav",
+    // Self-signed loopback (built-in server) → Node-core fetch that skips TLS
+    // verification, same as the CalDAV client. Undefined (default global fetch)
+    // for every real server.
+    fetch: loopbackFetchFor(serverUrl) as any
   });
 }
 

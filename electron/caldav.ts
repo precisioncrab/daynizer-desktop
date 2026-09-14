@@ -4,6 +4,8 @@ type Client = Awaited<ReturnType<typeof createDAVClient>>;
 import { app, safeStorage } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import http from "node:http";
+import https from "node:https";
 import {
   getDb,
   CaldavAccount,
@@ -186,6 +188,99 @@ export function decryptPassword(enc: string): string {
   return Buffer.from(enc, "base64").toString("utf-8");
 }
 
+/** True for the built-in server's own loopback HTTPS URL (the auto-wired
+ *  "self-account"). Scoped to loopback so nothing below ever weakens TLS for a
+ *  real remote server (Synology/Nextcloud/Google). */
+function isLoopbackHttps(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:") return false;
+    const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    return h === "127.0.0.1" || h === "::1" || h === "localhost";
+  } catch { return false; }
+}
+
+/** Minimal fetch built on Node's core http/https client, used ONLY for the
+ *  built-in server's self-signed loopback account (C4). Two reasons Node's core
+ *  client — not the default global `fetch` (undici) — is used here:
+ *    1. The cert is self-signed, so we set `rejectUnauthorized: false` (safe:
+ *       loopback only).
+ *    2. undici's strict HTTP/1.1 parser asserts (`assert(!this.paused)` →
+ *       uncaught crash) on the bundled Radicale server's HTTPS response framing;
+ *       Node's lenient llhttp client handles it fine.
+ *  Implements just the Response surface tsdav uses (ok/status/statusText/url/
+ *  redirected + headers.get() + text()). Redirects are returned as-is, never
+ *  auto-followed — tsdav's service discovery sends `redirect:"manual"` and reads
+ *  the Location header itself. Real remote accounts keep the default global
+ *  fetch (unchanged, proven). */
+function nodeLoopbackFetch(url: string, init: any = {}): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let u: URL;
+    try { u = new URL(url); } catch (e) { reject(e); return; }
+    const mod = u.protocol === "https:" ? https : http;
+    const rawBody: string | Buffer | undefined = init.body;
+    const body = rawBody == null ? null : (Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody), "utf8"));
+    const headers: Record<string, string> = { ...(init.headers || {}) };
+    // Radicale's bundled Python server does NOT read chunked request bodies, and
+    // Node's http.request uses chunked transfer-encoding unless Content-Length is
+    // set. Without an explicit length the server sees an EMPTY body — PUT fails
+    // with 400 "Item contains 0 components" and REPORT/PROPFIND return nothing.
+    // So always send a Content-Length for a bodied request.
+    if (body && headers["Content-Length"] == null && headers["content-length"] == null) {
+      headers["Content-Length"] = String(body.length);
+    }
+    const req = mod.request(
+      {
+        protocol: u.protocol,
+        hostname: u.hostname,
+        port: u.port,
+        path: `${u.pathname}${u.search}`,
+        method: String(init.method || "GET").toUpperCase(),
+        headers,
+        rejectUnauthorized: false, // self-signed loopback cert
+        timeout: 30_000
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+        res.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          const status = res.statusCode ?? 0;
+          resolve({
+            ok: status >= 200 && status < 300,
+            status,
+            statusText: res.statusMessage ?? "",
+            url,
+            redirected: false,
+            headers: {
+              get: (name: string) => {
+                const v = res.headers[name.toLowerCase()];
+                if (v == null) return null;
+                return Array.isArray(v) ? v.join(", ") : String(v);
+              }
+            },
+            text: async () => text,
+            json: async () => JSON.parse(text)
+          });
+        });
+        res.on("error", reject);
+      }
+    );
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(new Error("Request timed out")); });
+    if (body != null) req.write(body);
+    req.end();
+  });
+}
+
+/** The `fetch` override to hand tsdav for a given server URL: Node's core client
+ *  for our self-signed loopback server, otherwise undefined (tsdav uses the
+ *  default global fetch). Shared with carddav.ts so both clients treat the
+ *  self-account the same way. */
+export function loopbackFetchFor(url: string): typeof nodeLoopbackFetch | undefined {
+  return isLoopbackHttps(url) ? nodeLoopbackFetch : undefined;
+}
+
 async function clientFor(account: CaldavAccount): Promise<Client> {
   const client = await createDAVClient({
     serverUrl: account.server_url,
@@ -194,7 +289,10 @@ async function clientFor(account: CaldavAccount): Promise<Client> {
       password: decryptPassword(account.password_enc)
     },
     authMethod: "Basic",
-    defaultAccountType: "caldav"
+    defaultAccountType: "caldav",
+    // Self-signed loopback (built-in server) → Node-core fetch that skips TLS
+    // verification; undefined (default global fetch) for every real server.
+    fetch: loopbackFetchFor(account.server_url) as any
   });
   return client;
 }
