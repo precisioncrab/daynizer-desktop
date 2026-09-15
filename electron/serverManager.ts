@@ -324,6 +324,12 @@ class ServerManager {
       this.tls = cert !== null;
       this.writeConfig(this.port, cert);
 
+      if (process.platform !== "win32") {
+        // extraResources can drop the exec bit through .deb/.dmg packaging;
+        // without this the first launch after install fails with EACCES.
+        try { fs.chmodSync(bin, 0o755); } catch { /* best-effort */ }
+      }
+
       this.log(`spawning ${path.basename(bin)} on 0.0.0.0:${this.port} (user ${user}, ${this.tls ? "https" : "http"})`);
       const child = spawn(bin, ["--config", this.configPath], {
         cwd: path.dirname(bin),   // onedir: keep the launcher next to its _internal

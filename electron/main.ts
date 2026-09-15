@@ -61,7 +61,11 @@ const isDev = !app.isPackaged;
 // so electron-builder names its exe/install dir accordingly. Detect it from the exe
 // path (no build-time flag needed) so it can wear the distinct orange icon + identity,
 // the same way dev runs do.
-const isExperimental = /experimental/i.test(app.getPath("exe"));
+// On Linux the exp package script sets a distinct executableName
+// ("daynizer-experimental"), which the exe-path check below already catches;
+// also check resourcesPath as a second signal (covers installs where the
+// install dir is named from productName even if the binary name is not).
+const isExperimental = /experimental/i.test(app.getPath("exe")) || /experimental/i.test(process.resourcesPath);
 // Runs that should look distinct from an installed production build (orange icon).
 const isDistinctBuild = isDev || isExperimental;
 
