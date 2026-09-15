@@ -8,10 +8,10 @@ Tasks.org-compatible setup you already use on mobile (DAVx5 / Nextcloud / Synolo
 CalDAV+CardDAV server). Built with Electron + React + TypeScript.
 
 > **Beta software.** Daynizer is still in active development and hasn't reached a stable 1.0. The
-> current **experimental preview is v0.7.0, Windows only** — it adds the new **built-in sync server**
-> (see below) and is an unsigned pre-release (Windows SmartScreen will warn; click *More info → Run
-> anyway*). Stable cross-platform builds are **v0.6.0**; Linux and macOS builds of the v0.7.0 server
-> preview are on the way. Expect rough edges, and keep a backup of anything important — while sync is
+> current **experimental preview is v0.7.0** — it adds the new **built-in sync server** (see below) and
+> is available today for **Windows and Linux** (a macOS build is on the way). It's an unsigned
+> pre-release (Windows SmartScreen will warn; click *More info → Run anyway*). Stable cross-platform
+> builds are **v0.6.0**. Expect rough edges, and keep a backup of anything important — while sync is
 > two-way, don't rely on this as the only copy of your data yet. Bug reports are welcome on the
 > [issue tracker](https://github.com/precisioncrab/daynizer-desktop/issues).
 
@@ -58,6 +58,12 @@ sudo apt install ./tasks-desktop_x.y.z_amd64.deb
 `apt` resolves the dependencies automatically (plain `dpkg -i` works too, followed by
 `sudo apt -f install` if it complains). Launch from your app menu, or run `daynizer`.
 Update by installing a newer .deb the same way; remove with `sudo apt remove daynizer`.
+
+> **Want the built-in sync server?** Grab the experimental preview
+> `daynizer-experimental_0.7.0_amd64.deb` from the pre-release on the
+> [Releases page](https://github.com/precisioncrab/daynizer-desktop/releases). It installs alongside
+> the stable app (own data folder, own icon, launches as `daynizer-experimental`), so you can try it
+> without touching your stable install. It's unsigned but not Gatekeeper/SmartScreen-blocked on Linux.
 
 ### Flatpak (auto-updating)
 
@@ -133,8 +139,8 @@ Sync Server → How to connect**, and online at
 > trusts the certificate once, on first connection. It's meant for your **own devices on your own
 > network**; exposing it to the public internet is not recommended.
 
-> **Windows only for now.** The bundled server currently ships in the Windows build; Linux and macOS
-> builds are in progress.
+> **Windows and Linux today; macOS is next.** The bundled server ships in the Windows and Linux
+> experimental builds; a macOS build is in progress.
 
 ## Connecting a CalDAV / CardDAV server (Synology, Nextcloud, …)
 
