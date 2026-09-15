@@ -15,7 +15,7 @@ thunderbird-addon/
 *.zip
 
 # Bundled server (Radicale) build artifacts -- keep server/ source, drop builds
-server/.venv
+server/.venv*
 server/build
-server/dist
+server/dist*
 __pycache__/
