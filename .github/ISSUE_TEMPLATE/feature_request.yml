@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest something Daynizer doesn't do yet.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: What are you trying to do that Daynizer doesn't support today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you want Daynizer to do instead?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives / workarounds you've tried
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does this apply?
+      options:
+        - Desktop app
+        - Thunderbird add-on
+        - Built-in sync server
+        - Not sure
+      multiple: true
+    validations:
+      required: false
