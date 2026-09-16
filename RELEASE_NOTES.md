@@ -1,30 +1,50 @@
-Daynizer v0.7.0
+Daynizer v0.8.0 — built-in sync server
 
-Changes since v0.6.0. Daynizer remains beta, pre-1.0 — keep a backup of anything important.
+Changes since v0.7.0. Daynizer remains beta, pre-1.0 — keep a backup of anything important.
 
-## Sync reliability — subtasks, list moves, and colors
+## Built-in sync server — new, on by default, fully optional
 
-- **Subtasks always stay with their parent's list.** Adding a subtask right after moving its parent no longer strands it on the old list, and moving a task now cascades the change to its whole subtree — already-synced subtasks re-home correctly on the server instead of being left behind.
-- **New tasks push with a stable identifier**, so subtask nesting no longer depends on sync order — a child synced before its parent still nests correctly.
-- **List colour sync is more robust** against a server's address changing mid-session.
+Don't have a CalDAV/CardDAV server? Daynizer can now host its own — a bundled, zero-config
+CalDAV/CardDAV server that Daynizer runs and supervises for you, so your tasks, calendar, and
+contacts sync across your devices **without a third-party account** (Synology, Nextcloud, a NAS, or
+any cloud).
 
-## Getting started with a brand-new server
+- **Optional — you don't have to use it.** It's on out of the box so sync works with zero setup, but
+  you can turn it off in **Settings → Sync Server** any time and point Daynizer at your own
+  CalDAV/CardDAV server instead.
+- **Nothing to configure.** On first run Daynizer creates its own "Built-in server" account with a
+  default Calendar and Contacts, and the server just runs.
+- **Runs in the background.** It starts with Daynizer, keeps running in the tray when you close the
+  window, and can start hidden at login. The tray shows when a device last synced.
+- **Works with any client** — it speaks standard CalDAV/CardDAV, so DAVx5, Tasks.org, Apple Calendar,
+  and Thunderbird all connect to it.
+- **Secure by default (HTTPS).** Self-signed TLS, so Tasks.org's direct CalDAV — which refuses plain
+  HTTP on modern Android — connects over `caldavs://`. You approve the certificate once.
+- **QR pairing.** Settings → Sync Server shows a QR code — scan it with DAVx5 on Android and your
+  phone is connected, then add Tasks.org (or OpenTasks) for the task lists.
+- **Windows Firewall helper.** A one-click button opens your firewall so other devices on your Wi-Fi
+  can reach the server.
+- **Add another Daynizer fast:** paste a pairing link into the new "Have a pairing link?" field on
+  the Add Account form to fill in the address, username, and password in one go.
 
-- Create your first list/calendar directly on an **empty** CalDAV server — Daynizer asks the server for your calendar home instead of requiring an existing calendar to derive it from.
-- Create address books on the server the same way, including **renaming** a server-side address book from within Daynizer.
-- A brand-new account **auto-provisions a default Calendar and Contacts** if the server has none; existing servers with data are left untouched.
-- Adding an account no longer freezes the form while Daynizer sets things up in the background.
+**Not included in the Thunderbird add-on.** The add-on has no server component on any platform,
+regardless of this flag — it stays a pure CalDAV/CardDAV client, same as before.
 
-## Accounts
+## Platform notes
 
-- **Add an account faster:** paste a `caldav://user:pass@host/`-style pairing link into the new field on the Add Account form to fill in the CalDAV/CardDAV URL, username, and password in one go — useful with any tool that hands you one (see the standalone-server docs below).
-- Clearer **"+ New list/calendar"** button label, and a sync marker next to server-linked address books when picking one for a contact.
-
-## Self-hosting docs
-
-- New [`server/standalone/`](https://github.com/precisioncrab/daynizer-desktop/tree/main/server/standalone) — a ready-to-run Docker Compose setup (Radicale behind Caddy for HTTPS) for anyone who wants a dedicated always-on CalDAV/CardDAV server on their own hardware (a Raspberry Pi, Proxmox, a NAS with Docker), including an offline, fully client-side phone-pairing QR-code generator.
+- **Windows, Linux, and macOS (both Apple Silicon and Intel)** all ship the server in this release.
+- Bundles [Radicale](https://github.com/Kozea/Radicale) (GPLv3) as a separate process — see
+  [`server/THIRD-PARTY-LICENSES.md`](https://github.com/precisioncrab/daynizer-desktop/blob/main/server/THIRD-PARTY-LICENSES.md)
+  for the full list of bundled components and their licenses.
+- Want a dedicated always-on server instead of running Daynizer itself somewhere (a Raspberry Pi,
+  Proxmox, a NAS)? See
+  [`server/standalone/`](https://github.com/precisioncrab/daynizer-desktop/tree/main/server/standalone)
+  for a ready-to-run standalone Radicale + Docker setup, including its own offline QR-pairing page.
 
 ## Notes
 
-- This release does **not** include the built-in sync server that's been in development on a separate track — that work continues, aimed at a more thoroughly-tested future release rather than shipping half-proven. Nothing in this changelog depends on it.
-- Bug reports and feature requests are welcome on the [issue tracker](https://github.com/precisioncrab/daynizer-desktop/issues) — bugs and feature requests now have separate templates there.
+- macOS builds are ad-hoc signed, not notarized — Gatekeeper blocks the first launch (right-click →
+  Open, then confirm). Windows builds are unsigned — SmartScreen may warn (More info → Run anyway).
+- Bug reports and feature requests are welcome on the
+  [issue tracker](https://github.com/precisioncrab/daynizer-desktop/issues) — bugs and feature
+  requests now have separate templates there.
