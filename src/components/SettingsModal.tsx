@@ -1252,7 +1252,7 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
                 </div>
               </details>
               <p style={{ fontSize: 12, marginTop: 10 }}>
-                <a href="https://precisioncrab.com/daynizer/connect/" target="_blank" rel="noreferrer" style={{ color: "#4a90d9" }}>
+                <a href="https://precisioncrab.com/apps/daynizer/connect/" target="_blank" rel="noreferrer" style={{ color: "#4a90d9" }}>
                   Full connection guide →
                 </a>
               </p>
