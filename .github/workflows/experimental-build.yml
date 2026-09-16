@@ -1,0 +1,277 @@
+name: Experimental Build (built-in server)
+
+# Builds the experimental preview (bundled Radicale server) for every platform in
+# one place, so platform-specific packaging quirks live in this file instead of
+# being re-learned by hand on whichever physical machine happens to be available.
+# Each platform's PyInstaller freeze runs on that platform's own runner (PyInstaller
+# does not cross-compile), then electron-builder packages it with the experimental
+# appId/productName so it installs alongside (not over) the stable app.
+#
+# Manual-only: triggered from the Actions tab (or `gh workflow run`), with a
+# checkbox per platform so a single platform can be re-run after a fix without
+# rebuilding everything else.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Pre-release tag to attach artifacts to (must already exist, or will be created)"
+        required: true
+        default: "beta-0.7.0"
+      build_windows:
+        description: "Build Windows (.exe)"
+        type: boolean
+        default: true
+      build_linux:
+        description: "Build Linux x64 (.deb + .flatpak + .AppImage)"
+        type: boolean
+        default: true
+      build_linux_arm64:
+        description: "Build Linux arm64 / Raspberry Pi OS (.deb)"
+        type: boolean
+        default: true
+      build_mac_arm64:
+        description: "Build macOS Apple Silicon (.dmg, arm64)"
+        type: boolean
+        default: true
+      build_mac_x64:
+        description: "Build macOS Intel (.dmg, x64)"
+        type: boolean
+        default: true
+
+# Re-running for the same release tag while a run is still in flight would race
+# on asset uploads; queue instead of cancelling so no platform's build is lost.
+concurrency:
+  group: experimental-build-${{ github.event.inputs.release_tag }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  # PyInstaller lags brand-new CPython releases (server/README.md's caveat) —
+  # pin a version known to freeze cleanly rather than whatever the runner's
+  # "latest 3.x" happens to be that week.
+  SERVER_PYTHON_VERSION: "3.12"
+
+jobs:
+  windows:
+    if: ${{ github.event.inputs.build_windows == 'true' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.SERVER_PYTHON_VERSION }}
+
+      - name: Freeze daynizer-radicale (Windows)
+        working-directory: server
+        run: |
+          python -m venv .venv
+          .venv\Scripts\python.exe -m pip install -r requirements.txt
+          .venv\Scripts\pyinstaller.exe radicale.spec
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Package experimental Windows installer
+        run: npm run package:exp
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          prerelease: true
+          fail_on_unmatched_files: true
+          files: |
+            release/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  linux:
+    if: ${{ github.event.inputs.build_linux == 'true' }}
+    # ubuntu-22.04, not -latest: an older glibc here is more broadly compatible
+    # with users' systems than whatever -latest happens to ship (see plan doc
+    # DAYNIZER-SERVER-LINUX-MACOS-PLAN.md's glibc-compat note).
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.SERVER_PYTHON_VERSION }}
+
+      - name: Install flatpak toolchain + runtimes
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install --system -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08 org.electronjs.Electron2.BaseApp//24.08
+
+      - name: Freeze daynizer-radicale (Linux)
+        working-directory: server
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
+          .venv/bin/pyinstaller radicale.spec
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Package experimental .deb
+        run: npm run package:exp:linux
+
+      - name: Package experimental .flatpak
+        # Known open risk (plan doc §L3): the frozen ELF runs inside the flatpak
+        # sandbox against org.freedesktop.Platform//24.08's glibc, which may
+        # differ from this runner's. If this step fails to start the server at
+        # runtime, that's the mismatch to chase — not a packaging bug.
+        run: npm run package:exp:linux:flatpak
+
+      - name: Package experimental .AppImage
+        # Distro-agnostic, no install step — runs on basically anything with a
+        # compatible glibc (Arch/Manjaro/EndeavourOS, Fedora, etc. included).
+        # Also the natural binary to point an AUR `-bin` PKGBUILD at, if that's
+        # ever built.
+        run: npm run package:exp:linux:appimage
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          prerelease: true
+          fail_on_unmatched_files: true
+          files: |
+            release/*.deb
+            release/*.flatpak
+            release/*.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  linux-arm64:
+    if: ${{ github.event.inputs.build_linux_arm64 == 'true' }}
+    # Native arm64 Linux runner (free for public repos) — PyInstaller can't
+    # cross-compile, so the server freeze needs real arm64 hardware, same
+    # reasoning as the mac-arm64/mac-x64 split below. Covers Raspberry Pi OS
+    # (Debian-based, arm64 by default on Pi 4/5) via the same .deb target used
+    # for x64 Linux.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.SERVER_PYTHON_VERSION }}
+
+      - name: Freeze daynizer-radicale (Linux arm64)
+        working-directory: server
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
+          .venv/bin/pyinstaller radicale.spec
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Package experimental .deb (arm64)
+        run: npm run package:exp:linux:arm64
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          prerelease: true
+          fail_on_unmatched_files: true
+          files: |
+            release/*arm64.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  mac-arm64:
+    if: ${{ github.event.inputs.build_mac_arm64 == 'true' }}
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.SERVER_PYTHON_VERSION }}
+
+      - name: Freeze daynizer-radicale (macOS arm64)
+        working-directory: server
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
+          .venv/bin/pyinstaller radicale.spec
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Package experimental macOS dmg (arm64)
+        # No CSC_LINK secret is configured, so electron-builder ad-hoc signs and
+        # build/afterSignMac.cjs reseals Contents/Resources afterward (see that
+        # file's comment) — required or the app is silently killed at launch.
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run package:exp:mac
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          prerelease: true
+          fail_on_unmatched_files: true
+          files: |
+            release/*arm64.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  mac-x64:
+    if: ${{ github.event.inputs.build_mac_x64 == 'true' }}
+    # Intel Macs are gone from GitHub-hosted runners as of late 2025; this is the
+    # replacement label (available through Aug 2027, per GitHub's deprecation
+    # notice) — do not swap back to macos-13, it no longer exists.
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.SERVER_PYTHON_VERSION }}
+
+      - name: Freeze daynizer-radicale (macOS x64)
+        working-directory: server
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
+          .venv/bin/pyinstaller radicale.spec
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Package experimental macOS dmg (x64)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run package:exp:mac:x64
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          prerelease: true
+          fail_on_unmatched_files: true
+          files: |
+            release/*x64.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
