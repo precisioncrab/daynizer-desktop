@@ -195,16 +195,28 @@ jobs:
         run: npm run build
 
       - name: Disable Spotlight indexing
-        # Works around a reproducible failure on this runner image: Spotlight's
-        # mdworker indexes the freshly-mounted DMG volume and holds a lock on
-        # it, so electron-builder's `hdiutil detach` fails with "Resource busy"
-        # even after 6 retries (seen twice in a row, same disk, same step).
         run: sudo mdutil -a -i off
 
       - name: Package (x64)
+        # `hdiutil detach ... Resource busy` on the freshly-built DMG is a
+        # known, long-standing, unresolved electron-builder issue specific to
+        # macOS Sequoia (15.x) -- github.com/electron-userland/electron-builder
+        # issue #7137 and related. electron-builder's own internal retry (6
+        # attempts over ~20s, same disk-attach state) isn't enough; community
+        # reports say a full fresh invocation with a real delay between
+        # attempts is what actually clears it, sometimes needing several.
+        # Reproduced 3/3 times on this runner before this loop was added.
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: npx electron-builder --mac dmg --x64 --publish never
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "Package (x64) attempt $attempt/5"
+            npx electron-builder --mac dmg --x64 --publish never && exit 0
+            echo "Attempt $attempt failed, waiting 30s before retrying..."
+            sleep 30
+          done
+          echo "All 5 attempts failed."
+          exit 1
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
