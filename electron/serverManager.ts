@@ -32,11 +32,15 @@ import bcrypt from "bcryptjs";
 import selfsigned from "selfsigned";
 import { settingsAll, settingSet } from "./db.js";
 
-/** Master switch for the built-in server. OFF until B2/B3 are proven end-to-end.
- *  Flip to true, rebuild, and test one slice at a time (see the plan).
- *  TEMPORARILY ON for B2/B3 testing (2026-09-12) — set back to false before cutting
- *  any release until the server work is signed off. */
-export const SERVER_BUILTIN = true;
+/** Master switch for the built-in server. OFF for the v0.7.0 stable release
+ *  (2026-09-16) — the server is fully built and tested on `experimental`, but
+ *  this release ships the accumulated non-server fixes only; promoting the
+ *  server itself to stable is deferred to a later release once it's had more
+ *  cross-platform runtime testing. With this off, init()/start() below are
+ *  no-ops and no server UI appears — see the paired change to package.json's
+ *  "build" config, which also stops bundling the (here, absent) frozen
+ *  binary at all. Flip back to true on `experimental`, not here. */
+export const SERVER_BUILTIN = false;
 
 // ---- persisted settings keys (stored in the same settings table as the rest) ----
 const KEY_PORT = "serverPort";           // user's PREFERRED port (default 5232)

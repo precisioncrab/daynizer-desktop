@@ -14,13 +14,6 @@
     "build": "npm run build:renderer && npm run build:electron",
     "start": "npm run build && electron .",
     "package": "npm run build && electron-builder",
-    "package:exp": "npm run build && electron-builder --publish never -c.appId=com.precisioncrab.daynizer.experimental -c.productName=\"Daynizer (Experimental)\" -c.win.icon=build/icon-exp.ico -c.win.artifactName=Daynizer-Experimental-Setup-${version}.${ext}",
-    "package:exp:linux": "npm run build && electron-builder --publish never --linux deb -c.appId=com.precisioncrab.daynizer.experimental -c.productName=Daynizer-Experimental -c.linux.executableName=daynizer-experimental -c.deb.artifactName='daynizer-experimental_${version}_${arch}.${ext}'",
-    "package:exp:linux:flatpak": "npm run build && electron-builder --publish never --linux flatpak -c.appId=com.precisioncrab.daynizer.experimental -c.productName=Daynizer-Experimental -c.linux.executableName=daynizer-experimental -c.flatpak.artifactName='daynizer-experimental_${version}_${arch}.${ext}'",
-    "package:exp:linux:appimage": "npm run build && electron-builder --publish never --linux appimage -c.appId=com.precisioncrab.daynizer.experimental -c.productName=Daynizer-Experimental -c.linux.executableName=daynizer-experimental -c.appImage.artifactName='daynizer-experimental_${version}_${arch}.${ext}'",
-    "package:exp:linux:arm64": "npm run build && electron-builder --publish never --linux deb --arm64 -c.appId=com.precisioncrab.daynizer.experimental -c.productName=Daynizer-Experimental -c.linux.executableName=daynizer-experimental -c.deb.artifactName='daynizer-experimental_${version}_${arch}.${ext}'",
-    "package:exp:mac": "npm run build && electron-builder --publish never --mac dmg --arm64 -c.appId=com.precisioncrab.daynizer.experimental -c.productName=\"Daynizer (Experimental)\" -c.dmg.artifactName='Daynizer-Experimental-${version}-${arch}.${ext}'",
-    "package:exp:mac:x64": "npm run build && electron-builder --publish never --mac dmg --x64 -c.appId=com.precisioncrab.daynizer.experimental -c.productName=\"Daynizer (Experimental)\" -c.dmg.artifactName='Daynizer-Experimental-${version}-${arch}.${ext}'",
     "build:addon": "vite build --config thunderbird-addon/vite.config.ts",
     "package:addon": "npm run build:addon && powershell -NoProfile -Command \"Compress-Archive -Path dist-addon/* -DestinationPath daynizer-addon.zip -Force; Move-Item -Force daynizer-addon.zip daynizer-addon.xpi\"",
     "dev:addon": "vite --config thunderbird-addon/vite.config.ts"
@@ -69,7 +62,6 @@
       "owner": "precisioncrab",
       "repo": "daynizer-desktop"
     },
-    "afterSign": "build/afterSignMac.cjs",
     "mac": {
       "target": [
         {
@@ -79,25 +71,13 @@
             "x64"
           ]
         }
-      ],
-      "extraResources": [
-        {
-          "from": "server/dist/daynizer-radicale",
-          "to": "daynizer-radicale"
-        }
       ]
     },
     "icon": "build/icon",
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico",
-      "artifactName": "${productName}-Setup-${version}.${ext}",
-      "extraResources": [
-        {
-          "from": "server/dist/daynizer-radicale",
-          "to": "daynizer-radicale"
-        }
-      ]
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "linux": {
       "target": [
@@ -106,13 +86,7 @@
       ],
       "icon": "build/icons",
       "category": "Office",
-      "executableName": "daynizer",
-      "extraResources": [
-        {
-          "from": "server/dist/daynizer-radicale",
-          "to": "daynizer-radicale"
-        }
-      ]
+      "executableName": "daynizer"
     },
     "deb": {
       "artifactName": "daynizer_${version}_${arch}.${ext}"
