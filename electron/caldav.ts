@@ -4,6 +4,8 @@ type Client = Awaited<ReturnType<typeof createDAVClient>>;
 import { app, safeStorage } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import http from "node:http";
+import https from "node:https";
 import {
   getDb,
   CaldavAccount,
@@ -72,6 +74,16 @@ function localParentId(parentUid: string | null, listId: string): string | null 
     if (byLocal) return byLocal.id;
   }
   return null;
+}
+
+/** True when an error message (or an HTTP status) indicates the resource is
+ *  absent on the server: a 404 (Not Found) or 410 (Gone). Used both for the
+ *  "collection is dead" pull case and the "already deleted" delete case, where
+ *  absence is the desired end state, not a failure. */
+function isNotFound(msgOrStatus: string | number | undefined | null): boolean {
+  if (msgOrStatus == null) return false;
+  if (typeof msgOrStatus === "number") return msgOrStatus === 404 || msgOrStatus === 410;
+  return /\b(404|410)\b/.test(msgOrStatus);
 }
 
 /** Compare two object URLs by path only (servers report absolute or relative). */
@@ -176,6 +188,99 @@ export function decryptPassword(enc: string): string {
   return Buffer.from(enc, "base64").toString("utf-8");
 }
 
+/** True for the built-in server's own loopback HTTPS URL (the auto-wired
+ *  "self-account"). Scoped to loopback so nothing below ever weakens TLS for a
+ *  real remote server (Synology/Nextcloud/Google). */
+function isLoopbackHttps(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:") return false;
+    const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    return h === "127.0.0.1" || h === "::1" || h === "localhost";
+  } catch { return false; }
+}
+
+/** Minimal fetch built on Node's core http/https client, used ONLY for the
+ *  built-in server's self-signed loopback account (C4). Two reasons Node's core
+ *  client — not the default global `fetch` (undici) — is used here:
+ *    1. The cert is self-signed, so we set `rejectUnauthorized: false` (safe:
+ *       loopback only).
+ *    2. undici's strict HTTP/1.1 parser asserts (`assert(!this.paused)` →
+ *       uncaught crash) on the bundled Radicale server's HTTPS response framing;
+ *       Node's lenient llhttp client handles it fine.
+ *  Implements just the Response surface tsdav uses (ok/status/statusText/url/
+ *  redirected + headers.get() + text()). Redirects are returned as-is, never
+ *  auto-followed — tsdav's service discovery sends `redirect:"manual"` and reads
+ *  the Location header itself. Real remote accounts keep the default global
+ *  fetch (unchanged, proven). */
+function nodeLoopbackFetch(url: string, init: any = {}): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let u: URL;
+    try { u = new URL(url); } catch (e) { reject(e); return; }
+    const mod = u.protocol === "https:" ? https : http;
+    const rawBody: string | Buffer | undefined = init.body;
+    const body = rawBody == null ? null : (Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody), "utf8"));
+    const headers: Record<string, string> = { ...(init.headers || {}) };
+    // Radicale's bundled Python server does NOT read chunked request bodies, and
+    // Node's http.request uses chunked transfer-encoding unless Content-Length is
+    // set. Without an explicit length the server sees an EMPTY body — PUT fails
+    // with 400 "Item contains 0 components" and REPORT/PROPFIND return nothing.
+    // So always send a Content-Length for a bodied request.
+    if (body && headers["Content-Length"] == null && headers["content-length"] == null) {
+      headers["Content-Length"] = String(body.length);
+    }
+    const req = mod.request(
+      {
+        protocol: u.protocol,
+        hostname: u.hostname,
+        port: u.port,
+        path: `${u.pathname}${u.search}`,
+        method: String(init.method || "GET").toUpperCase(),
+        headers,
+        rejectUnauthorized: false, // self-signed loopback cert
+        timeout: 30_000
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+        res.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          const status = res.statusCode ?? 0;
+          resolve({
+            ok: status >= 200 && status < 300,
+            status,
+            statusText: res.statusMessage ?? "",
+            url,
+            redirected: false,
+            headers: {
+              get: (name: string) => {
+                const v = res.headers[name.toLowerCase()];
+                if (v == null) return null;
+                return Array.isArray(v) ? v.join(", ") : String(v);
+              }
+            },
+            text: async () => text,
+            json: async () => JSON.parse(text)
+          });
+        });
+        res.on("error", reject);
+      }
+    );
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(new Error("Request timed out")); });
+    if (body != null) req.write(body);
+    req.end();
+  });
+}
+
+/** The `fetch` override to hand tsdav for a given server URL: Node's core client
+ *  for our self-signed loopback server, otherwise undefined (tsdav uses the
+ *  default global fetch). Shared with carddav.ts so both clients treat the
+ *  self-account the same way. */
+export function loopbackFetchFor(url: string): typeof nodeLoopbackFetch | undefined {
+  return isLoopbackHttps(url) ? nodeLoopbackFetch : undefined;
+}
+
 async function clientFor(account: CaldavAccount): Promise<Client> {
   const client = await createDAVClient({
     serverUrl: account.server_url,
@@ -184,7 +289,10 @@ async function clientFor(account: CaldavAccount): Promise<Client> {
       password: decryptPassword(account.password_enc)
     },
     authMethod: "Basic",
-    defaultAccountType: "caldav"
+    defaultAccountType: "caldav",
+    // Self-signed loopback (built-in server) → Node-core fetch that skips TLS
+    // verification; undefined (default global fetch) for every real server.
+    fetch: loopbackFetchFor(account.server_url) as any
   });
   return client;
 }
@@ -333,6 +441,48 @@ export async function pushCalendarName(account: CaldavAccount, calendarUrl: stri
   if (!ok) throw new Error(`Server rejected displayname change (${JSON.stringify(res)})`);
 }
 
+/** Normalize an app color (#RGB / #RRGGBB / #RRGGBBAA) to Apple's #RRGGBBAA
+ *  form, which is what the CalDAV `calendar-color` property expects and what
+ *  DAVx5 / Apple Calendar read. Returns null for anything unparseable. */
+function toAppleColor(c: string): string | null {
+  let h = (c || "").trim();
+  if (!h.startsWith("#")) return null;
+  h = h.slice(1);
+  if (h.length === 3) h = h.split("").map((x) => x + x).join(""); // #RGB -> RRGGBB
+  if (h.length === 6) h = h + "FF";                               // add full opacity
+  if (h.length !== 8 || !/^[0-9a-fA-F]{8}$/.test(h)) return null;
+  return `#${h.toUpperCase()}`;
+}
+
+/** Push a list's color to the server as the calendar collection's Apple
+ *  `calendar-color` property via PROPPATCH, so a color set in the app travels to
+ *  other devices (DAVx5, Apple Calendar, another Daynizer) instead of staying
+ *  local. Mirrors pushCalendarName: best-effort, logged + thrown, and the caller
+ *  swallows any failure so the local color still stands. */
+export async function pushCalendarColor(account: CaldavAccount, calendarUrl: string, color: string): Promise<void> {
+  const value = toAppleColor(color);
+  if (!value) return; // nothing sensible to send
+  const client = await clientFor(account);
+  const body =
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<d:propertyupdate xmlns:d="DAV:" xmlns:ical="http://apple.com/ns/ical/"><d:set><d:prop>` +
+    `<ical:calendar-color>${xmlEscape(value)}</ical:calendar-color>` +
+    `</d:prop></d:set></d:propertyupdate>`;
+  const res = await client.davRequest({
+    url: calendarUrl,
+    init: {
+      method: "PROPPATCH",
+      headers: { "content-type": "application/xml; charset=utf-8" },
+      body
+    },
+    convertIncoming: false,
+    parseOutgoing: false
+  });
+  const ok = !Array.isArray(res) || res.every((r) => r.ok !== false && (r.status ? r.status < 400 : true));
+  syncLog(`PROPPATCH calendar-color ${calendarUrl} -> ${value}: ${ok ? "ok" : JSON.stringify(res)}`);
+  if (!ok) throw new Error(`Server rejected calendar-color change (${JSON.stringify(res)})`);
+}
+
 /** Remove the calendar link from a list (sets it back to local-only). */
 export function unlinkList(listId: string) {
   listUpdate(listId, {
@@ -367,13 +517,34 @@ export async function deleteServerCalendar(account: CaldavAccount, calendarUrl: 
 export async function createServerCalendar(account: CaldavAccount, name: string): Promise<TaskList> {
   const client = await clientFor(account);
 
-  // Derive the calendar home URL from an existing calendar (strip its last path segment).
-  const calendars = await client.fetchCalendars();
-  if (calendars.length === 0) {
-    throw new Error("No existing calendars found on server — cannot determine where to create the new calendar.");
+  // Determine the calendar-home URL. Prefer the principal's calendar-home-set,
+  // resolved via tsdav account discovery -- this works even when the server has
+  // ZERO calendars (e.g. a fresh Radicale user), which is exactly the case the old
+  // "derive from an existing calendar" approach could not handle: it threw, so the
+  // very first list could never be created. Fall back to deriving the home from an
+  // existing calendar for any server that doesn't cleanly advertise the home.
+  let calHomeUrl = "";
+  try {
+    const acct = await client.createAccount({
+      account: { serverUrl: account.server_url, accountType: "caldav" },
+      loadCollections: false,
+      loadObjects: false
+    });
+    if (acct?.homeUrl) calHomeUrl = String(acct.homeUrl).replace(/\/?$/, "/");
+  } catch {
+    /* discovery failed -- fall back to the existing-calendar derivation below */
   }
-  const existingUrl = String(calendars[0].url).replace(/\/?$/, "/");
-  const calHomeUrl = existingUrl.replace(/[^/]+\/$/, "");
+
+  if (!calHomeUrl) {
+    const calendars = await client.fetchCalendars();
+    if (calendars.length === 0) {
+      throw new Error(
+        "Could not determine where to create the calendar: the server advertised no calendar-home-set and has no existing calendars to derive it from."
+      );
+    }
+    const existingUrl = String(calendars[0].url).replace(/\/?$/, "/");
+    calHomeUrl = existingUrl.replace(/[^/]+\/$/, "");
+  }
 
   // Build a URL-safe slug from the name.
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "list";
@@ -414,12 +585,17 @@ export interface SyncResult {
 export async function syncAccount(account: CaldavAccount): Promise<SyncResult[]> {
   const client = await clientFor(account);
 
-  // Best-effort: pull calendar colors from server and apply them to linked lists.
+  // Best-effort: pull calendar colors from server and apply them to linked lists
+  // on EVERY sync, so a color changed on another device (or another Daynizer
+  // instance) repaints here without a reconnect. Match by davUrlKey, not the raw
+  // URL string: the built-in server's port/scheme can move between runs (C4 TLS +
+  // port re-homing), so an exact-string lookup would silently miss and the color
+  // would never refresh.
   try {
     const calendars = await client.fetchCalendars();
-    const calByUrl = new Map(calendars.map((c) => [String(c.url), c]));
+    const calByKey = new Map(calendars.map((c) => [davUrlKey(String(c.url)), c]));
     for (const list of listsAll().filter((l) => l.caldav_account_id === account.id && l.caldav_calendar_url)) {
-      const cal = calByUrl.get(list.caldav_calendar_url!);
+      const cal = calByKey.get(davUrlKey(list.caldav_calendar_url!));
       const color = normalizeCalendarColor(cal?.calendarColor);
       if (color) listUpdate(list.id, { color } as Partial<TaskList>);
     }
@@ -689,20 +865,35 @@ async function syncEvents(client: Client, list: TaskList) {
       .prepare(`SELECT * FROM events WHERE list_id = ? AND deleted = 1 AND caldav_uid IS NOT NULL`)
       .all(list.id) as unknown as CalendarEvent[];
     for (const e of deletedWithRemote) {
+      // Same guard as tasks: only hard-delete locally once the server copy is
+      // gone (2xx or 404/410). A failed delete keeps the tombstone so the pull
+      // can't resurrect the event and it retries next sync.
+      let gone = false;
       try {
-        await client.deleteCalendarObject({
+        const res: any = await client.deleteCalendarObject({
           calendarObject: { url: e.caldav_href || "", etag: e.caldav_etag || "" }
         });
+        gone = res?.ok === true || isNotFound(res?.status);
+        if (!gone) {
+          syncLog(`event delete kept pending for "${e.title}" (${e.caldav_uid}): HTTP ${res?.status ?? "?"}`);
+        }
       } catch (err: any) {
         syncLog(`event delete FAILED for "${e.title}": ${err?.message || err}`);
       }
-      eventDelete(e.id, true);
+      if (gone) eventDelete(e.id, true);
     }
 
     eventsPruneMissing(list.id, remoteUids);
     syncLog(`events: synced list "${list.name}" — pulled ${pulled}, pushed ${pushed}`);
   } catch (err: any) {
-    syncLog(`events sync FAILED for list "${list.name}": ${err?.message || err}`);
+    const msg = err?.message || String(err);
+    if (isNotFound(msg)) {
+      // Same dead-collection case as the task pull; already non-fatal here
+      // (event errors never surface as sync errors), just log it clearly.
+      syncLog(`events: list "${list.name}" calendar is gone on the server (404 at ${calendarUrl}); skipped.`);
+    } else {
+      syncLog(`events sync FAILED for list "${list.name}": ${msg}`);
+    }
   }
 }
 
@@ -717,22 +908,41 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
     // excludes VTODO items (our tasks) from the server's response. Request VTODO
     // explicitly so to-dos actually come back.
     console.log(`[caldav] fetchCalendarObjects starting for ${calendarUrl}`);
-    const objects = await Promise.race([
-      client.fetchCalendarObjects({
-        calendar,
-        filters: [
-          {
-            "comp-filter": {
-              _attributes: { name: "VCALENDAR" },
+    let objects: Awaited<ReturnType<typeof client.fetchCalendarObjects>>;
+    try {
+      objects = await Promise.race([
+        client.fetchCalendarObjects({
+          calendar,
+          filters: [
+            {
               "comp-filter": {
-                _attributes: { name: "VTODO" }
+                _attributes: { name: "VCALENDAR" },
+                "comp-filter": {
+                  _attributes: { name: "VTODO" }
+                }
               }
             }
-          }
-        ] as any
-      }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("fetchCalendarObjects timed out after 15s")), 15000))
-    ]);
+          ] as any
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("fetchCalendarObjects timed out after 15s")), 15000))
+      ]);
+    } catch (err: any) {
+      // A 404 on the collection query means this list is linked to a calendar
+      // that no longer exists on the server (deleted, or moved to a new URL).
+      // tsdav throws "Collection query failed: 404 ...". Nothing can pull or
+      // push against a dead collection, so stop this list with a clear,
+      // actionable message instead of the raw library error -- and DON'T run
+      // the delete phase below, so pending deletions stay queued for a
+      // re-linked calendar rather than being silently dropped.
+      const msg = err?.message || String(err);
+      if (isNotFound(msg)) {
+        const clear = `List "${list.name}" is linked to a calendar that no longer exists on the server (404 at ${calendarUrl}). Re-link this list to a current calendar in Settings, or remove it.`;
+        syncLog(clear);
+        result.errors.push(clear);
+        return result;
+      }
+      throw err;
+    }
     console.log(`[caldav] fetchCalendarObjects returned ${objects.length} object(s) for ${calendarUrl}`);
     const remoteByUid = new Map<string, { url: string; etag: string; data: string }>();
     let tParseIdx = 0;
@@ -879,7 +1089,12 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
       if ((tPushIdx++ % 20) === 0) await yieldTick();
       if (local.deleted) continue;
       if (!local.caldav_uid) {
-        const uid = newUid();
+        // Use the DETERMINISTIC uid (`${id}@tasks-desktop`) rather than a random
+        // one, so subtask nesting is order-independent: a child pushed before its
+        // parent computes the parent's RELATED-TO via effectiveUid() → the same
+        // `${parentId}@tasks-desktop`, and when the parent is pushed here it lands
+        // on that exact uid instead of a random one that would never match.
+        const uid = effectiveUid(local);
         const offsets = remindersForOwner("task", local.id).map((r) => r.offset_minutes);
         const { ics } = taskToVTodo(local, uid, offsets, parentUidFor(local));
         const filename = `${uid}.ics`;
@@ -993,14 +1208,30 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
       .prepare(`SELECT * FROM tasks WHERE list_id = ? AND deleted = 1 AND caldav_uid IS NOT NULL`)
       .all(list.id) as unknown as Task[];
     for (const t of deletedWithRemote) {
+      // Only hard-delete locally once the server copy is actually gone.
+      // deleteCalendarObject returns a Response (it does NOT throw on an HTTP
+      // error status), so a failed delete used to be ignored while the local
+      // tombstone was destroyed anyway -- the next pull then re-created the
+      // task from the still-present server copy (the "deleted tasks come back"
+      // bug). Now: 2xx or 404/410 means gone -> complete the delete locally;
+      // anything else (network throw, 5xx, 412) keeps the tombstone so the pull
+      // can't resurrect it (it skips deleted rows) and it retries next sync.
+      let gone = false;
       try {
-        await client.deleteCalendarObject({
+        const res: any = await client.deleteCalendarObject({
           calendarObject: { url: t.caldav_href || "", etag: t.caldav_etag || "" }
         });
+        gone = res?.ok === true || isNotFound(res?.status);
+        if (!gone) {
+          const detail = `HTTP ${res?.status ?? "?"}${res?.statusText ? ` ${res.statusText}` : ""}`;
+          result.errors.push(`Delete failed for "${t.title}": ${detail} — will retry next sync`);
+          syncLog(`task delete kept pending for "${t.title}" (${t.caldav_uid}): ${detail}`);
+        }
       } catch (err: any) {
-        result.errors.push(`Delete failed for "${t.title}": ${err?.message || err}`);
+        result.errors.push(`Delete failed for "${t.title}": ${err?.message || err} — will retry next sync`);
+        syncLog(`task delete threw for "${t.title}" (${t.caldav_uid}): ${err?.message || err}`);
       }
-      taskDelete(t.id, true);
+      if (gone) taskDelete(t.id, true);
     }
   } catch (err: any) {
     syncLog(`sync FAILED for list "${list.name}": ${err?.message || err}`);

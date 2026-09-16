@@ -7,17 +7,7 @@ adds a full calendar and contacts manager on top — all two-way syncable with t
 Tasks.org-compatible setup you already use on mobile (DAVx5 / Nextcloud / Synology / any
 CalDAV+CardDAV server). Built with Electron + React + TypeScript.
 
-> **⭐ New — built-in sync server (experimental preview).** Daynizer can now run its **own**
-> CalDAV/CardDAV sync server, so your tasks, calendar, and contacts sync across your devices with no
-> third-party account, NAS, or cloud. It's an early preview (v0.7.0) for **Windows, Linux, and macOS
-> (Apple Silicon)** (Intel Mac is on the way): download **`Daynizer-Experimental-Setup-0.7.0.exe`**,
-> **`daynizer-experimental_0.7.0_amd64.deb`**, or **`Daynizer-Experimental-0.7.0-arm64.dmg`** from the
-> [latest pre-release](https://github.com/precisioncrab/daynizer-desktop/releases) — it installs
-> alongside the stable app with its own data. The Windows build is unsigned, so Windows SmartScreen
-> warns once (*More info → Run anyway*), and the macOS build needs a right-click → Open past
-> Gatekeeper the first time.
-
-> **Beta software (v0.6.0).** Daynizer is still in active development and hasn't reached a stable
+> **Beta software (v0.7.0).** Daynizer is still in active development and hasn't reached a stable
 > 1.0. Expect rough edges, and keep a backup of anything important — while sync is two-way, don't
 > rely on this as the only copy of your data yet. Bug reports are welcome on the
 > [issue tracker](https://github.com/precisioncrab/daynizer-desktop/issues).
@@ -97,7 +87,8 @@ Applications.
 
 ## Connecting a CalDAV / CardDAV server (Synology, Nextcloud, …)
 
-Daynizer syncs **tasks & calendars over CalDAV** and **contacts over CardDAV**. Open **Settings**
+Prefer your own server (Synology, Nextcloud, Baïkal, Radicale, …)? Daynizer syncs **tasks & calendars
+over CalDAV** and **contacts over CardDAV**. Open **Settings**
 (the "CalDAV / CardDAV accounts…" button in the sidebar) → **Add account** and fill in:
 
 - **CalDAV URL** — the calendars/tasks endpoint (optional if you only want contacts).
@@ -153,7 +144,9 @@ address"**; contacts live under `/remote.php/dav/addressbooks/users/<user>/`.)
 Most CalDAV/CardDAV servers auto-discover from a base URL — paste that and the app finds the collections:
 
 - **Baïkal:** `https://<host>/dav.php/` (discovers both calendars and address books).
-- **Radicale:** `http://<host>:5232/` (or `http://<host>:5232/<user>/`).
+- **Radicale:** `http://<host>:5232/` (or `http://<host>:5232/<user>/`). Want a dedicated always-on
+  Radicale server instead of running Daynizer itself somewhere (a Raspberry Pi, Proxmox, a NAS with
+  Docker)? [`server/standalone/`](server/standalone/) has a ready-to-run Docker Compose setup.
 - **Generic / DAVx5-compatible:** if a single base URL doesn't discover everything, enter the specific
   collection URLs — `.../calendars/<user>/` for CalDAV and `.../addressbooks/<user>/` for CardDAV.
 
