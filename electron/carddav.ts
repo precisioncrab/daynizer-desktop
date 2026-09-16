@@ -221,6 +221,27 @@ export async function createServerAddressBook(account: CaldavAccount, name: stri
   return addressBooksAll().find((b) => b.id === book.id)!;
 }
 
+/** Delete an address book collection on the server (HTTP DELETE on the collection
+ *  URL). The CardDAV twin of caldav.ts's deleteServerCalendar -- same caveat: some
+ *  servers (DAViCal, Synology) return 405 Method Not Allowed on a collection
+ *  DELETE; the caller treats a throw here as "the server won't remove it", deletes
+ *  the book locally anyway, and warns. Nextcloud/Radicale/Baikal honor it.
+ *  Best-effort: throws on any non-2xx so the caller can react. */
+export async function deleteServerAddressBook(account: CaldavAccount, addressBookUrl: string): Promise<void> {
+  const client = await clientFor(account);
+  const res = await client.davRequest({
+    url: addressBookUrl,
+    init: { method: "DELETE", headers: {}, body: "" },
+    convertIncoming: false,
+    parseOutgoing: false
+  });
+  const first = Array.isArray(res) ? res[0] : (res as any);
+  const status: number | undefined = first?.status;
+  const ok = !Array.isArray(res) || res.every((r) => r.ok !== false && (r.status ? r.status < 400 : true));
+  syncLog(`DELETE address book ${addressBookUrl}: ${ok ? "ok" : JSON.stringify(res)}`);
+  if (!ok) throw new Error(`Server rejected address book delete${status ? ` (HTTP ${status})` : ""}`);
+}
+
 // ---------- Contact <-> vCard row mapping ----------
 function jsonArr(s: string): any[] {
   try { const v = JSON.parse(s || "[]"); return Array.isArray(v) ? v : []; } catch { return []; }

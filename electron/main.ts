@@ -52,7 +52,7 @@ import {
 } from "./db.js";
 import { testConnection, discoverCalendars, linkListToCalendar, unlinkList, syncAccount, createServerCalendar, deleteServerCalendar, encryptPassword, connectCalendar, syncLog, pushCalendarName, pushCalendarColor } from "./caldav.js";
 import { taskToVTodo, eventToVEvent, bundleIcs } from "./ical.js";
-import { discoverAddressBooks, linkAddressBook, unlinkAddressBook, syncAccountContacts, connectAddressBook, importVCards, createServerAddressBook, pushAddressBookName } from "./carddav.js";
+import { discoverAddressBooks, linkAddressBook, unlinkAddressBook, syncAccountContacts, connectAddressBook, importVCards, createServerAddressBook, deleteServerAddressBook, pushAddressBookName } from "./carddav.js";
 import { serverManager, type ServerStatus } from "./serverManager.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -967,6 +967,11 @@ function registerIpc() {
     const account = accountsAll().find((a) => a.id === accountId);
     if (!account) throw new Error("Account not found");
     return createServerAddressBook(account, name);
+  });
+  ipcMain.handle("addressbooks:deleteServer", async (_e, accountId: string, addressBookUrl: string) => {
+    const account = accountsAll().find((a) => a.id === accountId);
+    if (!account) throw new Error("Account not found");
+    return deleteServerAddressBook(account, addressBookUrl);
   });
   // Auto-provision default collections on an otherwise-empty server so a
   // freshly-added account is immediately usable without the server's own admin

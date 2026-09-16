@@ -249,6 +249,10 @@ declare global {
         /** Create a new address book ON THE SERVER (MKCOL) + link a local book.
          *  Absent in the add-on shim -- optional-chain. */
         createServer?: (accountId: string, name: string) => Promise<AddressBook>;
+        /** Delete an address book collection ON THE SERVER (DELETE). Throws if the
+         *  server refuses (e.g. DAViCal/Synology 405 on collection DELETE) --
+         *  caller deletes locally anyway and warns. Absent in the add-on shim. */
+        deleteServer?: (accountId: string, addressBookUrl: string) => Promise<void>;
       };
       /** Absent in the Thunderbird add-on shim -- always optional-chain. */
       maintenance?: {

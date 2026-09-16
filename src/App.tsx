@@ -628,9 +628,25 @@ export default function App() {
     await loadContacts();
   }
 
+  // "Delete": remove the address book and its contacts from Daynizer, AND from
+  // the server when the book is linked (collection DELETE on its URL). If the
+  // server refuses (DAViCal / Synology return 405 on collection DELETE), delete
+  // locally anyway and warn that the server address book is still there.
   async function deleteBook(b: AddressBook) {
     const n = contacts.filter((c) => c.address_book_id === b.id && !c.deleted).length;
-    if (!window.confirm(`Delete "${b.name}" and its ${n} local contact(s)?\n\nThis only removes them from this computer — contacts on the server are not deleted.`)) return;
+    const linked = !!(b.carddav_account_id && b.carddav_addressbook_url);
+    const confirmMsg = linked
+      ? `Delete "${b.name}" and its ${n} contact(s)? This also removes it from the server.`
+      : `Delete "${b.name}" and its ${n} contact(s)? This is a local-only address book.`;
+    if (!window.confirm(confirmMsg)) return;
+    if (linked) {
+      try {
+        await window.api.addressbooks?.deleteServer?.(b.carddav_account_id!, b.carddav_addressbook_url!);
+      } catch (err: any) {
+        setSyncMsg(`Address book deleted here, but couldn't be removed on the server: ${err?.message || err}`);
+        setTimeout(() => setSyncMsg(null), 8000);
+      }
+    }
     await window.api.addressbooks?.delete(b.id);
     if (contactFilter.kind === "book" && contactFilter.value === b.id) setContactFilter({ kind: "all" });
     await loadAddressBooks();
