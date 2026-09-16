@@ -74,6 +74,27 @@ All commands from this folder (`server/standalone/`) on the target box.
 4. **Phone / other apps:** same address, same credentials — see the main README's "Other servers"
    section for the exact URL shape (`https://<box-ip>:5232/` or `https://<box-ip>:5232/<user>/`).
 
+## Phone pairing (QR code)
+
+Open [`pairing.html`](pairing.html) in a browser — works as a plain local file (double-click it, or
+`file://` it), no server needed for the page itself. Fill in the address/username/password once, it
+shows a QR code for DAVx5 the same way Daynizer's own built-in server does. **Read the warning on that
+page before using it** — the QR/link carries the password in plain text, same as any CalDAV/CardDAV
+auto-config link; it's meant to be scanned once and not kept around as a screenshot or forwarded
+message.
+
+## Changing or removing a user's password
+
+`config/users` is a plain-text file, one `username:bcrypt-hash` line per user (this is also how you'd
+invalidate an old pairing link/QR you're not sure stayed private — the link stops working the moment
+the password it names changes):
+
+1. Open `config/users` in any text editor and delete that user's line (don't just append a new one for
+   the same username — that leaves two entries and which one "wins" isn't something to rely on).
+2. Re-run the same one-liner from step 1 above (or `server/make-user.py`) to append a fresh line with
+   the new password.
+3. `docker compose restart radicale` so it picks up the change.
+
 ## Browsing it directly
 
 Radicale ships its own minimal web UI by default (Daynizer's bundled server has the same thing — see

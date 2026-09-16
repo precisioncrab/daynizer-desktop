@@ -63,6 +63,7 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
   const [draftCarddavUrl, setDraftCarddavUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [pairingInput, setPairingInput] = useState("");
   const [testMsg, setTestMsg] = useState<string | null>(null);
   const [calendarsByAccount, setCalendarsByAccount] = useState<Record<string, DiscoveredCalendar[]>>({});
   const [carddavUrlByAccount, setCarddavUrlByAccount] = useState<Record<string, string>>({});
@@ -125,6 +126,44 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
     const user = encodeURIComponent(info.username || "");
     const pass = encodeURIComponent(info.password || "");
     return `${scheme}://${user}:${pass}@${host}/`;
+  }
+
+  /** Inverse of pairingUri() — reads a caldav(s):// link (Daynizer's own, or one
+   *  generated for a standalone server) into the Add Account fields. Same base
+   *  URL is used for both CalDAV and CardDAV, matching how these links are built
+   *  (and how Radicale-style servers serve both from one address). Returns null
+   *  for anything that isn't a well-formed pairing link. */
+  function parsePairingLink(input: string): { serverUrl: string; carddavUrl: string; username: string; password: string } | null {
+    const trimmed = input.trim();
+    const isSecure = /^caldavs:\/\//i.test(trimmed);
+    if (!isSecure && !/^caldav:\/\//i.test(trimmed)) return null;
+    // Swap in a standard scheme before parsing -- custom schemes' userinfo
+    // handling is inconsistent across URL implementations, http(s): isn't.
+    let url: URL;
+    try { url = new URL(trimmed.replace(/^caldavs?:/i, isSecure ? "https:" : "http:")); } catch { return null; }
+    const username = decodeURIComponent(url.username || "");
+    const password = decodeURIComponent(url.password || "");
+    if (!username) return null;
+    url.username = "";
+    url.password = "";
+    const base = url.toString();
+    return { serverUrl: base, carddavUrl: base, username, password };
+  }
+
+  function fillFromPairingLink() {
+    const parsed = parsePairingLink(pairingInput);
+    if (!parsed) {
+      setTestMsg("Couldn't read that link — check it starts with caldav:// or caldavs:// and includes a username and password.");
+      return;
+    }
+    setServerUrl(parsed.serverUrl);
+    setDraftCarddavUrl(parsed.carddavUrl);
+    setUsername(parsed.username);
+    setPassword(parsed.password);
+    // Clear it immediately -- no reason for the plaintext credential to keep
+    // sitting in this field once it's been read into the form above.
+    setPairingInput("");
+    setTestMsg("Filled in from the pairing link below — check it looks right, then Test connection.");
   }
   // Regenerate the pairing QR whenever the reachable address or credentials change.
   useEffect(() => {
@@ -864,6 +903,29 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
           {activePane === "accounts" && (
           <>
           <h3 style={{ marginTop: 18 }}>Add account</h3>
+          <details style={{ marginBottom: 12 }}>
+            <summary style={{ cursor: "pointer", fontSize: 13 }}>Have a pairing link? Paste it to fill in the form below</summary>
+            <div style={{ marginTop: 8 }}>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  placeholder="caldav://user:pass@host:port/"
+                  value={pairingInput}
+                  onChange={(e) => setPairingInput(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <button onClick={fillFromPairingLink} disabled={!pairingInput.trim()}>Fill in</button>
+              </div>
+              <p style={{ fontSize: 11, color: "#e8a23d", marginTop: 6, lineHeight: 1.5 }}>
+                ⚠️ This kind of link carries the password in <strong>plain text</strong>, not just a
+                reference to it — anyone who sees the link or a QR code made from it has the real
+                password. Treat it exactly like the password itself: don't paste it into chat, email,
+                or a notes app (those often sync to the cloud or get logged), and don't keep a
+                screenshot of it around. It's cleared from this field the moment you click Fill in.
+                If you're not sure a link was only ever seen by you, regenerate that account's password
+                afterward.
+              </p>
+            </div>
+          </details>
           <div className="form-grid">
           <input placeholder="Label (e.g. My Nextcloud)" value={label} onChange={(e) => setLabel(e.target.value)} />
           <input placeholder="CalDAV URL — tasks & calendars (optional)" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
@@ -1058,6 +1120,13 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
                           task lists to sync. Install <strong>Tasks.org</strong> for the task lists.
                           <div style={{ marginTop: 8 }}>
                             <button onClick={() => srvCopy(pairingUri(srv) ?? "", "Pairing link")}>Copy pairing link</button>
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 11, color: "#e8a23d" }}>
+                            ⚠️ The QR code and the copied link both carry your password in plain text —
+                            treat either one like the password itself. Don't screenshot the QR or paste
+                            the link somewhere that isn't going straight into DAVx5 (chat/notes apps
+                            often sync to the cloud). Regenerate the password below if you're ever
+                            unsure who's seen one.
                           </div>
                           <div style={{ marginTop: 6, fontSize: 11 }}>
                             Make sure the phone is on the same Wi-Fi{srv.platform === "win32" ? " and you've allowed the firewall above" : ""}.
