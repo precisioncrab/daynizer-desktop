@@ -50,7 +50,7 @@ export default function ImportVCardModal({ addressBooks, defaultBookId, onClose,
         <input
           type="text"
           value={label}
-          placeholder="e.g. DP21"
+          placeholder="e.g. Google contacts"
           onChange={(e) => setLabel(e.target.value)}
           disabled={busy}
         />

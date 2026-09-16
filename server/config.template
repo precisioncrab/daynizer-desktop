@@ -1,0 +1,34 @@
+# Radicale config template for the bundled Daynizer sync server.
+# The Electron main process fills the {PLACEHOLDERS} at runtime (Phase B2) and
+# writes the result next to the server's data dir. For a manual test you can copy
+# this to `config` and replace the placeholders with real paths by hand (see
+# README.md).
+
+[server]
+# 0.0.0.0 = reachable from other LAN devices (phones). Use 127.0.0.1 for a
+# local-only test. Port is picked by the app and persisted.
+hosts = {HOSTS}
+# TLS (C4): the app generates a self-signed cert/key at runtime and, when
+# present, writes these three lines so the server serves HTTPS — modern Android
+# refuses plain-HTTP CalDAV ("cleartext communication not permitted"). For a
+# manual test, generate a cert/key and point these at them (or drop all three to
+# stay on HTTP).
+# ssl = True
+# certificate = {CERT_FILE}
+# key = {KEY_FILE}
+
+[auth]
+type = htpasswd
+htpasswd_filename = {USERS_FILE}
+# bcrypt is what make-user.py writes; Radicale reads it via passlib/bcrypt.
+htpasswd_encryption = bcrypt
+
+[storage]
+filesystem_folder = {COLLECTIONS_DIR}
+
+[rights]
+# Each account only sees its own collections.
+type = owner_only
+
+[logging]
+level = info

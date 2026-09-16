@@ -39,7 +39,8 @@ const api = {
     discover: (accountId: string) => ipcRenderer.invoke("addressbooks:discover", accountId),
     link: (bookId: string, accountId: string, url: string) => ipcRenderer.invoke("addressbooks:link", bookId, accountId, url),
     connect: (accountId: string, url: string, displayName: string) => ipcRenderer.invoke("addressbooks:connect", accountId, url, displayName),
-    unlink: (bookId: string) => ipcRenderer.invoke("addressbooks:unlink", bookId)
+    unlink: (bookId: string) => ipcRenderer.invoke("addressbooks:unlink", bookId),
+    createServer: (accountId: string, name: string) => ipcRenderer.invoke("addressbooks:createServer", accountId, name)
   },
   maintenance: {
     dedupe: (dryRun?: boolean) => ipcRenderer.invoke("maintenance:dedupe", dryRun)
@@ -76,7 +77,25 @@ const api = {
     unlinkList: (listId: string) => ipcRenderer.invoke("accounts:unlinkList", listId),
     sync: (accountId: string) => ipcRenderer.invoke("accounts:sync", accountId),
     createServerCalendar: (accountId: string, name: string) => ipcRenderer.invoke("accounts:createServerCalendar", accountId, name),
-    deleteServerCalendar: (accountId: string, calendarUrl: string) => ipcRenderer.invoke("accounts:deleteServerCalendar", accountId, calendarUrl)
+    deleteServerCalendar: (accountId: string, calendarUrl: string) => ipcRenderer.invoke("accounts:deleteServerCalendar", accountId, calendarUrl),
+    bootstrapDefaults: (accountId: string) => ipcRenderer.invoke("accounts:bootstrapDefaults", accountId)
+  },
+  // Built-in sync server (Phase B2). status()/info() read current state; info()
+  // also returns the generated password for the pairing/manual-add screen (C3).
+  // start/stop/restart drive the supervised child. Subscribe to live changes via
+  // api.on("server:status", (status) => …).
+  server: {
+    status: () => ipcRenderer.invoke("server:status"),
+    info: () => ipcRenderer.invoke("server:info"),
+    start: () => ipcRenderer.invoke("server:start"),
+    stop: () => ipcRenderer.invoke("server:stop"),
+    restart: () => ipcRenderer.invoke("server:restart"),
+    setEnabled: (on: boolean) => ipcRenderer.invoke("server:setEnabled", on),
+    setPort: (port: number) => ipcRenderer.invoke("server:setPort", port),
+    setCredentials: (opts: { username?: string; password?: string }) => ipcRenderer.invoke("server:setCredentials", opts),
+    regeneratePassword: () => ipcRenderer.invoke("server:regeneratePassword"),
+    markConfigured: () => ipcRenderer.invoke("server:markConfigured"),
+    openFirewall: () => ipcRenderer.invoke("server:openFirewall")
   },
   on: (channel: string, callback: (...args: any[]) => void) => {
     const listener = (_e: any, ...args: any[]) => callback(...args);

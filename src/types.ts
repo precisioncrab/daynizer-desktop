@@ -166,6 +166,26 @@ export interface DiscoveredAddressBook {
   ctag: string | null;
 }
 
+/** Built-in sync server status (renderer twin of electron/serverManager.ts's
+ *  ServerStatus). One base URL serves both CalDAV and CardDAV. */
+export interface ServerStatus {
+  feature: boolean;        // compiled-in
+  enabled: boolean;        // user wants it running
+  available: boolean;      // frozen binary present for this platform
+  running: boolean;        // spawned + health-checked
+  configured: boolean;     // first-run setup card dismissed
+  port: number | null;     // port bound right now
+  preferredPort: number;   // port the user asked for
+  baseUrl: string | null;  // LAN URL — give to phones / other apps
+  localUrl: string | null; // 127.0.0.1 URL — for a client on THIS machine
+  username: string;
+  error: string | null;
+  note: string | null;     // non-fatal note (e.g. preferred port was taken)
+  lastActivity: number | null; // epoch ms of the last request from another device
+  platform: string;        // process.platform — "win32" gates the firewall control
+}
+export interface ServerInfo extends ServerStatus { password: string; }
+
 export const PRIORITY_LABELS: Record<number, string> = {
   0: "None",
   1: "High",
@@ -226,6 +246,9 @@ declare global {
         link: (bookId: string, accountId: string, url: string) => Promise<void>;
         connect: (accountId: string, url: string, displayName: string) => Promise<AddressBook>;
         unlink: (bookId: string) => Promise<void>;
+        /** Create a new address book ON THE SERVER (MKCOL) + link a local book.
+         *  Absent in the add-on shim -- optional-chain. */
+        createServer?: (accountId: string, name: string) => Promise<AddressBook>;
       };
       /** Absent in the Thunderbird add-on shim -- always optional-chain. */
       maintenance?: {
@@ -273,6 +296,25 @@ declare global {
         sync: (accountId: string) => Promise<{ listId: string; pulled: number; pushed: number; errors: string[] }[]>;
         createServerCalendar: (accountId: string, name: string) => Promise<TaskList>;
         deleteServerCalendar: (accountId: string, calendarUrl: string) => Promise<void>;
+        /** Auto-create default collections (Calendar / Contacts) on a server
+         *  that has none yet. No-op where collections already exist. Absent in
+         *  the add-on shim -- optional-chain. */
+        bootstrapDefaults?: (accountId: string) => Promise<{ calendar?: string; addressBook?: string }>;
+      };
+      /** Built-in sync server (Electron desktop only; absent in the add-on shim
+       *  -- always optional-chain). One base URL serves CalDAV + CardDAV. */
+      server?: {
+        status: () => Promise<ServerStatus>;
+        info: () => Promise<ServerInfo>;
+        start: () => Promise<ServerStatus>;
+        stop: () => Promise<ServerStatus>;
+        restart: () => Promise<ServerStatus>;
+        setEnabled: (on: boolean) => Promise<ServerStatus>;
+        setPort: (port: number) => Promise<ServerStatus>;
+        setCredentials: (opts: { username?: string; password?: string }) => Promise<ServerStatus>;
+        regeneratePassword: () => Promise<ServerInfo>;
+        markConfigured: () => Promise<ServerStatus>;
+        openFirewall: () => Promise<{ ok: boolean; message: string }>;
       };
       on: (channel: string, callback: (...args: any[]) => void) => () => void;
     };

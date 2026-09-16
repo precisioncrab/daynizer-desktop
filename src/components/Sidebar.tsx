@@ -2,6 +2,19 @@ import React, { useState, useEffect, useRef } from "react";
 import { TaskList, Task } from "../types";
 import ContextMenu from "./ContextMenu";
 
+/** Swatches for list/calendar colors — used for the create-form picker and the
+ *  right-click "Change colour" menu. Kept in step with the DB rotation palette. */
+const PALETTE: { name: string; color: string }[] = [
+  { name: "Blue", color: "#4a90d9" },
+  { name: "Red", color: "#e5484d" },
+  { name: "Amber", color: "#e8a23d" },
+  { name: "Green", color: "#3fb950" },
+  { name: "Purple", color: "#a371f7" },
+  { name: "Pink", color: "#db61a2" },
+  { name: "Gray", color: "#6f7378" }
+];
+const randomSwatch = () => PALETTE[Math.floor(Math.random() * PALETTE.length)].color;
+
 export interface SidebarSmartFilter {
   id: string;
   name: string;
@@ -13,8 +26,9 @@ interface Props {
   accounts: { id: string; label: string }[];
   selectedListId: string | "all" | "today";
   onSelect: (id: string | "all" | "today") => void;
-  onCreateList: (name: string) => void;
-  onCreateServerList: (name: string, accountId: string) => Promise<void>;
+  onCreateList: (name: string, color?: string) => void;
+  onCreateServerList: (name: string, accountId: string, color?: string) => Promise<void>;
+  onSetListColor: (id: string, color: string) => void;
   onOpenSettings: () => void;
   onSync: () => void;
   syncing: boolean;
@@ -46,6 +60,7 @@ export default function Sidebar({
   onSelect,
   onCreateList,
   onCreateServerList,
+  onSetListColor,
   onOpenSettings,
   onSync,
   syncing,
@@ -67,6 +82,7 @@ export default function Sidebar({
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
+  const [newColor, setNewColor] = useState(randomSwatch()); // color for the list being created
   const [listTarget, setListTarget] = useState("local"); // "local" or accountId
   const [listMenu, setListMenu] = useState<{ x: number; y: number; list: TaskList } | null>(null);
   // Inline rename: the list whose name is being edited, plus the working text.
@@ -96,6 +112,7 @@ export default function Sidebar({
   function openAddList() {
     setListTarget(accounts.length > 0 ? accounts[0].id : "local");
     setName("");
+    setNewColor(randomSwatch());
     setAdding(true);
   }
 
@@ -131,14 +148,15 @@ export default function Sidebar({
     // Close and clear the form IMMEDIATELY -- creating a server list awaits a
     // round-trip + sync (seconds), and leaving the form open + filled let an
     // impatient second click create a duplicate calendar. Reset first, then work.
+    const color = newColor;
     setName("");
     setListTarget("local");
     setAdding(false);
     if (trimmed) {
       if (target !== "local") {
-        await onCreateServerList(trimmed, target);
+        await onCreateServerList(trimmed, target, color);
       } else {
-        onCreateList(trimmed);
+        onCreateList(trimmed, color);
       }
     }
   }
@@ -226,6 +244,21 @@ export default function Sidebar({
               }}
               onBlur={accounts.length === 0 ? submitNewList : undefined}
             />
+            <div style={{ display: "flex", gap: 5, marginTop: 6, alignItems: "center" }}>
+              {PALETTE.map((p) => (
+                <button
+                  key={p.color}
+                  type="button"
+                  title={p.name}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setNewColor(p.color)}
+                  style={{
+                    width: 16, height: 16, borderRadius: "50%", background: p.color, cursor: "pointer", padding: 0,
+                    border: newColor === p.color ? "2px solid #fff" : "2px solid transparent"
+                  }}
+                />
+              ))}
+            </div>
             {accounts.length > 0 && (
               <div style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center" }}>
                 <select
@@ -243,7 +276,7 @@ export default function Sidebar({
             )}
           </div>
         ) : (
-          <button className="sidebar-add" onClick={openAddList}>+ New list</button>
+          <button className="sidebar-add" onClick={openAddList}>+ New list/calendar</button>
         )}
       </div>
       <div className="sidebar-footer">
@@ -273,6 +306,10 @@ export default function Sidebar({
               label: "Rename",
               onClick: () => { setEditingListId(listMenu.list.id); setEditName(listMenu.list.name); }
             },
+            ...PALETTE.map((p) => ({
+              label: `● ${p.name}`,
+              onClick: () => onSetListColor(listMenu.list.id, p.color)
+            })),
             {
               label: "Export to .ics…",
               onClick: () => onExportList(listMenu.list.id)

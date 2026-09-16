@@ -151,8 +151,36 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; taskId: string } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsPane, setSettingsPane] = useState<"accounts" | "calendars" | "contacts" | "sync" | "server" | "notifications" | undefined>(undefined);
   const [showAbout, setShowAbout] = useState(false);
   const [showImport, setShowImport] = useState(false);
+
+  // First-run cue for the built-in sync server: if it's enabled but the setup
+  // card hasn't been dismissed yet, open Settings to the Sync Server pane so the
+  // user sees (and can change) the auto-generated username/password once.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await window.api.server?.status();
+        if (!cancelled && s && s.feature && s.enabled && !s.configured) {
+          setSettingsPane("server");
+          setShowSettings(true);
+        }
+      } catch { /* no server IPC (add-on) — skip */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // The main process auto-creates/updates Daynizer's own account against the
+  // built-in server; refresh lists/accounts/contacts when it signals it's ready
+  // so the account and its default Calendar/Contacts appear without a restart.
+  useEffect(() => {
+    if (!window.api.server) return;
+    return window.api.on("server:accountReady", () => {
+      loadLists(); loadTasks(); loadAccounts(); loadAddressBooks(); loadContacts();
+    });
+  }, []);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [forceAddingList, setForceAddingList] = useState(false);
@@ -549,9 +577,41 @@ export default function App() {
     scheduleDirtySync();
   }
 
-  async function createAddressBook(name: string) {
-    await window.api.addressbooks?.create(name);
+  async function createAddressBook(name: string, color?: string) {
+    await window.api.addressbooks?.create(name, color);
     await loadAddressBooks();
+  }
+
+  async function setBookColor(id: string, color: string) {
+    await window.api.addressbooks?.update(id, { color } as Partial<AddressBook>);
+    await loadAddressBooks();
+  }
+
+  async function renameAddressBook(id: string, name: string) {
+    // The main process pushes the new name to the server (PROPPATCH) when the
+    // book is linked, mirroring list rename; here we just persist + reload.
+    await window.api.addressbooks?.update(id, { name } as Partial<AddressBook>);
+    await loadAddressBooks();
+  }
+
+  async function createServerBook(name: string, accountId: string, color?: string) {
+    // Fall back to a local book if this build's bridge has no server-create
+    // (e.g. the Thunderbird add-on shim), so the choice never silently no-ops.
+    if (!window.api.addressbooks?.createServer) { await createAddressBook(name, color); return; }
+    try {
+      const newBook: any = await window.api.addressbooks.createServer(accountId, name);
+      // Stamp the chosen color locally (the server book carries none of its own).
+      if (color && newBook?.id) await window.api.addressbooks.update(newBook.id, { color } as Partial<AddressBook>);
+      await loadAddressBooks();
+      setSyncMsg(`Created "${name}" on server — syncing…`);
+      await syncAccountNow(accountId);
+      await loadContacts();
+      setSyncMsg(`Created "${name}" on server.`);
+      setTimeout(() => setSyncMsg(null), 4000);
+    } catch (err: any) {
+      setSyncMsg(`Server address book creation failed: ${err?.message || err}`);
+      setTimeout(() => setSyncMsg(null), 6000);
+    }
   }
 
   async function disconnectBook(b: AddressBook) {
@@ -804,14 +864,17 @@ export default function App() {
     lastActionRef.current = async () => { await window.api.tasks.delete(t.id, true); };
   }
 
-  async function createList(name: string) {
-    await window.api.lists.create(name);
+  async function createList(name: string, color?: string) {
+    await window.api.lists.create(name, color);
     await loadLists();
   }
 
-  async function createServerList(name: string, accountId: string) {
+  async function createServerList(name: string, accountId: string, color?: string) {
     try {
       const newList = await window.api.accounts.createServerCalendar(accountId, name);
+      // The server collection has no color of its own; stamp the chosen (or a
+      // varied auto) color onto the local list so it isn't just another blue one.
+      if (color) await window.api.lists.update(newList.id, { color } as Partial<TaskList>);
       await loadLists();
       setScope(newList.id);
       setSyncMsg(`Created "${name}" on server — syncing…`);
@@ -822,6 +885,11 @@ export default function App() {
       setSyncMsg(`Server list creation failed: ${err?.message || err}`);
       setTimeout(() => setSyncMsg(null), 6000);
     }
+  }
+
+  async function setListColor(id: string, color: string) {
+    await window.api.lists.update(id, { color } as Partial<TaskList>);
+    await loadLists();
   }
 
   // "Delete": remove the list and its tasks from Daynizer, AND from the server
@@ -978,9 +1046,13 @@ export default function App() {
         <ContactsSidebar
           addressBooks={addressBooks}
           contacts={contacts}
+          accounts={accounts.map((a) => ({ id: a.id, label: a.label }))}
           filter={contactFilter}
           onSelect={setContactFilter}
           onCreateBook={createAddressBook}
+          onCreateServerBook={createServerBook}
+          onSetBookColor={setBookColor}
+          onRenameBook={renameAddressBook}
           labelColors={labelColors}
           onSetLabelColor={setLabelColor}
           onDeleteLabel={deleteLabel}
@@ -1001,6 +1073,7 @@ export default function App() {
         onSelect={setScope}
         onCreateList={createList}
         onCreateServerList={createServerList}
+        onSetListColor={setListColor}
         onDeleteList={deleteList}
         onRemoveList={removeList}
         onRenameList={renameList}
@@ -1264,7 +1337,8 @@ export default function App() {
         <SettingsModal
           lists={lists}
           addressBooks={addressBooks}
-          onClose={() => setShowSettings(false)}
+          initialPane={settingsPane}
+          onClose={() => { setShowSettings(false); setSettingsPane(undefined); }}
           onListsChanged={() => { loadLists(); loadTasks(); loadAccounts(); loadAddressBooks(); loadContacts(); }}
           onSyncAccount={syncAccountNow}
           onReviewDuplicates={() => { setShowSettings(false); setMainView("contacts"); setContactsMode("duplicates"); }}

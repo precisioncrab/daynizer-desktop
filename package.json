@@ -1,6 +1,6 @@
 {
   "name": "tasks-desktop",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A non-touch, mouse/keyboard-first desktop app with Tasks.org-compatible features and CalDAV sync.",
   "author": "Arlis <remindful_boogeyman454@simplelogin.com>",
   "main": "dist-electron/main.js",
@@ -15,23 +15,35 @@
     "start": "npm run build && electron .",
     "package": "npm run build && electron-builder",
     "package:exp": "npm run build && electron-builder --publish never -c.appId=com.precisioncrab.daynizer.experimental -c.productName=\"Daynizer (Experimental)\" -c.win.icon=build/icon-exp.ico -c.win.artifactName=Daynizer-Experimental-Setup-${version}.${ext}",
+    "package:exp:linux": "npm run build && electron-builder --publish never --linux deb -c.appId=com.precisioncrab.daynizer.experimental -c.productName=Daynizer-Experimental -c.linux.executableName=daynizer-experimental -c.deb.artifactName='daynizer-experimental_${version}_${arch}.${ext}'",
+    "package:exp:linux:flatpak": "npm run build && electron-builder --publish never --linux flatpak -c.appId=com.precisioncrab.daynizer.experimental -c.productName=Daynizer-Experimental -c.linux.executableName=daynizer-experimental -c.flatpak.artifactName='daynizer-experimental_${version}_${arch}.${ext}'",
+    "package:exp:linux:appimage": "npm run build && electron-builder --publish never --linux appimage -c.appId=com.precisioncrab.daynizer.experimental -c.productName=Daynizer-Experimental -c.linux.executableName=daynizer-experimental -c.appImage.artifactName='daynizer-experimental_${version}_${arch}.${ext}'",
+    "package:exp:linux:arm64": "npm run build && electron-builder --publish never --linux deb --arm64 -c.appId=com.precisioncrab.daynizer.experimental -c.productName=Daynizer-Experimental -c.linux.executableName=daynizer-experimental -c.deb.artifactName='daynizer-experimental_${version}_${arch}.${ext}'",
+    "package:exp:mac": "npm run build && electron-builder --publish never --mac dmg --arm64 -c.appId=com.precisioncrab.daynizer.experimental -c.productName=\"Daynizer (Experimental)\" -c.dmg.artifactName='Daynizer-Experimental-${version}-${arch}.${ext}'",
+    "package:exp:mac:x64": "npm run build && electron-builder --publish never --mac dmg --x64 -c.appId=com.precisioncrab.daynizer.experimental -c.productName=\"Daynizer (Experimental)\" -c.dmg.artifactName='Daynizer-Experimental-${version}-${arch}.${ext}'",
     "build:addon": "vite build --config thunderbird-addon/vite.config.ts",
     "package:addon": "npm run build:addon && powershell -NoProfile -Command \"Compress-Archive -Path dist-addon/* -DestinationPath daynizer-addon.zip -Force; Move-Item -Force daynizer-addon.zip daynizer-addon.xpi\"",
     "dev:addon": "vite --config thunderbird-addon/vite.config.ts"
   },
   "dependencies": {
     "@event-calendar/core": "^5.9.0",
+    "bcryptjs": "^2.4.3",
     "electron-updater": "^6.3.9",
     "ical.js": "^2.1.0",
     "nanoid": "^5.0.7",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "rrule": "^2.8.1",
+    "selfsigned": "^2.4.1",
     "sql.js": "^1.11.0",
     "tsdav": "^2.1.3"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "latest",
+    "@types/qrcode": "^1.5.5",
+    "@types/selfsigned": "^2.0.1",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
@@ -57,6 +69,7 @@
       "owner": "precisioncrab",
       "repo": "daynizer-desktop"
     },
+    "afterSign": "build/afterSignMac.cjs",
     "mac": {
       "target": [
         {
@@ -66,13 +79,25 @@
             "x64"
           ]
         }
+      ],
+      "extraResources": [
+        {
+          "from": "server/dist/daynizer-radicale",
+          "to": "daynizer-radicale"
+        }
       ]
     },
     "icon": "build/icon",
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "extraResources": [
+        {
+          "from": "server/dist/daynizer-radicale",
+          "to": "daynizer-radicale"
+        }
+      ]
     },
     "linux": {
       "target": [
@@ -81,7 +106,13 @@
       ],
       "icon": "build/icons",
       "category": "Office",
-      "executableName": "daynizer"
+      "executableName": "daynizer",
+      "extraResources": [
+        {
+          "from": "server/dist/daynizer-radicale",
+          "to": "daynizer-radicale"
+        }
+      ]
     },
     "deb": {
       "artifactName": "daynizer_${version}_${arch}.${ext}"
