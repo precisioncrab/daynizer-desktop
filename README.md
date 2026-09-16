@@ -122,7 +122,7 @@ Both devices must be on the **same network**. The server uses port **5232** by d
 pane); if it's ever in use, Daynizer picks another and tells you. On Windows there's a one-click button to
 allow it through the firewall the first time. Step-by-step instructions for each app are in **Settings →
 Sync Server → How to connect**, and online at
-[precisioncrab.com/daynizer/connect](https://precisioncrab.com/daynizer/connect/).
+[precisioncrab.com/apps/daynizer/connect](https://precisioncrab.com/apps/daynizer/connect/).
 
 > **Secure by default.** The built-in server uses **HTTPS with a self-signed certificate**, so Tasks.org's
 > direct CalDAV — which refuses plain HTTP on modern Android — connects over `caldavs://`. Your client
