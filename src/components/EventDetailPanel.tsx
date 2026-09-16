@@ -3,6 +3,7 @@ import { CalendarEvent, TaskList } from "../types";
 import RemindersEditor, { PendingReminder } from "./RemindersEditor";
 import { RECURRING_PER_OCCURRENCE } from "../featureFlags";
 import AutoGrowTextarea from "./AutoGrowTextarea";
+import { parseStored } from "../dateFormat";
 
 type Scope = "all" | "this" | "following";
 
@@ -73,6 +74,21 @@ const RECUR_PRESETS: { label: string; value: string | null }[] = [
   { label: "Yearly", value: "FREQ=YEARLY" }
 ];
 
+// "Monthly on a specific weekday" (e.g. "the first Saturday of every month") is
+// just FREQ=MONTHLY with a single ordinal BYDAY -- valid RFC5545 that the app's
+// rrule-based rendering/sync already understands via Custom RRULE. This is a
+// friendlier front end for that exact same string, not a new recurrence type.
+const WEEKDAY_CODES = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"] as const;
+const WEEKDAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTHLY_POSITIONS: { label: string; value: string }[] = [
+  { label: "First", value: "1" },
+  { label: "Second", value: "2" },
+  { label: "Third", value: "3" },
+  { label: "Fourth", value: "4" },
+  { label: "Last", value: "-1" }
+];
+const MONTHLY_WEEKDAY_RE = /^FREQ=MONTHLY;BYDAY=(-?\d{1,2})(SU|MO|TU|WE|TH|FR|SA)$/;
+
 export default function EventDetailPanel({ event, lists, allCategories = [], occurrenceStart = null, onUpdate, onDelete, onUpdateScoped, onDeleteScoped, autoFocusTitle, onTitleFocused }: Props) {
   const titleRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
@@ -86,6 +102,8 @@ export default function EventDetailPanel({ event, lists, allCategories = [], occ
   const [tags, setTags] = useState("");
   const [recurMode, setRecurMode] = useState<string>("Does not repeat");
   const [customRecur, setCustomRecur] = useState("");
+  const [monthlyPos, setMonthlyPos] = useState("1");
+  const [monthlyWeekday, setMonthlyWeekday] = useState<string>(WEEKDAY_CODES[0]);
   const [reminders, setReminders] = useState<PendingReminder[]>([]);
   const [dirty, setDirty] = useState(false);
   // When a recurring occurrence is saved/deleted, we ask This / Following / All
@@ -102,9 +120,19 @@ export default function EventDetailPanel({ event, lists, allCategories = [], occ
     setEndDate(ed.date); setEndTime(ed.time);
     setNotes(event?.notes ?? "");
     setTags(event?.tags ?? "");
-    const preset = RECUR_PRESETS.find((p) => p.value === (event?.recurrence ?? null));
-    setRecurMode(preset ? preset.label : event?.recurrence ? "custom" : RECUR_PRESETS[0].label);
-    setCustomRecur(event?.recurrence ?? "");
+    const rec = event?.recurrence ?? null;
+    const preset = RECUR_PRESETS.find((p) => p.value === rec);
+    const monthlyMatch = rec ? rec.match(MONTHLY_WEEKDAY_RE) : null;
+    if (preset) {
+      setRecurMode(preset.label);
+    } else if (monthlyMatch) {
+      setRecurMode("monthly-weekday");
+      setMonthlyPos(monthlyMatch[1]);
+      setMonthlyWeekday(monthlyMatch[2]);
+    } else {
+      setRecurMode(rec ? "custom" : RECUR_PRESETS[0].label);
+    }
+    setCustomRecur(rec ?? "");
     setDirty(false);
     if (event?.id) {
       window.api.reminders?.for("event", event.id).then((rs) => {
@@ -149,7 +177,10 @@ export default function EventDetailPanel({ event, lists, allCategories = [], occ
   function buildPatch(): Partial<CalendarEvent> | null {
     const start = joinDateTime(startDate, startTime);
     if (!start) return null; // start date is required
-    const recurrence = recurMode === "custom" ? (customRecur || null) : RECUR_PRESETS.find((p) => p.label === recurMode)?.value ?? null;
+    const recurrence =
+      recurMode === "custom" ? (customRecur || null)
+      : recurMode === "monthly-weekday" ? `FREQ=MONTHLY;BYDAY=${monthlyPos}${monthlyWeekday}`
+      : RECUR_PRESETS.find((p) => p.label === recurMode)?.value ?? null;
     return {
       title: title.trim() || event!.title,
       list_id: listId,
@@ -281,11 +312,37 @@ export default function EventDetailPanel({ event, lists, allCategories = [], occ
       <label>Repeats</label>
       <select
         value={recurMode}
-        onChange={(e) => { setRecurMode(e.target.value); markDirty(); }}
+        onChange={(e) => {
+          const mode = e.target.value;
+          setRecurMode(mode);
+          markDirty();
+          // Switching into "monthly on a weekday" fresh: default the position/
+          // weekday from the current start date (e.g. a Saturday-the-6th start
+          // defaults to "First Saturday") rather than leaving it at 1st/Sunday.
+          if (mode === "monthly-weekday") {
+            const d = parseStored(startDate);
+            if (d) {
+              setMonthlyWeekday(WEEKDAY_CODES[d.getDay()]);
+              const pos = Math.ceil(d.getDate() / 7);
+              setMonthlyPos(pos >= 5 ? "-1" : String(pos));
+            }
+          }
+        }}
       >
         {RECUR_PRESETS.map((p) => <option key={p.label} value={p.label}>{p.label}</option>)}
+        <option value="monthly-weekday">Monthly (specific weekday)</option>
         <option value="custom">Custom RRULE…</option>
       </select>
+      {recurMode === "monthly-weekday" && (
+        <div className="detail-row">
+          <select value={monthlyPos} onChange={(e) => { setMonthlyPos(e.target.value); markDirty(); }}>
+            {MONTHLY_POSITIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
+          <select value={monthlyWeekday} onChange={(e) => { setMonthlyWeekday(e.target.value); markDirty(); }}>
+            {WEEKDAY_CODES.map((code, i) => <option key={code} value={code}>{WEEKDAY_LABELS[i]}</option>)}
+          </select>
+        </div>
+      )}
       {recurMode === "custom" && (
         <input
           type="text"
