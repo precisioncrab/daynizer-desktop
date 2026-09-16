@@ -7,13 +7,13 @@ adds a full calendar and contacts manager on top — all two-way syncable with t
 Tasks.org-compatible setup you already use on mobile (DAVx5 / Nextcloud / Synology / any
 CalDAV+CardDAV server). Built with Electron + React + TypeScript.
 
-> **Beta software.** Daynizer is still in active development and hasn't reached a stable 1.0. The
-> current **experimental preview is v0.7.0** — it adds the new **built-in sync server** (see below) and
-> is available today for **Windows, Linux, and macOS (Apple Silicon)** (an Intel Mac build is on the
-> way). It's an unsigned
-> pre-release (Windows SmartScreen will warn; click *More info → Run anyway*). Stable cross-platform
-> builds are **v0.6.0**. Expect rough edges, and keep a backup of anything important — while sync is
-> two-way, don't rely on this as the only copy of your data yet. Bug reports are welcome on the
+> **⭐ New in v0.8.0 — a built-in sync server.** Don't have a CalDAV/CardDAV server? Daynizer can now
+> run its own — **on by default, but fully optional** (turn it off in **Settings → Sync Server** any
+> time and point Daynizer at your own server instead). See **Built-in sync server** below.
+
+> **Beta software (v0.8.0).** Daynizer is still in active development and hasn't reached a stable
+> 1.0. Expect rough edges, and keep a backup of anything important — while sync is two-way, don't
+> rely on this as the only copy of your data yet. Bug reports are welcome on the
 > [issue tracker](https://github.com/precisioncrab/daynizer-desktop/issues).
 
 ## What Daynizer does
@@ -43,13 +43,6 @@ The Windows app also **updates itself**: it checks this repo's releases on start
 versions in the background, and offers "Restart to update" in Settings, so you only download the
 installer once. To remove it: Windows Settings → Apps → Installed apps → Daynizer → Uninstall.
 
-> **Want the built-in sync server?** Grab the experimental preview
-> `Daynizer-Experimental-Setup-0.7.0.exe` from the pre-release on the
-> [Releases page](https://github.com/precisioncrab/daynizer-desktop/releases). It installs alongside the
-> stable app as **Daynizer (Experimental)** (its own orange icon and settings), so you can try it without
-> touching your stable install. It's unsigned, so Windows SmartScreen warns once — click *More info → Run
-> anyway*.
-
 ### Debian / Ubuntu (.deb)
 
 ```bash
@@ -59,12 +52,6 @@ sudo apt install ./tasks-desktop_x.y.z_amd64.deb
 `apt` resolves the dependencies automatically (plain `dpkg -i` works too, followed by
 `sudo apt -f install` if it complains). Launch from your app menu, or run `daynizer`.
 Update by installing a newer .deb the same way; remove with `sudo apt remove daynizer`.
-
-> **Want the built-in sync server?** Grab the experimental preview
-> `daynizer-experimental_0.7.0_amd64.deb` from the pre-release on the
-> [Releases page](https://github.com/precisioncrab/daynizer-desktop/releases). It installs alongside
-> the stable app (own data folder, own icon, launches as `daynizer-experimental`), so you can try it
-> without touching your stable install. It's unsigned but not Gatekeeper/SmartScreen-blocked on Linux.
 
 ### Flatpak (auto-updating)
 
@@ -102,19 +89,13 @@ right-click (or Ctrl-click) the app in Applications and choose **Open**, then co
 needed once. Update by installing a newer .dmg over the old copy; remove by deleting the app from
 Applications.
 
-> **Want the built-in sync server?** Grab the experimental preview
-> `Daynizer-Experimental-0.7.0-arm64.dmg` from the pre-release on the
-> [Releases page](https://github.com/precisioncrab/daynizer-desktop/releases) — **Apple Silicon only
-> for now**, an Intel (x64) build is on the way. It installs as its own **Daynizer (Experimental).app**
-> (own data folder), so you can try it without touching your stable install. Same Gatekeeper
-> right-click → Open step as above.
-
 ## Built-in sync server (no external server needed)
 
-Don't have a CalDAV/CardDAV server? Daynizer runs its own — **on by default**. It starts a bundled sync
-server in the background, wires *itself* up to it automatically, and gives you one address you can point
-your phone and other computers at — so your tasks, calendar, and contacts sync across your devices with
-no third-party account, no NAS, and no cloud.
+**New in v0.8.0** — the first stable release to include this. Don't have a CalDAV/CardDAV server?
+Daynizer runs its own. It starts a bundled sync server in the background, wires *itself* up to it
+automatically, and gives you one address you can point your phone and other computers at — so your
+tasks, calendar, and contacts sync across your devices with no third-party account, no NAS, and no
+cloud.
 
 **It's optional.** You never have to use the built-in server — turn it off in **Settings → Sync Server**
 and point Daynizer at your own CalDAV/CardDAV server instead (Synology, Nextcloud, Baïkal, Radicale, …;
@@ -134,7 +115,8 @@ other clients, point them at the address shown — the **same address serves bot
 - **iPhone / macOS:** Settings → add an **Advanced CalDAV account** (and a **CardDAV account**) using the
   server address, username, and password.
 - **Thunderbird / another Daynizer:** paste the address and credentials into a new network calendar /
-  address book, or into another Daynizer's **Add account** form.
+  address book, or into another Daynizer's **Add account** form — or use the new **"Have a pairing
+  link?"** field there to fill in the whole form from a copied link in one paste.
 
 Both devices must be on the **same network**. The server uses port **5232** by default (changeable in the
 pane); if it's ever in use, Daynizer picks another and tells you. On Windows there's a one-click button to
@@ -147,12 +129,10 @@ Sync Server → How to connect**, and online at
 > trusts the certificate once, on first connection. It's meant for your **own devices on your own
 > network**; exposing it to the public internet is not recommended.
 
-> **Windows, Linux, and macOS (Apple Silicon) today; Intel Mac is next.** The bundled server ships in
-> the Windows, Linux, and macOS (arm64) experimental builds; an Intel (x64) macOS build is in progress.
-
 The built-in server bundles [Radicale](https://github.com/Kozea/Radicale) (GPLv3) as a separate process —
 see [`server/THIRD-PARTY-LICENSES.md`](server/THIRD-PARTY-LICENSES.md) for the full list of bundled
-components and their licenses.
+components and their licenses. **Not included in the Thunderbird add-on** — the add-on has no server
+component at all, regardless of platform.
 
 ## Connecting a CalDAV / CardDAV server (Synology, Nextcloud, …)
 

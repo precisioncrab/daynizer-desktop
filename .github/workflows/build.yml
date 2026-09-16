@@ -1,35 +1,56 @@
 name: Build and Release
 
+# Builds the real, public, tag-triggered release. As of v0.8.0 this bundles the
+# built-in sync server, which means freezing daynizer-radicale (PyInstaller,
+# can't cross-compile) natively per platform before packaging -- mirrors
+# experimental-build.yml's already-proven per-OS freeze steps. macOS is two
+# separate jobs (not one multi-arch job like before) because the two
+# architectures each need their own native freeze.
+#
+# Known gap: each mac job uploads its own latest-mac.yml (electron-updater's
+# auto-update manifest); whichever job's upload lands last on the release wins,
+# so in-app auto-update may not work correctly for one of the two Mac
+# architectures until this is specifically tested. Manual re-download always
+# works regardless. Not solved here for scope reasons -- worth a follow-up.
+
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to attach rebuilt assets to (tag protection means the real v* tag can't just be moved and re-pushed after a CI-only fix)"
+        required: true
 
 permissions:
   contents: write
 
-jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+env:
+  SERVER_PYTHON_VERSION: "3.12"
+  # Tag-triggered runs infer the tag from the ref that fired them; a manual
+  # dispatch has no such ref, so it must be told explicitly which release to
+  # attach assets to.
+  RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
 
+jobs:
+  windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.SERVER_PYTHON_VERSION }}
 
-      - name: Install Linux packaging dependencies
-        if: runner.os == 'Linux'
+      - name: Freeze daynizer-radicale (Windows)
+        working-directory: server
         run: |
-          sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder
-          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          sudo flatpak install --system -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08 org.electronjs.Electron2.BaseApp//24.08
+          python -m venv .venv
+          .venv\Scripts\python.exe -m pip install -r requirements.txt
+          .venv\Scripts\pyinstaller.exe radicale.spec
 
       - name: Install dependencies
         run: npm install
@@ -42,19 +63,169 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npx electron-builder --publish never
 
-      - name: List release files
-        run: ls release/
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  linux:
+    # ubuntu-22.04, not -latest: an older glibc here is more broadly compatible
+    # with users' systems (see DAYNIZER-SERVER-LINUX-MACOS-PLAN.md's note).
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.SERVER_PYTHON_VERSION }}
+
+      - name: Install Linux packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install --system -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08 org.electronjs.Electron2.BaseApp//24.08
+
+      - name: Freeze daynizer-radicale (Linux)
+        working-directory: server
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
+          .venv/bin/pyinstaller radicale.spec
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Package
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npx electron-builder --publish never
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE_NOTES.md
+          tag_name: ${{ env.RELEASE_TAG }}
           files: |
-            release/*.exe
-            release/*.exe.blockmap
-            release/latest*.yml
             release/*.deb
             release/*.flatpak
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  mac-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.SERVER_PYTHON_VERSION }}
+
+      - name: Freeze daynizer-radicale (macOS arm64)
+        working-directory: server
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
+          .venv/bin/pyinstaller radicale.spec
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Package (arm64)
+        # No CSC_LINK secret configured, so electron-builder ad-hoc signs and
+        # build/afterSignMac.cjs reseals Contents/Resources afterward -- see
+        # that file's comment. Required or the app is silently killed at launch.
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npx electron-builder --mac dmg --arm64 --publish never
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: |
+            release/*arm64.dmg
+            release/latest-mac.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  mac-x64:
+    # Intel Macs are gone from GitHub-hosted runners as of late 2025; this is
+    # the replacement label (available through Aug 2027) -- do not swap back
+    # to macos-13, it no longer exists.
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.SERVER_PYTHON_VERSION }}
+
+      - name: Freeze daynizer-radicale (macOS x64)
+        working-directory: server
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
+          .venv/bin/pyinstaller radicale.spec
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Disable Spotlight indexing
+        run: sudo mdutil -a -i off
+
+      - name: Package (x64)
+        # `hdiutil detach ... Resource busy` on the freshly-built DMG is a
+        # known, long-standing, unresolved electron-builder issue specific to
+        # macOS Sequoia (15.x) -- github.com/electron-userland/electron-builder
+        # issue #7137 and related. electron-builder's own internal retry (6
+        # attempts over ~20s, same disk-attach state) isn't enough; community
+        # reports say a full fresh invocation with a real delay between
+        # attempts is what actually clears it, sometimes needing several.
+        # Reproduced 3/3 times on this runner before this loop was added.
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "Package (x64) attempt $attempt/5"
+            npx electron-builder --mac dmg --x64 --publish never && exit 0
+            echo "Attempt $attempt failed, waiting 30s before retrying..."
+            sleep 30
+          done
+          echo "All 5 attempts failed."
+          exit 1
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: |
             release/*.dmg
+            !release/*arm64.dmg
+            release/latest-mac.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

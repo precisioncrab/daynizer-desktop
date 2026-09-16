@@ -32,10 +32,13 @@ import bcrypt from "bcryptjs";
 import selfsigned from "selfsigned";
 import { settingsAll, settingSet } from "./db.js";
 
-/** Master switch for the built-in server. OFF until B2/B3 are proven end-to-end.
- *  Flip to true, rebuild, and test one slice at a time (see the plan).
- *  TEMPORARILY ON for B2/B3 testing (2026-09-12) — set back to false before cutting
- *  any release until the server work is signed off. */
+/** Master switch for the built-in server. ON as of v0.8.0 (2026-09-16) — the
+ *  first stable release to ship it, on by default but always toggleable off
+ *  in Settings → Sync Server. v0.7.0 shipped with this off (server code
+ *  present but dormant); see that release's package.json for the paired
+ *  extraResources change this depends on. The Thunderbird add-on never
+ *  bundles the server at all regardless of this flag — it has no equivalent
+ *  of this file. */
 export const SERVER_BUILTIN = true;
 
 // ---- persisted settings keys (stored in the same settings table as the rest) ----
