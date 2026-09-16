@@ -9,12 +9,13 @@ CalDAV+CardDAV server). Built with Electron + React + TypeScript.
 
 > **⭐ New — built-in sync server (experimental preview).** Daynizer can now run its **own**
 > CalDAV/CardDAV sync server, so your tasks, calendar, and contacts sync across your devices with no
-> third-party account, NAS, or cloud. It's an early preview (v0.7.0) for **Windows and Linux** (macOS is
-> on the way): download **`Daynizer-Experimental-Setup-0.7.0.exe`** or
-> **`daynizer-experimental_0.7.0_amd64.deb`** from the
+> third-party account, NAS, or cloud. It's an early preview (v0.7.0) for **Windows, Linux, and macOS
+> (Apple Silicon)** (Intel Mac is on the way): download **`Daynizer-Experimental-Setup-0.7.0.exe`**,
+> **`daynizer-experimental_0.7.0_amd64.deb`**, or **`Daynizer-Experimental-0.7.0-arm64.dmg`** from the
 > [latest pre-release](https://github.com/precisioncrab/daynizer-desktop/releases) — it installs
-> alongside the stable app with its own data, and the Windows build is unsigned, so Windows
-> SmartScreen warns once (*More info → Run anyway*).
+> alongside the stable app with its own data. The Windows build is unsigned, so Windows SmartScreen
+> warns once (*More info → Run anyway*), and the macOS build needs a right-click → Open past
+> Gatekeeper the first time.
 
 > **Beta software (v0.6.0).** Daynizer is still in active development and hasn't reached a stable
 > 1.0. Expect rough edges, and keep a backup of anything important — while sync is two-way, don't
