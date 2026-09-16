@@ -23,7 +23,7 @@ export default function AboutModal({ onClose }: { onClose: () => void }) {
         <h2>Daynizer</h2>
         <div className="about-version">{version ? `Version ${version}` : "Version unknown"}</div>
         <div className="about-license">
-          <p>Copyright © 2026 Arlis</p>
+          <p>Copyright © 2026 Precision Crab</p>
           <p>
             This program is free software: you can redistribute it and/or modify it
             under the terms of the GNU General Public License as published by the

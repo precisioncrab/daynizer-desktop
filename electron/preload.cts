@@ -40,7 +40,8 @@ const api = {
     link: (bookId: string, accountId: string, url: string) => ipcRenderer.invoke("addressbooks:link", bookId, accountId, url),
     connect: (accountId: string, url: string, displayName: string) => ipcRenderer.invoke("addressbooks:connect", accountId, url, displayName),
     unlink: (bookId: string) => ipcRenderer.invoke("addressbooks:unlink", bookId),
-    createServer: (accountId: string, name: string) => ipcRenderer.invoke("addressbooks:createServer", accountId, name)
+    createServer: (accountId: string, name: string) => ipcRenderer.invoke("addressbooks:createServer", accountId, name),
+    deleteServer: (accountId: string, addressBookUrl: string) => ipcRenderer.invoke("addressbooks:deleteServer", accountId, addressBookUrl)
   },
   maintenance: {
     dedupe: (dryRun?: boolean) => ipcRenderer.invoke("maintenance:dedupe", dryRun)

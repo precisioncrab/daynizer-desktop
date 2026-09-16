@@ -1,3 +1,15 @@
+## Unreleased (staged on `experimental` since v0.8.1, no version number assigned)
+
+- **Deleting an address book now also removes it from the server**, when the book is linked to one
+  (matching how deleting a calendar/task list already worked). If the server refuses the collection
+  delete (some DAViCal/Synology setups return 405), the book is still removed here and you get a
+  specific message saying the server copy is still there, instead of a generic warning that always
+  showed up before regardless of whether a server was even involved.
+- Installers and the About dialog now say "Precision Crab" instead of "Arlis" for the
+  publisher/copyright line.
+
+---
+
 Daynizer v0.8.1
 
 Changes since v0.8.0. Daynizer remains beta, pre-1.0 — keep a backup of anything important.
