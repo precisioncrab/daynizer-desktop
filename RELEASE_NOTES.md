@@ -1,4 +1,6 @@
-## Unreleased (staged on `experimental` since v0.8.1, no version number assigned)
+Daynizer v0.8.2
+
+Changes since v0.8.1. Daynizer remains beta, pre-1.0 — keep a backup of anything important.
 
 - **Deleting an address book now also removes it from the server**, when the book is linked to one
   (matching how deleting a calendar/task list already worked). If the server refuses the collection
