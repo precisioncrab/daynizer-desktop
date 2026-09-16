@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daynizer standalone server — phone pairing</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    max-width: 640px;
+    margin: 2.5rem auto;
+    padding: 0 1rem 3rem;
+    line-height: 1.5;
+    color: #1a1a1a;
+    background: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { color: #e6e6e6; background: #16181c; }
+    input { background: #24262b; color: #e6e6e6; border-color: #3a3d44; }
+    .card { background: #1d1f24; border-color: #3a3d44; }
+    code, .mono { background: #24262b; }
+  }
+  h1 { font-size: 1.4rem; margin-bottom: 0.2rem; }
+  .sub { color: #767676; font-size: 0.9rem; margin-top: 0; }
+  .card {
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 1.25rem;
+    margin-top: 1.5rem;
+    background: #fafafa;
+  }
+  label { display: block; font-size: 0.85rem; font-weight: 600; margin: 0.9rem 0 0.3rem; }
+  label:first-child { margin-top: 0; }
+  input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem 0.6rem;
+    font-size: 0.95rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+  }
+  .row { display: flex; gap: 0.6rem; align-items: center; margin-top: 0.9rem; }
+  .qr-wrap { display: flex; gap: 1.2rem; align-items: flex-start; flex-wrap: wrap; margin-top: 1.2rem; }
+  #qr { background: #fff; padding: 8px; border-radius: 8px; flex: 0 0 auto; min-height: 216px; min-width: 216px; }
+  #qr img { display: block; }
+  .placeholder { color: #999; font-size: 0.85rem; padding: 1rem; max-width: 180px; }
+  .mono { font-family: ui-monospace, monospace; font-size: 0.85rem; background: #f0f0f0; padding: 0.6rem; border-radius: 6px; word-break: break-all; }
+  button { padding: 0.45rem 0.9rem; font-size: 0.9rem; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; background: #fff; }
+  button:hover { background: #f0f0f0; }
+  .warn {
+    margin-top: 1.5rem;
+    padding: 0.9rem 1rem;
+    border-radius: 8px;
+    background: #fff4e0;
+    border: 1px solid #f0c36d;
+    color: #7a5200;
+    font-size: 0.85rem;
+    line-height: 1.6;
+  }
+  @media (prefers-color-scheme: dark) {
+    .warn { background: #3a2e10; border-color: #6b5420; color: #e8c77a; }
+  }
+  .offline-note { margin-top: 1rem; font-size: 0.8rem; color: #767676; }
+</style>
+</head>
+<body>
+  <h1>Phone pairing — standalone Radicale</h1>
+  <p class="sub">Fill in what you just set up, get a QR code for DAVx5 (Android). This page runs
+  entirely in your browser — nothing typed here is sent anywhere, it only builds a link locally.</p>
+
+  <div class="card">
+    <label for="host">Address (host:port), no scheme — e.g. <code>192.168.1.20:5232</code></label>
+    <input id="host" placeholder="192.168.1.20:5232" autocomplete="off">
+
+    <label for="user">Username</label>
+    <input id="user" autocomplete="off">
+
+    <label for="pass">Password</label>
+    <input id="pass" type="password" autocomplete="off">
+
+    <div class="row">
+      <input type="checkbox" id="tls" checked style="width: auto;">
+      <label for="tls" style="margin: 0; font-weight: 400;">Server uses HTTPS (the Caddy-fronted setup — leave this checked unless you deliberately skipped it)</label>
+    </div>
+
+    <div class="qr-wrap">
+      <div id="qr"><div class="placeholder">QR appears here once host, username and password are filled in.</div></div>
+      <div style="flex: 1; min-width: 200px;">
+        <div class="mono" id="link">—</div>
+        <div class="row">
+          <button id="copyBtn" disabled>Copy pairing link</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="warn">
+    ⚠️ <strong>The link and QR code both carry the password in plain text</strong> — this isn't a
+    reference to the password, it <em>is</em> the password, readable by anyone who sees the image or
+    the text. Scan it straight into DAVx5 and then close this page; don't screenshot the QR, and don't
+    paste the copied link into chat, email, or a notes app (those commonly sync to the cloud or get
+    logged, which can carry the password well outside your LAN without anyone specifically trying to
+    leak it). If you're ever unsure who's seen one, change that user's password
+    (<code>server/standalone/README.md</code> has the steps) — old links stop working once the
+    password changes.
+  </div>
+  <div class="offline-note">
+    No network calls happen on this page — everything (including the QR image) is generated locally by
+    the bundled <code>vendor/qrcode.min.js</code>. Safe to open with no internet connection.
+  </div>
+
+  <script src="./vendor/qrcode.min.js"></script>
+  <script>
+    const hostEl = document.getElementById("host");
+    const userEl = document.getElementById("user");
+    const passEl = document.getElementById("pass");
+    const tlsEl = document.getElementById("tls");
+    const qrEl = document.getElementById("qr");
+    const linkEl = document.getElementById("link");
+    const copyBtn = document.getElementById("copyBtn");
+
+    function buildLink() {
+      const host = hostEl.value.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+      const user = userEl.value.trim();
+      const pass = passEl.value;
+      if (!host || !user || !pass) return null;
+      const scheme = tlsEl.checked ? "caldavs" : "caldav";
+      return `${scheme}://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}/`;
+    }
+
+    function render() {
+      const link = buildLink();
+      if (!link) {
+        qrEl.innerHTML = '<div class="placeholder">QR appears here once host, username and password are filled in.</div>';
+        linkEl.textContent = "—";
+        copyBtn.disabled = true;
+        return;
+      }
+      linkEl.textContent = link;
+      copyBtn.disabled = false;
+      QRCode.toDataURL(link, { width: 200, margin: 1, errorCorrectionLevel: "M" }, (err, url) => {
+        if (err) { qrEl.innerHTML = '<div class="placeholder">Could not generate a QR code for that input.</div>'; return; }
+        qrEl.innerHTML = `<img src="${url}" width="200" height="200" alt="QR code for DAVx5 pairing">`;
+      });
+    }
+
+    [hostEl, userEl, passEl, tlsEl].forEach(el => el.addEventListener("input", render));
+    tlsEl.addEventListener("change", render);
+
+    copyBtn.addEventListener("click", () => {
+      const link = buildLink();
+      if (!link) return;
+      navigator.clipboard.writeText(link).then(() => {
+        copyBtn.textContent = "Copied";
+        setTimeout(() => { copyBtn.textContent = "Copy pairing link"; }, 1500);
+      }).catch(() => {
+        // file:// origins can block the Clipboard API in some browsers -- fall back to a manual select.
+        const range = document.createRange();
+        range.selectNodeContents(linkEl);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        copyBtn.textContent = "Selected — press Ctrl/Cmd+C";
+      });
+    });
+  </script>
+</body>
+</html>
