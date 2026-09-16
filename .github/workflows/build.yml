@@ -17,12 +17,21 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to attach rebuilt assets to (tag protection means the real v* tag can't just be moved and re-pushed after a CI-only fix)"
+        required: true
 
 permissions:
   contents: write
 
 env:
   SERVER_PYTHON_VERSION: "3.12"
+  # Tag-triggered runs infer the tag from the ref that fired them; a manual
+  # dispatch has no such ref, so it must be told explicitly which release to
+  # attach assets to.
+  RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
 
 jobs:
   windows:
@@ -58,6 +67,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE_NOTES.md
+          tag_name: ${{ env.RELEASE_TAG }}
           files: |
             release/*.exe
             release/*.exe.blockmap
@@ -107,6 +117,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE_NOTES.md
+          tag_name: ${{ env.RELEASE_TAG }}
           files: |
             release/*.deb
             release/*.flatpak
@@ -149,6 +160,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE_NOTES.md
+          tag_name: ${{ env.RELEASE_TAG }}
           files: |
             release/*arm64.dmg
             release/latest-mac.yml
@@ -198,6 +210,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE_NOTES.md
+          tag_name: ${{ env.RELEASE_TAG }}
           files: |
             release/*.dmg
             !release/*arm64.dmg
