@@ -103,6 +103,11 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
   }
   // Load when the pane opens; keep status fresh from main-process events (tray).
   useEffect(() => { if (activePane === "server") loadServer(); }, [activePane]);
+  // Also load once on mount, regardless of which pane is open -- window.api.server
+  // is always present (the preload bridge doesn't know the compile-time feature
+  // flag), so this is the only way to learn srv.feature early enough to decide
+  // whether the "Sync Server" tab should even be offered in the sidebar below.
+  useEffect(() => { loadServer(); }, []);
   useEffect(() => {
     if (!window.api.server) return;
     return window.api.on("server:status", (s: ServerStatus) => {
@@ -620,8 +625,11 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
     { id: "contacts", label: "Contacts" },
     { id: "sync", label: "Sync" },
     // Built-in sync server pane: desktop only (the add-on has no server) and only
-    // when the feature is compiled in.
-    ...(window.api.server ? [{ id: "server" as Pane, label: "Sync Server" }] : []),
+    // when the feature is compiled in. window.api.server is always present from
+    // preload (it doesn't know the compile-time flag), so gate on srv.feature —
+    // populated by the eager mount-time loadServer() above — not just its
+    // existence, or this pane would show up even when SERVER_BUILTIN is off.
+    ...(srv?.feature ? [{ id: "server" as Pane, label: "Sync Server" }] : []),
     // The Thunderbird add-on has no settings/reminder subsystem (window.api.settings
     // is undefined there), so hide the empty Notifications & Startup pane for it.
     ...(window.api.settings ? [{ id: "notifications" as Pane, label: "Notifications & Startup" }] : [])

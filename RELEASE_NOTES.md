@@ -1,38 +1,30 @@
-Daynizer v0.7.0 — built-in sync server (experimental preview: Windows, Linux, macOS/Apple Silicon)
+Daynizer v0.7.0
 
-Changes since 0.6.0. This is an early **experimental preview** — Daynizer is still beta. It's an unsigned build: Windows SmartScreen may warn ("unknown publisher"), and macOS Gatekeeper blocks the first launch (right-click → Open). An Intel Mac (x64) build is on the way.
+Changes since v0.6.0. Daynizer remains beta, pre-1.0 — keep a backup of anything important.
 
-## Built-in sync server — new, on by default
+## Sync reliability — subtasks, list moves, and colors
 
-Daynizer can now host its own sync server, so your tasks, calendar, and contacts sync across your devices **without a third-party account** (Synology, Nextcloud, a NAS, or any cloud). It's a bundled, zero-config CalDAV/CardDAV server that Daynizer runs and supervises for you.
+- **Subtasks always stay with their parent's list.** Adding a subtask right after moving its parent no longer strands it on the old list, and moving a task now cascades the change to its whole subtree — already-synced subtasks re-home correctly on the server instead of being left behind.
+- **New tasks push with a stable identifier**, so subtask nesting no longer depends on sync order — a child synced before its parent still nests correctly.
+- **List colour sync is more robust** against a server's address changing mid-session.
 
-- **Optional — you don't have to use it.** It's on out of the box so sync works with zero setup, but you can turn it off in **Settings → Sync Server** any time and point Daynizer at your own CalDAV/CardDAV server instead.
-- **Nothing to configure.** On first run Daynizer creates its own "Built-in server" account with a default Calendar and Contacts, and the server just runs.
-- **Runs in the background.** It starts with Daynizer, keeps running in the tray when you close the window, and can start hidden at login. The tray shows when a device last synced.
-- **Works with any client** — it speaks standard CalDAV/CardDAV, so DAVx5, Tasks.org, Apple Calendar, and Thunderbird all connect to it.
+## Getting started with a brand-new server
 
-## Set up your phone in seconds
+- Create your first list/calendar directly on an **empty** CalDAV server — Daynizer asks the server for your calendar home instead of requiring an existing calendar to derive it from.
+- Create address books on the server the same way, including **renaming** a server-side address book from within Daynizer.
+- A brand-new account **auto-provisions a default Calendar and Contacts** if the server has none; existing servers with data are left untouched.
+- Adding an account no longer freezes the form while Daynizer sets things up in the background.
 
-- **QR pairing.** Settings → Sync Server shows a QR code — scan it with DAVx5 on Android and your phone is connected, then add Tasks.org (or OpenTasks) for the task lists.
-- **Secure by default (HTTPS).** The server uses TLS with a self-signed certificate, so Tasks.org's direct CalDAV — which refuses plain HTTP on modern Android — connects over `caldavs://`. You approve the certificate once.
-- **Windows Firewall helper.** A one-click button opens your firewall so other devices on your Wi-Fi can reach the server.
+## Accounts
 
-## Works with a brand-new / empty server
+- **Add an account faster:** paste a `caldav://user:pass@host/`-style pairing link into the new field on the Add Account form to fill in the CalDAV/CardDAV URL, username, and password in one go — useful with any tool that hands you one (see the standalone-server docs below).
+- Clearer **"+ New list/calendar"** button label, and a sync marker next to server-linked address books when picking one for a contact.
 
-- Create your first list/calendar on an empty server (Daynizer asks the server for your calendar home directly, instead of deriving it from an existing calendar).
-- Create an address book on the server, the same way lists are created.
-- New accounts get a default "Calendar" and "Contacts" automatically when the server has none; existing servers (Synology, Nextcloud, …) are left untouched.
-- A newly added account appears in the "New list → On server" picker right away, and adding an account no longer freezes the form while it sets up.
+## Self-hosting docs
 
-## Lists, subtasks & colors
-
-- **List colors** — a rotating palette, a color picker when creating a list, and right-click recolor; the color syncs to the server (and other clients) over CalDAV.
-- **Subtasks stay with their parent's list.** Moving a task to another list now moves its subtasks with it, and adding subtasks right after changing a task's list no longer strands them — so parent/subtask nesting stays correct in Tasks.org and other clients.
-- **Rename an address book** (right-click → Rename; the new name is pushed to the server for synced books).
-- Clearer **"New list/calendar"** button label, and a ⇄ sync marker next to server-synced books in a contact's address-book picker.
+- New [`server/standalone/`](https://github.com/precisioncrab/daynizer-desktop/tree/main/server/standalone) — a ready-to-run Docker Compose setup (Radicale behind Caddy for HTTPS) for anyone who wants a dedicated always-on CalDAV/CardDAV server on their own hardware (a Raspberry Pi, Proxmox, a NAS with Docker), including an offline, fully client-side phone-pairing QR-code generator.
 
 ## Notes
 
-- **Windows, Linux, and macOS (Apple Silicon) today.** This preview bundles the sync server for Windows, Linux (.deb), and macOS arm64; an Intel Mac (x64) build is in progress. Stable cross-platform builds remain at v0.6.0.
-- This build is unsigned — Windows SmartScreen may warn (click **More info → Run anyway**), and macOS Gatekeeper blocks the first launch (right-click the app → **Open**, then confirm).
-- Daynizer remains beta. Two-way sync works, but keep a backup of anything important, and please file bugs on the issue tracker.
+- This release does **not** include the built-in sync server that's been in development on a separate track — that work continues, aimed at a more thoroughly-tested future release rather than shipping half-proven. Nothing in this changelog depends on it.
+- Bug reports and feature requests are welcome on the [issue tracker](https://github.com/precisioncrab/daynizer-desktop/issues) — bugs and feature requests now have separate templates there.
