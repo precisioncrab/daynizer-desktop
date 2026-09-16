@@ -180,7 +180,19 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Install a native fpm (electron-builder's bundled one is x86-only)
+        # electron-builder's .deb target shells out to `fpm` to assemble the package, and its
+        # auto-downloaded copy is a prebuilt x86 binary with no arm64 build — it fails with
+        # "Exec format error" on this runner. Fix (documented electron-builder limitation, not
+        # our config): install a real, native fpm via Ruby gems and point electron-builder at it.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev build-essential
+          sudo gem install --no-document fpm
+
       - name: Package experimental .deb (arm64)
+        env:
+          USE_SYSTEM_FPM: "true"
         run: npm run package:exp:linux:arm64
 
       - name: Upload to release
