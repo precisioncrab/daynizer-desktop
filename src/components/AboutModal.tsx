@@ -2,9 +2,14 @@ import { useEffect, useState } from "react";
 
 export default function AboutModal({ onClose }: { onClose: () => void }) {
   const [version, setVersion] = useState<string>("");
+  const [serverFeature, setServerFeature] = useState(false);
 
   useEffect(() => {
     window.api.app?.version().then(setVersion).catch(() => {});
+    // window.api.server is always present from preload regardless of the
+    // compile-time SERVER_BUILTIN flag, so check the actual feature flag from
+    // its status rather than the object's mere existence.
+    window.api.server?.status().then((s) => setServerFeature(!!s.feature)).catch(() => {});
   }, []);
 
   return (
@@ -37,7 +42,7 @@ export default function AboutModal({ onClose }: { onClose: () => void }) {
               gnu.org/licenses/gpl-3.0
             </a>
           </p>
-          {window.api.server && (
+          {serverFeature && (
             <p>
               The built-in sync server bundles{" "}
               <a href="https://github.com/Kozea/Radicale" target="_blank" rel="noreferrer">

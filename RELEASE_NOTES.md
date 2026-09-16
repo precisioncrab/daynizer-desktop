@@ -1,38 +1,50 @@
-Daynizer v0.7.0 — built-in sync server (experimental preview: Windows, Linux, macOS/Apple Silicon)
+Daynizer v0.8.0 — built-in sync server
 
-Changes since 0.6.0. This is an early **experimental preview** — Daynizer is still beta. It's an unsigned build: Windows SmartScreen may warn ("unknown publisher"), and macOS Gatekeeper blocks the first launch (right-click → Open). An Intel Mac (x64) build is on the way.
+Changes since v0.7.0. Daynizer remains beta, pre-1.0 — keep a backup of anything important.
 
-## Built-in sync server — new, on by default
+## Built-in sync server — new, on by default, fully optional
 
-Daynizer can now host its own sync server, so your tasks, calendar, and contacts sync across your devices **without a third-party account** (Synology, Nextcloud, a NAS, or any cloud). It's a bundled, zero-config CalDAV/CardDAV server that Daynizer runs and supervises for you.
+Don't have a CalDAV/CardDAV server? Daynizer can now host its own — a bundled, zero-config
+CalDAV/CardDAV server that Daynizer runs and supervises for you, so your tasks, calendar, and
+contacts sync across your devices **without a third-party account** (Synology, Nextcloud, a NAS, or
+any cloud).
 
-- **Optional — you don't have to use it.** It's on out of the box so sync works with zero setup, but you can turn it off in **Settings → Sync Server** any time and point Daynizer at your own CalDAV/CardDAV server instead.
-- **Nothing to configure.** On first run Daynizer creates its own "Built-in server" account with a default Calendar and Contacts, and the server just runs.
-- **Runs in the background.** It starts with Daynizer, keeps running in the tray when you close the window, and can start hidden at login. The tray shows when a device last synced.
-- **Works with any client** — it speaks standard CalDAV/CardDAV, so DAVx5, Tasks.org, Apple Calendar, and Thunderbird all connect to it.
+- **Optional — you don't have to use it.** It's on out of the box so sync works with zero setup, but
+  you can turn it off in **Settings → Sync Server** any time and point Daynizer at your own
+  CalDAV/CardDAV server instead.
+- **Nothing to configure.** On first run Daynizer creates its own "Built-in server" account with a
+  default Calendar and Contacts, and the server just runs.
+- **Runs in the background.** It starts with Daynizer, keeps running in the tray when you close the
+  window, and can start hidden at login. The tray shows when a device last synced.
+- **Works with any client** — it speaks standard CalDAV/CardDAV, so DAVx5, Tasks.org, Apple Calendar,
+  and Thunderbird all connect to it.
+- **Secure by default (HTTPS).** Self-signed TLS, so Tasks.org's direct CalDAV — which refuses plain
+  HTTP on modern Android — connects over `caldavs://`. You approve the certificate once.
+- **QR pairing.** Settings → Sync Server shows a QR code — scan it with DAVx5 on Android and your
+  phone is connected, then add Tasks.org (or OpenTasks) for the task lists.
+- **Windows Firewall helper.** A one-click button opens your firewall so other devices on your Wi-Fi
+  can reach the server.
+- **Add another Daynizer fast:** paste a pairing link into the new "Have a pairing link?" field on
+  the Add Account form to fill in the address, username, and password in one go.
 
-## Set up your phone in seconds
+**Not included in the Thunderbird add-on.** The add-on has no server component on any platform,
+regardless of this flag — it stays a pure CalDAV/CardDAV client, same as before.
 
-- **QR pairing.** Settings → Sync Server shows a QR code — scan it with DAVx5 on Android and your phone is connected, then add Tasks.org (or OpenTasks) for the task lists.
-- **Secure by default (HTTPS).** The server uses TLS with a self-signed certificate, so Tasks.org's direct CalDAV — which refuses plain HTTP on modern Android — connects over `caldavs://`. You approve the certificate once.
-- **Windows Firewall helper.** A one-click button opens your firewall so other devices on your Wi-Fi can reach the server.
+## Platform notes
 
-## Works with a brand-new / empty server
-
-- Create your first list/calendar on an empty server (Daynizer asks the server for your calendar home directly, instead of deriving it from an existing calendar).
-- Create an address book on the server, the same way lists are created.
-- New accounts get a default "Calendar" and "Contacts" automatically when the server has none; existing servers (Synology, Nextcloud, …) are left untouched.
-- A newly added account appears in the "New list → On server" picker right away, and adding an account no longer freezes the form while it sets up.
-
-## Lists, subtasks & colors
-
-- **List colors** — a rotating palette, a color picker when creating a list, and right-click recolor; the color syncs to the server (and other clients) over CalDAV.
-- **Subtasks stay with their parent's list.** Moving a task to another list now moves its subtasks with it, and adding subtasks right after changing a task's list no longer strands them — so parent/subtask nesting stays correct in Tasks.org and other clients.
-- **Rename an address book** (right-click → Rename; the new name is pushed to the server for synced books).
-- Clearer **"New list/calendar"** button label, and a ⇄ sync marker next to server-synced books in a contact's address-book picker.
+- **Windows, Linux, and macOS (both Apple Silicon and Intel)** all ship the server in this release.
+- Bundles [Radicale](https://github.com/Kozea/Radicale) (GPLv3) as a separate process — see
+  [`server/THIRD-PARTY-LICENSES.md`](https://github.com/precisioncrab/daynizer-desktop/blob/main/server/THIRD-PARTY-LICENSES.md)
+  for the full list of bundled components and their licenses.
+- Want a dedicated always-on server instead of running Daynizer itself somewhere (a Raspberry Pi,
+  Proxmox, a NAS)? See
+  [`server/standalone/`](https://github.com/precisioncrab/daynizer-desktop/tree/main/server/standalone)
+  for a ready-to-run standalone Radicale + Docker setup, including its own offline QR-pairing page.
 
 ## Notes
 
-- **Windows, Linux, and macOS (Apple Silicon) today.** This preview bundles the sync server for Windows, Linux (.deb), and macOS arm64; an Intel Mac (x64) build is in progress. Stable cross-platform builds remain at v0.6.0.
-- This build is unsigned — Windows SmartScreen may warn (click **More info → Run anyway**), and macOS Gatekeeper blocks the first launch (right-click the app → **Open**, then confirm).
-- Daynizer remains beta. Two-way sync works, but keep a backup of anything important, and please file bugs on the issue tracker.
+- macOS builds are ad-hoc signed, not notarized — Gatekeeper blocks the first launch (right-click →
+  Open, then confirm). Windows builds are unsigned — SmartScreen may warn (More info → Run anyway).
+- Bug reports and feature requests are welcome on the
+  [issue tracker](https://github.com/precisioncrab/daynizer-desktop/issues) — bugs and feature
+  requests now have separate templates there.
