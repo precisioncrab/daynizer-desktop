@@ -182,6 +182,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Disable Spotlight indexing
+        # Works around a reproducible failure on this runner image: Spotlight's
+        # mdworker indexes the freshly-mounted DMG volume and holds a lock on
+        # it, so electron-builder's `hdiutil detach` fails with "Resource busy"
+        # even after 6 retries (seen twice in a row, same disk, same step).
+        run: sudo mdutil -a -i off
+
       - name: Package (x64)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
