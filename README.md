@@ -9,7 +9,8 @@ CalDAV+CardDAV server). Built with Electron + React + TypeScript.
 
 > **Beta software.** Daynizer is still in active development and hasn't reached a stable 1.0. The
 > current **experimental preview is v0.7.0** — it adds the new **built-in sync server** (see below) and
-> is available today for **Windows and Linux** (a macOS build is on the way). It's an unsigned
+> is available today for **Windows, Linux, and macOS (Apple Silicon)** (an Intel Mac build is on the
+> way). It's an unsigned
 > pre-release (Windows SmartScreen will warn; click *More info → Run anyway*). Stable cross-platform
 > builds are **v0.6.0**. Expect rough edges, and keep a backup of anything important — while sync is
 > two-way, don't rely on this as the only copy of your data yet. Bug reports are welcome on the
@@ -101,6 +102,13 @@ right-click (or Ctrl-click) the app in Applications and choose **Open**, then co
 needed once. Update by installing a newer .dmg over the old copy; remove by deleting the app from
 Applications.
 
+> **Want the built-in sync server?** Grab the experimental preview
+> `Daynizer-Experimental-0.7.0-arm64.dmg` from the pre-release on the
+> [Releases page](https://github.com/precisioncrab/daynizer-desktop/releases) — **Apple Silicon only
+> for now**, an Intel (x64) build is on the way. It installs as its own **Daynizer (Experimental).app**
+> (own data folder), so you can try it without touching your stable install. Same Gatekeeper
+> right-click → Open step as above.
+
 ## Built-in sync server (no external server needed)
 
 Don't have a CalDAV/CardDAV server? Daynizer runs its own — **on by default**. It starts a bundled sync
@@ -139,8 +147,8 @@ Sync Server → How to connect**, and online at
 > trusts the certificate once, on first connection. It's meant for your **own devices on your own
 > network**; exposing it to the public internet is not recommended.
 
-> **Windows and Linux today; macOS is next.** The bundled server ships in the Windows and Linux
-> experimental builds; a macOS build is in progress.
+> **Windows, Linux, and macOS (Apple Silicon) today; Intel Mac is next.** The bundled server ships in
+> the Windows, Linux, and macOS (arm64) experimental builds; an Intel (x64) macOS build is in progress.
 
 ## Connecting a CalDAV / CardDAV server (Synology, Nextcloud, …)
 

@@ -1,6 +1,6 @@
-Daynizer v0.7.0 — built-in sync server (Windows experimental preview)
+Daynizer v0.7.0 — built-in sync server (experimental preview: Windows, Linux, macOS/Apple Silicon)
 
-Changes since 0.6.0. This is an early **Windows-only experimental preview** — Daynizer is still beta, and Linux/macOS builds of the new server are on the way. It's an unsigned build, so Windows SmartScreen may warn ("unknown publisher"): click **More info → Run anyway**.
+Changes since 0.6.0. This is an early **experimental preview** — Daynizer is still beta. It's an unsigned build: Windows SmartScreen may warn ("unknown publisher"), and macOS Gatekeeper blocks the first launch (right-click → Open). An Intel Mac (x64) build is on the way.
 
 ## Built-in sync server — new, on by default
 
@@ -33,6 +33,6 @@ Daynizer can now host its own sync server, so your tasks, calendar, and contacts
 
 ## Notes
 
-- **Windows only for now.** This preview bundles the sync server for Windows; Linux and macOS server builds are in progress. Stable cross-platform builds remain at v0.6.0.
-- This build is unsigned — Windows SmartScreen may warn; click **More info → Run anyway**.
+- **Windows, Linux, and macOS (Apple Silicon) today.** This preview bundles the sync server for Windows, Linux (.deb), and macOS arm64; an Intel Mac (x64) build is in progress. Stable cross-platform builds remain at v0.6.0.
+- This build is unsigned — Windows SmartScreen may warn (click **More info → Run anyway**), and macOS Gatekeeper blocks the first launch (right-click the app → **Open**, then confirm).
 - Daynizer remains beta. Two-way sync works, but keep a backup of anything important, and please file bugs on the issue tracker.
