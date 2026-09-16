@@ -1,6 +1,8 @@
-## Unreleased (staged on `experimental` since v0.8.2, no version number assigned)
+Daynizer v0.8.3
 
-- **A simple way to schedule "the first Saturday of every month" style events** — Repeats now has a
+Changes since v0.8.2. Daynizer remains beta, pre-1.0, keep a backup of anything important.
+
+- **A simple way to schedule "the first Saturday of every month" style events.** Repeats now has a
   "Monthly (specific weekday)" option with plain position/weekday dropdowns (First/Second/Third/
   Fourth/Last, Sunday-Saturday), instead of needing to know RRULE syntax. Custom RRULE is still there
   for anything this doesn't cover.
