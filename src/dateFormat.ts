@@ -40,8 +40,14 @@ const FALLBACK_FIRST_DAY = new Map<string, number>(
 
 /** First day of the week for the app's locale, numbered the way
  *  @event-calendar/core's `firstDay` (and `Date#getDay`) expect it:
- *  0 = Sunday, 1 = Monday, ... 6 = Saturday. */
-export function firstDayOfWeek(): number {
+ *  0 = Sunday, 1 = Monday, ... 6 = Saturday.
+ *
+ *  `override` is the user's manual choice from Settings → Calendars & Lists
+ *  (0-6), when they've set one instead of following the OS/locale default —
+ *  takes priority over everything below when present. */
+export function firstDayOfWeek(override?: number | null): number {
+  if (override != null && override >= 0 && override <= 6) return override;
+
   let locale: Intl.Locale;
   // `maximize()` fills in the region a bare tag omits, so "ja" resolves via
   // "ja-JP" rather than falling through to the Monday default.
