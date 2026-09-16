@@ -37,6 +37,16 @@ export default function AboutModal({ onClose }: { onClose: () => void }) {
               gnu.org/licenses/gpl-3.0
             </a>
           </p>
+          {window.api.server && (
+            <p>
+              The built-in sync server bundles{" "}
+              <a href="https://github.com/Kozea/Radicale" target="_blank" rel="noreferrer">
+                Radicale
+              </a>{" "}
+              (GPLv3) and a few small permissively-licensed libraries — see{" "}
+              <code>server/THIRD-PARTY-LICENSES.md</code> in the source repository for details.
+            </p>
+          )}
         </div>
       </div>
     </div>

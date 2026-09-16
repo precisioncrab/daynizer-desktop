@@ -1149,6 +1149,17 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
                   <li>Address Book → New → CardDAV Address Book → same address and credentials.</li>
                 </ol>
               </details>
+              <details>
+                <summary style={{ cursor: "pointer", fontSize: 13, marginBottom: 4 }}>Advanced: browse the server directly (troubleshooting)</summary>
+                <div style={{ fontSize: 12, color: "#c8c8c8", lineHeight: 1.7, marginTop: 4 }}>
+                  The built-in server has its own web page for looking at (and manually creating or
+                  deleting) calendars and address books — open the <em>this computer</em> address above
+                  in a regular browser tab (not a CalDAV app) and log in with the username/password
+                  above. Since the certificate is self-signed, the browser will warn about it first —
+                  that's expected; proceed anyway (usually "Advanced" → "Continue"). This is a fallback
+                  for troubleshooting; you don't need it for normal use.
+                </div>
+              </details>
               <p style={{ fontSize: 12, marginTop: 10 }}>
                 <a href="https://precisioncrab.com/daynizer/connect/" target="_blank" rel="noreferrer" style={{ color: "#4a90d9" }}>
                   Full connection guide →

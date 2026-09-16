@@ -150,6 +150,10 @@ Sync Server → How to connect**, and online at
 > **Windows, Linux, and macOS (Apple Silicon) today; Intel Mac is next.** The bundled server ships in
 > the Windows, Linux, and macOS (arm64) experimental builds; an Intel (x64) macOS build is in progress.
 
+The built-in server bundles [Radicale](https://github.com/Kozea/Radicale) (GPLv3) as a separate process —
+see [`server/THIRD-PARTY-LICENSES.md`](server/THIRD-PARTY-LICENSES.md) for the full list of bundled
+components and their licenses.
+
 ## Connecting a CalDAV / CardDAV server (Synology, Nextcloud, …)
 
 Prefer your own server (Synology, Nextcloud, Baïkal, Radicale, …)? Daynizer syncs **tasks & calendars
@@ -209,7 +213,9 @@ address"**; contacts live under `/remote.php/dav/addressbooks/users/<user>/`.)
 Most CalDAV/CardDAV servers auto-discover from a base URL — paste that and the app finds the collections:
 
 - **Baïkal:** `https://<host>/dav.php/` (discovers both calendars and address books).
-- **Radicale:** `http://<host>:5232/` (or `http://<host>:5232/<user>/`).
+- **Radicale:** `http://<host>:5232/` (or `http://<host>:5232/<user>/`). Want a dedicated always-on
+  Radicale server instead of running Daynizer itself somewhere (a Raspberry Pi, Proxmox, a NAS with
+  Docker)? [`server/standalone/`](server/standalone/) has a ready-to-run Docker Compose setup.
 - **Generic / DAVx5-compatible:** if a single base URL doesn't discover everything, enter the specific
   collection URLs — `.../calendars/<user>/` for CalDAV and `.../addressbooks/<user>/` for CardDAV.
 
