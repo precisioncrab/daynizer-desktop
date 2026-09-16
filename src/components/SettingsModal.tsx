@@ -845,6 +845,19 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
                     ))}
                   </select>
                 </label>
+                <label className="pref-row" title="Overrides the automatic choice (based on your computer's region setting) for which day the calendar's week starts on.">
+                  First day of the week
+                  <select value={prefs.firstDayOfWeek ?? ""} onChange={(e) => setPref("firstDayOfWeek", e.target.value)}>
+                    <option value="">Automatic (based on your system)</option>
+                    <option value="0">Sunday</option>
+                    <option value="1">Monday</option>
+                    <option value="2">Tuesday</option>
+                    <option value="3">Wednesday</option>
+                    <option value="4">Thursday</option>
+                    <option value="5">Friday</option>
+                    <option value="6">Saturday</option>
+                  </select>
+                </label>
               </div>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#9aa0a6", marginBottom: 10 }}>
                 <input type="checkbox" checked={advancedLinking} onChange={(e) => setAdvancedLinking(e.target.checked)} />

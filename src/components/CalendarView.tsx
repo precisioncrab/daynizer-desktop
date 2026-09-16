@@ -31,6 +31,12 @@ interface Props {
   onUpdateEvent: (id: string, patch: Partial<CalendarEvent>) => void;
   /** Persist a drag/resize of a task bar. */
   onUpdateTask: (id: string, patch: Partial<Task>) => void;
+  /** User's manual "first day of week" override from Settings (0=Sun..6=Sat),
+   *  or null/undefined to follow the OS/locale default. Read once at mount
+   *  like the locale itself -- App.tsx changes this component's `key` when
+   *  the setting changes, forcing a clean remount instead of trying to
+   *  reconfigure the underlying calendar library live. */
+  firstDayOverride?: number | null;
 }
 
 type DisplayMode = "range" | "due" | "start";
@@ -164,7 +170,7 @@ function parseOverrides(json: string | undefined): EventOverride[] {
 }
 
 export default function CalendarView({
-  events, tasks, lists, calendarShow, onSetCalendarShow, selectedTaskId, selectedEventId, onSelectTask, onSelectEvent, onCreateEvent, onCreateTask, listFilter, onSetListFilter, onUpdateEvent, onUpdateTask
+  events, tasks, lists, calendarShow, onSetCalendarShow, selectedTaskId, selectedEventId, onSelectTask, onSelectEvent, onCreateEvent, onCreateTask, listFilter, onSetListFilter, onUpdateEvent, onUpdateTask, firstDayOverride
 }: Props) {
   const elRef = useRef<HTMLDivElement>(null);
   const ecRef = useRef<ReturnType<typeof createCalendar> | null>(null);
@@ -492,8 +498,10 @@ export default function CalendarView({
       locale: appLocale(),
       // `firstDay` defaults to 0 (Sunday) regardless of locale, so every
       // Monday-first region -- all of Europe -- got the wrong week layout.
-      // Resolved once at mount: the locale can't change without a restart.
-      firstDay: firstDayOfWeek(),
+      // Resolved once at mount: firstDayOverride comes from Settings (App.tsx
+      // remounts this component via a `key` change when it's edited, so a
+      // live app restart isn't needed for it to take effect).
+      firstDay: firstDayOfWeek(firstDayOverride),
       // Current-time marker line, only shown in the timeGrid week/day views.
       nowIndicator: true,
       // Enable drag-to-reschedule and edge-resize. Per-event `editable` /

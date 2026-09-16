@@ -252,6 +252,11 @@ export default function App() {
   // Latest runSync without retriggering the timer effect on every render.
   const runSyncRef = React.useRef<(auto?: boolean) => void>(() => {});
   const [syncEveryMin, setSyncEveryMin] = useState(60);
+  // Manual "first day of week" override (0=Sun..6=Sat), or null to follow the
+  // OS/locale default -- see dateFormat.ts's firstDayOfWeek(). CalendarView is
+  // keyed on this below so editing it in Settings remounts the calendar with
+  // the new value instead of needing a full app restart.
+  const [firstDayOverride, setFirstDayOverride] = useState<number | null>(null);
 
   useEffect(() => { runSyncRef.current = runSync; });
 
@@ -264,6 +269,8 @@ export default function App() {
       setSyncEveryMin(Number.isFinite(v) && v >= 0 ? v : 60);
       setDefaultTaskList(s.defaultTaskListId ?? "");
       setDefaultEventList(s.defaultEventListId ?? "");
+      const fd = s.firstDayOfWeek;
+      setFirstDayOverride(fd !== undefined && fd !== "" ? parseInt(fd, 10) : null);
     }).catch(() => {});
   }, [showSettings]);
 
@@ -1116,6 +1123,11 @@ export default function App() {
         </div>
         {mainView === "calendar" ? (
           <CalendarView
+            // Remount (not just re-render) when the first-day-of-week setting
+            // changes -- the underlying calendar library only reads it at
+            // creation, same as the locale itself.
+            key={`cal-${firstDayOverride ?? "auto"}`}
+            firstDayOverride={firstDayOverride}
             events={events}
             tasks={tasks}
             lists={lists}
