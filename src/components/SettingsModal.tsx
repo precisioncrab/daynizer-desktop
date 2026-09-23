@@ -1329,7 +1329,7 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
               </p>
               <p style={{ color: "#9aa0a6", fontSize: 12, lineHeight: 1.6 }}>
                 Free: tasks on one account. Pro: the Calendar and Contacts tabs, and more than one account.
-                One-time purchase; a license works on up to 10 installs.
+                One-time purchase; a license works on up to 5 installs.
               </p>
               {!ent.licensed && (
                 <>
