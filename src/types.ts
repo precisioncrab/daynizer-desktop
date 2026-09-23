@@ -320,7 +320,23 @@ declare global {
         markConfigured: () => Promise<ServerStatus>;
         openFirewall: () => Promise<{ ok: boolean; message: string }>;
       };
+      /** Freemium tier (Thunderbird add-on only; absent on desktop -- always
+       *  optional-chain). activate() verifies the key with Gumroad once. */
+      entitlement?: {
+        get: () => Promise<Entitlement>;
+        activate: (licenseKey: string) => Promise<Entitlement>;
+        deactivate: () => Promise<Entitlement>;
+      };
       on: (channel: string, callback: (...args: any[]) => void) => () => void;
     };
   }
+}
+
+/** Mirrors thunderbird-addon/background/entitlement.ts. */
+export interface Entitlement {
+  tier: "pro" | "trial" | "free";
+  licensed: boolean;
+  licenseEmail?: string;
+  trialEndsAt: string;
+  trialDaysLeft: number;
 }
