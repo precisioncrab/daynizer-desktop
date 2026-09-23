@@ -17,6 +17,7 @@ import ContactDetailPanel from "./components/ContactDetailPanel";
 import { ContactFilter, LabelColors, findDuplicateClusters, contactCategories, contactLabels } from "./contactUtils";
 import MergeDuplicatesView from "./components/MergeDuplicatesView";
 import ProWall from "./components/ProWall";
+import TrialBanner from "./components/TrialBanner";
 import { Task, TaskList, CaldavAccountPublic, CalendarEvent, Contact, AddressBook, EventOverride, Entitlement } from "./types";
 import { selectWidth } from "./selectWidth";
 import { RRule } from "rrule";
@@ -1144,6 +1145,7 @@ export default function App() {
             syncing={syncing}
           />
         )}
+        {entitlement && <TrialBanner entitlement={entitlement} onEnterLicense={openLicense} />}
         <div className="view-tabs">
           <button className={mainView === "tasks" ? "active" : ""} onClick={() => setMainView("tasks")}>Tasks</button>
           <button className={mainView === "calendar" ? "active" : ""} onClick={() => setMainView("calendar")}>Calendar</button>

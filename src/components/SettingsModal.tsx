@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { CaldavAccountPublic, DiscoveredCalendar, DiscoveredAddressBook, AddressBook, TaskList, ServerStatus, ServerInfo, Entitlement } from "../types";
-import { PRO_STORE_URL, openExternal } from "./ProWall";
+import { PRO_STORE_URL, openStore } from "./ProWall";
 import { formatDateTime } from "../dateFormat";
 
 /** Renderer-side twin of db.ts's davUrlKey: normalize a CalDAV/CardDAV URL so
@@ -1347,7 +1347,7 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
                     Your key is sent to Gumroad once to verify the purchase. Nothing else is sent, then or later.
                   </p>
                   {PRO_STORE_URL && (
-                    <button style={{ marginTop: 6 }} onClick={() => openExternal(PRO_STORE_URL)}>Buy Daynizer Pro</button>
+                    <button style={{ marginTop: 6 }} onClick={() => openStore("settings")}>Buy Daynizer Pro</button>
                   )}
                 </>
               )}

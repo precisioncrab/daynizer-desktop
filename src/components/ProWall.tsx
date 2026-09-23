@@ -13,6 +13,17 @@ export function openExternal(url: string) {
   else window.open(url, "_blank", "noopener");
 }
 
+/** Open the store page, tagged with where the click came from (UTM params) so
+ *  sales can be attributed to the banner vs. the walls vs. Settings. */
+export function openStore(placement: string) {
+  if (!PRO_STORE_URL) return;
+  const u = new URL(PRO_STORE_URL);
+  u.searchParams.set("utm_source", "daynizer-thunderbird");
+  u.searchParams.set("utm_medium", "in-app");
+  u.searchParams.set("utm_campaign", placement);
+  openExternal(u.toString());
+}
+
 /** Shown in place of a Pro view (Calendar, Contacts) once the trial has ended.
  *  Only the view is walled -- nothing is unlinked or deleted, so activating a
  *  license brings everything back exactly as it was. */
@@ -39,7 +50,7 @@ export default function ProWall({
         </p>
         <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 16 }}>
           {PRO_STORE_URL && (
-            <button className="primary" onClick={() => openExternal(PRO_STORE_URL)}>
+            <button className="primary" onClick={() => openStore("wall")}>
               Buy Daynizer Pro
             </button>
           )}
