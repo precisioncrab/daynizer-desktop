@@ -19,6 +19,7 @@
     "package:addon": "npm run build:addon && node scripts/package-addon-xpi.mjs",
     "build:addon:listed": "vite build --config thunderbird-addon/vite.config.ts --mode listed",
     "package:addon:listed": "npm run build:addon:listed && node scripts/package-addon-xpi.mjs --listed",
+    "package:addon:source": "node scripts/make-addon-source-zip.mjs",
     "dev:addon": "vite --config thunderbird-addon/vite.config.ts"
   },
   "dependencies": {

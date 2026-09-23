@@ -566,16 +566,29 @@ export default function CalendarView({
       //-converted local `Date` (the library's own `toLocalDate()` helper),
       // so formatting it through dateFormat here is trustworthy.
       eventContent(arg: any) {
-        const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        // Built as DOM nodes with textContent (the library's `domNodes` form),
+        // never an HTML string, so server-supplied titles can't inject markup.
+        const el = (tag: string, cls: string, text: string) => {
+          const n = document.createElement(tag);
+          n.className = cls;
+          n.textContent = text;
+          return n;
+        };
         // A small ↻ badge marks generated recurrence occurrences so they read
         // as "part of a series" rather than individually-stored items.
-        const mark = arg.event.extendedProps?.recurring ? '<span class="ec-recur-mark" aria-label="repeats">↻</span>' : "";
+        const recurring = !!arg.event.extendedProps?.recurring;
+        const mark = () => {
+          const m = el("span", "ec-recur-mark", "↻");
+          m.setAttribute("aria-label", "repeats");
+          return m;
+        };
         if (arg.event.allDay) {
-          if (!mark) return undefined; // default (title-only) rendering is fine
-          return { html: `${mark}<span class="ec-event-title">${escape(arg.event.title)}</span>` };
+          if (!recurring) return undefined; // default (title-only) rendering is fine
+          return { domNodes: [mark(), el("span", "ec-event-title", arg.event.title)] };
         }
         const timeText = formatTime(arg.event.start as Date);
-        return { html: `${mark}<time class="ec-event-time">${escape(timeText)}</time><h4 class="ec-event-title">${escape(arg.event.title)}</h4>` };
+        const nodes = [el("time", "ec-event-time", timeText), el("h4", "ec-event-title", arg.event.title)];
+        return { domNodes: recurring ? [mark(), ...nodes] : nodes };
       },
       eventClick(info: any) {
         // A recurring occurrence's id has an `::<n>` suffix, so prefer the
