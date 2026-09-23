@@ -1344,7 +1344,8 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
                     <button className="primary" onClick={activateLicense} disabled={busy || !licenseKey.trim()}>Activate</button>
                   </div>
                   <p style={{ color: "#9aa0a6", fontSize: 11, marginTop: 6 }}>
-                    Your key is sent to Gumroad once to verify the purchase. Nothing else is sent, then or later.
+                    Your key is sent to Gumroad once to verify the purchase; Thunderbird will ask you to allow
+                    that. Nothing else is sent, then or later.
                   </p>
                   {PRO_STORE_URL && (
                     <button style={{ marginTop: 6 }} onClick={() => openStore("settings")}>Buy Daynizer Pro</button>
