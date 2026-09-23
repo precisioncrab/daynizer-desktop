@@ -16,7 +16,8 @@ import ContactsSidebar from "./components/ContactsSidebar";
 import ContactDetailPanel from "./components/ContactDetailPanel";
 import { ContactFilter, LabelColors, findDuplicateClusters, contactCategories, contactLabels } from "./contactUtils";
 import MergeDuplicatesView from "./components/MergeDuplicatesView";
-import { Task, TaskList, CaldavAccountPublic, CalendarEvent, Contact, AddressBook, EventOverride } from "./types";
+import ProWall from "./components/ProWall";
+import { Task, TaskList, CaldavAccountPublic, CalendarEvent, Contact, AddressBook, EventOverride, Entitlement } from "./types";
 import { selectWidth } from "./selectWidth";
 import { RRule } from "rrule";
 
@@ -151,7 +152,18 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; taskId: string } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsPane, setSettingsPane] = useState<"accounts" | "calendars" | "contacts" | "sync" | "server" | "notifications" | undefined>(undefined);
+  const [settingsPane, setSettingsPane] = useState<"accounts" | "calendars" | "contacts" | "sync" | "server" | "notifications" | "license" | undefined>(undefined);
+  // Freemium tier (Thunderbird add-on only; window.api.entitlement is absent on
+  // desktop, so everything stays unlocked there). Calendar and Contacts are
+  // walled on the free tier; the walls only hide views, never touch data.
+  const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
+  const loadEntitlement = useCallback(async () => {
+    const e = await window.api.entitlement?.get();
+    if (e) setEntitlement(e);
+  }, []);
+  useEffect(() => { loadEntitlement(); }, [loadEntitlement]);
+  const proLocked = entitlement?.tier === "free";
+  const openLicense = () => { setSettingsPane("license"); setShowSettings(true); };
   const [showAbout, setShowAbout] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
@@ -1065,7 +1077,7 @@ export default function App() {
 
   return (
     <div className={`app ${railCollapsed ? "rail-collapsed" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-      {mainView === "contacts" ? (
+      {mainView === "contacts" && !proLocked ? (
         <ContactsSidebar
           addressBooks={addressBooks}
           contacts={contacts}
@@ -1137,7 +1149,13 @@ export default function App() {
           <button className={mainView === "calendar" ? "active" : ""} onClick={() => setMainView("calendar")}>Calendar</button>
           <button className={mainView === "contacts" ? "active" : ""} onClick={() => setMainView("contacts")}>Contacts</button>
         </div>
-        {mainView === "calendar" ? (
+        {(mainView === "calendar" || mainView === "contacts") && proLocked && entitlement ? (
+          <ProWall
+            feature={mainView === "calendar" ? "Calendar" : "Contacts"}
+            entitlement={entitlement}
+            onEnterLicense={openLicense}
+          />
+        ) : mainView === "calendar" ? (
           <CalendarView
             // Remount (not just re-render) when the first-day-of-week setting
             // changes -- the underlying calendar library only reads it at
@@ -1286,7 +1304,7 @@ export default function App() {
       </div>
 
       <div className="right-rail">
-        {mainView === "contacts" ? (
+        {mainView === "contacts" && !proLocked ? (
           <ContactsRail
             contacts={contacts}
             onSelectContact={selectContact}
@@ -1366,7 +1384,8 @@ export default function App() {
           lists={lists}
           addressBooks={addressBooks}
           initialPane={settingsPane}
-          onClose={() => { setShowSettings(false); setSettingsPane(undefined); }}
+          onClose={() => { setShowSettings(false); setSettingsPane(undefined); loadEntitlement(); }}
+          onEntitlementChanged={setEntitlement}
           onListsChanged={() => { loadLists(); loadTasks(); loadAccounts(); loadAddressBooks(); loadContacts(); }}
           onSyncAccount={syncAccountNow}
           onReviewDuplicates={() => { setShowSettings(false); setMainView("contacts"); setContactsMode("duplicates"); }}

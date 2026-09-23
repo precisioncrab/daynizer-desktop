@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { CaldavAccountPublic, DiscoveredCalendar, DiscoveredAddressBook, AddressBook, TaskList, ServerStatus, ServerInfo } from "../types";
+import { CaldavAccountPublic, DiscoveredCalendar, DiscoveredAddressBook, AddressBook, TaskList, ServerStatus, ServerInfo, Entitlement } from "../types";
+import { PRO_STORE_URL, openExternal } from "./ProWall";
 import { formatDateTime } from "../dateFormat";
 
 /** Renderer-side twin of db.ts's davUrlKey: normalize a CalDAV/CardDAV URL so
@@ -43,7 +44,7 @@ function relTime(epochMs: number): string {
   return `${Math.round(h / 24)} d ago`;
 }
 
-type SettingsPane = "accounts" | "calendars" | "contacts" | "sync" | "server" | "notifications";
+type SettingsPane = "accounts" | "calendars" | "contacts" | "sync" | "server" | "notifications" | "license";
 
 interface Props {
   lists: TaskList[];
@@ -55,10 +56,49 @@ interface Props {
   onImportVCard: () => void;
   /** Pane to open on mount (e.g. "server" for the first-run server setup cue). */
   initialPane?: SettingsPane;
+  /** Add-on only: called after a license is activated or removed. */
+  onEntitlementChanged?: (e: Entitlement) => void;
 }
 
-export default function SettingsModal({ lists, addressBooks, onClose, onListsChanged, onSyncAccount, onReviewDuplicates, onImportVCard, initialPane }: Props) {
+export default function SettingsModal({ lists, addressBooks, onClose, onListsChanged, onSyncAccount, onReviewDuplicates, onImportVCard, initialPane, onEntitlementChanged }: Props) {
   const [accounts, setAccounts] = useState<CaldavAccountPublic[]>([]);
+  // Freemium tier (add-on only; null on desktop, where nothing is gated).
+  const [ent, setEnt] = useState<Entitlement | null>(null);
+  const [licenseKey, setLicenseKey] = useState("");
+  const [licenseMsg, setLicenseMsg] = useState<string | null>(null);
+  useEffect(() => { window.api.entitlement?.get().then(setEnt); }, []);
+  const proLocked = ent?.tier === "free";
+  // Free tier: one account. accountsAll() is oldest-first, so the first one
+  // keeps syncing and later ones pause (see background/entitlement.ts).
+  const accountCapped = proLocked && accounts.length >= 1;
+
+  async function activateLicense() {
+    if (!window.api.entitlement) return;
+    setBusy(true);
+    setLicenseMsg(null);
+    try {
+      // Called straight from the click: activate() requests the Gumroad host
+      // permission first, which needs the click's user gesture.
+      const e = await window.api.entitlement.activate(licenseKey);
+      setEnt(e);
+      onEntitlementChanged?.(e);
+      setLicenseKey("");
+      setLicenseMsg("License activated. Thank you for supporting Daynizer!");
+    } catch (err: any) {
+      setLicenseMsg(err?.message || String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeLicense() {
+    if (!window.api.entitlement) return;
+    if (!confirm("Remove the license from this install? This doesn't give the activation back; you can re-enter the same key later.")) return;
+    const e = await window.api.entitlement.deactivate();
+    setEnt(e);
+    onEntitlementChanged?.(e);
+    setLicenseMsg(null);
+  }
   const [label, setLabel] = useState("");
   const [serverUrl, setServerUrl] = useState("");
   const [draftCarddavUrl, setDraftCarddavUrl] = useState("");
@@ -303,6 +343,10 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
   }, [onClose]);
 
   async function addAccount() {
+    if (accountCapped) {
+      setTestMsg("Adding more than one account is a Daynizer Pro feature. See the License tab.");
+      return;
+    }
     // A CalDAV URL is no longer required: an account can be CardDAV-only (just a
     // CardDAV URL + credentials). Require at least one of the two URLs.
     if ((!serverUrl && !draftCarddavUrl) || !username || !password) {
@@ -633,7 +677,8 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
     ...(srv?.feature ? [{ id: "server" as Pane, label: "Sync Server" }] : []),
     // The Thunderbird add-on has no settings/reminder subsystem (window.api.settings
     // is undefined there), so hide the empty Notifications & Startup pane for it.
-    ...(window.api.settings ? [{ id: "notifications" as Pane, label: "Notifications & Startup" }] : [])
+    ...(window.api.settings ? [{ id: "notifications" as Pane, label: "Notifications & Startup" }] : []),
+    ...(window.api.entitlement ? [{ id: "license" as Pane, label: "License" }] : [])
   ];
   const pendingCount = Object.keys(pendingByCal).length + Object.keys(pendingByBook).length;
   const linkedCalCount = (acc: CaldavAccountPublic) =>
@@ -801,7 +846,7 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
                 One account's credentials are shared by its calendars and contacts.
               </p>
               {accounts.length === 0 && <div className="status">No accounts yet — add one below.</div>}
-              {accounts.map((acc) => (
+              {accounts.map((acc, idx) => (
                 <div className="account-card" key={acc.id}>
                   <div className="row">
                     <strong>{acc.label}</strong>
@@ -814,6 +859,9 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
                   </div>
                   <div className="status">{acc.server_url || acc.carddav_url} — {acc.username}</div>
                   <div className="status">{linkedCalCount(acc)} calendar(s), {linkedBookCount(acc)} address book(s) linked</div>
+                  {proLocked && idx > 0 && (
+                    <div className="status error">Paused: more than one account is a Pro feature. Its data is kept.</div>
+                  )}
                   {acc.last_sync_at && (
                     <div className={`status ${acc.last_sync_status === "error" ? "error" : ""}`}>
                       Last sync: {formatDateTime(acc.last_sync_at)} ({acc.last_sync_status})
@@ -875,6 +923,12 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
 
           {activePane === "contacts" && (
             <>
+              {proLocked && (
+                <div className="status error" style={{ marginBottom: 10 }}>
+                  Contacts is a Daynizer Pro feature. Linked address books stay linked but don't sync
+                  until you activate a license (License tab).
+                </div>
+              )}
               {accounts.length === 0 && <div className="status">Add an account first (Accounts tab).</div>}
               {accounts.map((acc) => (
                 <div className="account-card" key={acc.id}>
@@ -925,6 +979,11 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
           {activePane === "accounts" && (
           <>
           <h3 style={{ marginTop: 18 }}>Add account</h3>
+          {accountCapped && (
+            <div className="status error" style={{ marginBottom: 10 }}>
+              The free version syncs one account. Adding more accounts is a Daynizer Pro feature (License tab).
+            </div>
+          )}
           <details style={{ marginBottom: 12 }}>
             <summary style={{ cursor: "pointer", fontSize: 13 }}>Have a pairing link? Paste it to fill in the form below</summary>
             <div style={{ marginTop: 8 }}>
@@ -971,7 +1030,7 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
           </div>
           <div className="form-actions">
             <button onClick={testDraft} disabled={busy}>Test connection</button>
-            <button className="primary" onClick={addAccount} disabled={busy}>Save account</button>
+            <button className="primary" onClick={addAccount} disabled={busy || accountCapped}>Save account</button>
           </div>
           </div>
           </>
@@ -1258,6 +1317,44 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
               </p>
 
               {srvMsg && <p style={{ fontSize: 12, color: "#9aa0a6" }}>{srvMsg}</p>}
+            </>
+          )}
+
+          {activePane === "license" && ent && (
+            <>
+              <p style={{ fontSize: 13, lineHeight: 1.6 }}>
+                {ent.tier === "pro" && <>Daynizer Pro is active{ent.licenseEmail ? ` (licensed to ${ent.licenseEmail})` : ""}. Thank you!</>}
+                {ent.tier === "trial" && <>Free trial: {ent.trialDaysLeft} day{ent.trialDaysLeft === 1 ? "" : "s"} left with every Pro feature.</>}
+                {ent.tier === "free" && <>Free version. Your trial ended on {new Date(ent.trialEndsAt).toLocaleDateString()}.</>}
+              </p>
+              <p style={{ color: "#9aa0a6", fontSize: 12, lineHeight: 1.6 }}>
+                Free: tasks on one account. Pro: the Calendar and Contacts tabs, and more than one account.
+                One-time purchase; a license works on up to 10 installs.
+              </p>
+              {!ent.licensed && (
+                <>
+                  <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                    <input
+                      style={{ flex: 1 }}
+                      placeholder="License key from your Gumroad receipt"
+                      value={licenseKey}
+                      onChange={(e) => setLicenseKey(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && licenseKey.trim() && !busy) activateLicense(); }}
+                    />
+                    <button className="primary" onClick={activateLicense} disabled={busy || !licenseKey.trim()}>Activate</button>
+                  </div>
+                  <p style={{ color: "#9aa0a6", fontSize: 11, marginTop: 6 }}>
+                    Your key is sent to Gumroad once to verify the purchase. Nothing else is sent, then or later.
+                  </p>
+                  {PRO_STORE_URL && (
+                    <button style={{ marginTop: 6 }} onClick={() => openExternal(PRO_STORE_URL)}>Buy Daynizer Pro</button>
+                  )}
+                </>
+              )}
+              {ent.licensed && (
+                <button style={{ marginTop: 10 }} onClick={removeLicense} disabled={busy}>Remove license from this install</button>
+              )}
+              {licenseMsg && <p style={{ fontSize: 12, color: "#9aa0a6", marginTop: 8 }}>{licenseMsg}</p>}
             </>
           )}
 
