@@ -1,8 +1,8 @@
 import type { Entitlement } from "../types";
 
-// Where "Buy Pro" goes. Empty until the Gumroad product page exists; the button
-// hides itself while it's empty.
-export const PRO_STORE_URL = "";
+// Where "Buy Pro" goes: the Gumroad product page (Precision Crab profile). The
+// buy buttons hide themselves if this is ever emptied.
+export const PRO_STORE_URL = "https://precisioncrab.gumroad.com/l/qkyuxt";
 
 /** Open a web page in the user's default browser. In the Thunderbird add-on
  *  that's messenger.windows.openDefaultBrowser (a plain link would open inside
