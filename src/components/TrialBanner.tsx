@@ -29,9 +29,9 @@ export default function TrialBanner({
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        padding: "4px 16px",
-        fontSize: 12,
+        gap: 12,
+        padding: "10px 16px",
+        fontSize: 13.5,
         color: urgent ? "#e8a23d" : "#9aa0a6",
         background: "#1f2023",
         borderTop: "1px solid #2c2d31",
@@ -42,11 +42,11 @@ export default function TrialBanner({
     >
       <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{text}</span>
       {PRO_STORE_URL && (
-        <button style={{ fontSize: 11, padding: "2px 8px" }} onClick={() => openStore(trial ? "banner-trial" : "banner-free")}>
+        <button style={{ fontSize: 13, padding: "5px 14px" }} onClick={() => openStore(trial ? "banner-trial" : "banner-free")}>
           {trial ? "Buy Pro" : "Upgrade"}
         </button>
       )}
-      <button style={{ fontSize: 11, padding: "2px 8px" }} onClick={onEnterLicense}>
+      <button style={{ fontSize: 13, padding: "5px 14px" }} onClick={onEnterLicense}>
         Enter license
       </button>
     </div>
