@@ -2,6 +2,7 @@ node_modules
 dist
 dist-electron
 dist-addon
+dist-addon-listed
 release
 *.db
 *.sqlite3

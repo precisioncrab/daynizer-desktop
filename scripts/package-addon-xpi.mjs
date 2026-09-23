@@ -1,4 +1,6 @@
-// Zips dist-addon/ into daynizer-addon.xpi at the repo root.
+// Zips dist-addon/ into daynizer-addon.xpi at the repo root, or, with
+// `--listed`, dist-addon-listed/ into daynizer-addon-listed.xpi (the
+// Experiment-free ATN build from `vite --mode listed`).
 //
 // Replaces a prior PowerShell `Compress-Archive` step: that produced a zip
 // that generic tools (Python's zipfile, Info-ZIP) read as perfectly valid,
@@ -12,8 +14,10 @@ import { createWriteStream, existsSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const srcDir = resolve(root, "dist-addon");
-const outPath = resolve(root, "daynizer-addon.xpi");
+const listed = process.argv.includes("--listed");
+const srcDir = resolve(root, listed ? "dist-addon-listed" : "dist-addon");
+const outName = listed ? "daynizer-addon-listed.xpi" : "daynizer-addon.xpi";
+const outPath = resolve(root, outName);
 
 if (existsSync(outPath)) unlinkSync(outPath);
 
@@ -21,7 +25,7 @@ const output = createWriteStream(outPath);
 const archive = archiver("zip", { zlib: { level: 9 } });
 
 output.on("close", () => {
-  console.log(`daynizer-addon.xpi written (${archive.pointer()} bytes)`);
+  console.log(`${outName} written (${archive.pointer()} bytes)`);
 });
 archive.on("error", (err) => {
   throw err;
