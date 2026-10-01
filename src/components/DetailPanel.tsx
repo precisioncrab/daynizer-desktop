@@ -113,6 +113,16 @@ export default function DetailPanel({ task, lists, subtasks, allCategories = [],
     }
   }, [task?.id]);
 
+  // Dates can change outside this form (dragging the task on the calendar).
+  // The form only loads on task.id, so without this a later Save would write
+  // the stale dates back and the task would jump to its old day.
+  useEffect(() => {
+    const sd = splitDateTime(task?.start_date ?? null);
+    setStartDate(sd.date); setStartTime(sd.time);
+    const dd = splitDateTime(task?.due_date ?? null);
+    setDueDate(dd.date); setDueTime(dd.time);
+  }, [task?.start_date, task?.due_date]);
+
   // Just-created tasks: clear the "New task" placeholder title so the field is
   // empty and ready to type into, then focus it. The stored title stays as a
   // fallback if the user saves without typing (see buildPatch), so nothing is

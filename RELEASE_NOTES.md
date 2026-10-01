@@ -1,3 +1,19 @@
+Daynizer (unreleased)
+
+Changes since v0.8.3.
+
+- **Fixed repeating events showing an hour off after a daylight-saving change.** A weekly 4 PM
+  meeting created in winter showed at 5 PM in summer on the calendar. Repeats now keep their clock
+  time. Completing a timed repeating task had the same drift and is fixed too.
+- **Thunderbird add-on: reminders now pop up as notifications.** Turn them on in Settings →
+  Notifications; Thunderbird asks once for permission to show notifications. Reminders show while
+  Thunderbird is running, and clicking one opens Daynizer on that task or event. In the add-on the
+  Settings pane no longer shows the desktop-only tray and start-at-login options.
+- **Thunderbird add-on: importing contacts from a vCard (.vcf) file works.** Choose file & import
+  now opens a file picker; before, it failed with an error.
+
+---
+
 Daynizer v0.8.3
 
 Changes since v0.8.2. Daynizer remains beta, pre-1.0, keep a backup of anything important.
@@ -6,6 +22,10 @@ Changes since v0.8.2. Daynizer remains beta, pre-1.0, keep a backup of anything 
   "Monthly (specific weekday)" option with plain position/weekday dropdowns (First/Second/Third/
   Fourth/Last, Sunday-Saturday), instead of needing to know RRULE syntax. Custom RRULE is still there
   for anything this doesn't cover.
+- **Fixed a task jumping back to its old date** when you dragged it on the calendar and then saved
+  changes (like making it repeat) from the open details panel.
+- **Search now finds subtasks.** A subtask matching the search (title, notes, or tags) is shown under
+  its parent, and collapsed parents expand while a search is active.
 
 ---
 

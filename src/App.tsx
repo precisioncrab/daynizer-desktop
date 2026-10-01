@@ -420,7 +420,15 @@ export default function App() {
       const matchIds = new Set(
         tasks.filter((t) => t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q) || t.tags.toLowerCase().includes(q)).map((t) => t.id)
       );
-      base = base.filter((t) => matchIds.has(t.id) || (t.parent_id && matchIds.has(t.parent_id)));
+      // The table only renders subtasks nested under a visible parent, so a
+      // matching subtask must pull its parent in (shown for context), and a
+      // matching parent keeps its subtasks.
+      const matchedParentIds = new Set(
+        tasks.filter((t) => matchIds.has(t.id) && t.parent_id).map((t) => t.parent_id as string)
+      );
+      base = base.filter(
+        (t) => matchIds.has(t.id) || matchedParentIds.has(t.id) || (t.parent_id && matchIds.has(t.parent_id))
+      );
     }
     if (hideCompleted) {
       base = base.filter((t) => !t.completed);
@@ -1289,6 +1297,7 @@ export default function App() {
         {syncMsg && <div style={{ padding: "4px 16px", fontSize: 12, color: "#9aa0a6" }}>{syncMsg}</div>}
         <TaskTable
           tasks={visibleTasks}
+          forceExpand={!!search.trim()}
           selectedTaskId={selectedTaskId}
           onSelect={selectTask}
           onToggleComplete={toggleComplete}

@@ -11,6 +11,8 @@ interface Props {
   /** Manual sort mode only: rows become draggable. */
   dragEnabled?: boolean;
   onReorder?: (draggedId: string, targetId: string) => void;
+  /** Ignore collapsed state (e.g. while searching, so matching subtasks show). */
+  forceExpand?: boolean;
 }
 
 function formatDue(due: string | null): { text: string; overdue: boolean } | null {
@@ -33,7 +35,7 @@ function formatDue(due: string | null): { text: string; overdue: boolean } | nul
   return { text, overdue };
 }
 
-export default function TaskTable({ tasks, selectedTaskId, onSelect, onToggleComplete, onContextMenu, dragEnabled = false, onReorder }: Props) {
+export default function TaskTable({ tasks, selectedTaskId, onSelect, onToggleComplete, onContextMenu, dragEnabled = false, onReorder, forceExpand = false }: Props) {
   const topLevel = tasks.filter((t) => !t.parent_id);
   const childrenOf = (id: string) => tasks.filter((t) => t.parent_id === id);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -60,7 +62,7 @@ export default function TaskTable({ tasks, selectedTaskId, onSelect, onToggleCom
   function renderRow(t: Task, depth: number) {
     const due = formatDue(t.due_date);
     const children = childrenOf(t.id);
-    const isCollapsed = collapsed.has(t.id);
+    const isCollapsed = !forceExpand && collapsed.has(t.id);
     return (
       <React.Fragment key={t.id}>
         <div

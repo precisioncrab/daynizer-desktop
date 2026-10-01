@@ -876,15 +876,30 @@ function tombstoneMovedObject(oldListId: string, title: string, uid: string, hre
  *  exhausted (COUNT/UNTIL) or malformed. */
 function nextOccurrence(rruleStr: string, due: string): string | null {
   try {
-    const dateOnly = due.length <= 10;
-    const dtstart = new Date(dateOnly ? `${due}T00:00:00Z` : due);
-    const rule = new RRule({ ...RRule.parseString(rruleStr), dtstart });
-    const next = rule.after(dtstart, false);
-    if (!next) return null;
-    return dateOnly ? next.toISOString().slice(0, 10) : next.toISOString();
+    if (due.length <= 10) {
+      const dtstart = new Date(`${due}T00:00:00Z`);
+      const rule = new RRule({ ...RRule.parseString(rruleStr), dtstart });
+      const next = rule.after(dtstart, false);
+      return next ? next.toISOString().slice(0, 10) : null;
+    }
+    // Timed: step in floating local wall-clock time so the task keeps its
+    // clock time across a DST change (rrule.js alone works in fixed UTC).
+    const opts = RRule.parseString(rruleStr);
+    if (opts.until) opts.until = toFloating(opts.until);
+    const dtstart = toFloating(new Date(due));
+    const next = new RRule({ ...opts, dtstart }).after(dtstart, false);
+    return next ? fromFloating(next).toISOString() : null;
   } catch {
     return null;
   }
+}
+
+/** Local wall-clock fields stored as UTC fields, rrule.js's "floating" form. */
+function toFloating(d: Date): Date {
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()));
+}
+function fromFloating(d: Date): Date {
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds());
 }
 
 export function taskToggleComplete(id: string): Task {

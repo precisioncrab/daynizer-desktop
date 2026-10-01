@@ -147,14 +147,34 @@ function shiftStored(v: string, deltaMs: number): string {
  *  emit unbounded bars. Returns [] on a malformed rule. */
 function occurrenceDeltas(rruleStr: string, anchor: string, windowStart: Date, windowEnd: Date): number[] {
   try {
-    const dateOnly = anchor.length <= 10;
-    const dtstart = new Date(dateOnly ? `${anchor}T00:00:00Z` : anchor);
-    const rule = new RRule({ ...RRule.parseString(rruleStr), dtstart });
-    const occs = rule.between(windowStart, windowEnd, true).slice(0, 400);
-    return occs.map((o) => o.getTime() - dtstart.getTime());
+    if (anchor.length <= 10) {
+      const dtstart = new Date(`${anchor}T00:00:00Z`);
+      const rule = new RRule({ ...RRule.parseString(rruleStr), dtstart });
+      const occs = rule.between(windowStart, windowEnd, true).slice(0, 400);
+      return occs.map((o) => o.getTime() - dtstart.getTime());
+    }
+    // Timed: expand in floating local wall-clock time so a weekly 4 PM meeting
+    // stays at 4 PM across a DST change. Expanding in real UTC kept it at a
+    // fixed UTC instant, which drifted it an hour (4 PM EST -> 5 PM EDT).
+    const real = new Date(anchor);
+    const opts = RRule.parseString(rruleStr);
+    if (opts.until) opts.until = toFloating(opts.until);
+    const rule = new RRule({ ...opts, dtstart: toFloating(real) });
+    const occs = rule.between(toFloating(windowStart), toFloating(windowEnd), true).slice(0, 400);
+    return occs.map((o) => fromFloating(o).getTime() - real.getTime());
   } catch {
     return [];
   }
+}
+
+/** rrule.js does all its math in UTC. Its documented way to get local
+ *  wall-clock recurrence is "floating" dates: a Date whose UTC fields hold the
+ *  local wall-clock fields. toFloating/fromFloating convert in and out. */
+function toFloating(d: Date): Date {
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()));
+}
+function fromFloating(d: Date): Date {
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds());
 }
 
 /** Epoch ms for an occurrence key, tolerant of date-only vs datetime, so a
