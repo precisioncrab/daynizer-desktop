@@ -61,6 +61,8 @@ interface Props {
 }
 
 export default function SettingsModal({ lists, addressBooks, onClose, onListsChanged, onSyncAccount, onReviewDuplicates, onImportVCard, initialPane, onEntitlementChanged }: Props) {
+  // Only the Thunderbird add-on's window.api has an entitlement (freemium) API.
+  const isAddon = !!window.api.entitlement;
   const [accounts, setAccounts] = useState<CaldavAccountPublic[]>([]);
   // Freemium tier (add-on only; null on desktop, where nothing is gated).
   const [ent, setEnt] = useState<Entitlement | null>(null);
@@ -299,7 +301,13 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
 
   function setPref(key: string, value: string) {
     setPrefs((prev) => ({ ...prev, [key]: value }));
-    window.api.settings?.set(key, value);
+    // The add-on's set() resolves with the value it kept (e.g. "0" when the
+    // notifications permission prompt is declined); desktop resolves void.
+    Promise.resolve(window.api.settings?.set(key, value))
+      .then((kept: unknown) => {
+        if (typeof kept === "string" && kept !== value) setPrefs((prev) => ({ ...prev, [key]: kept }));
+      })
+      .catch(() => {});
   }
 
   useEffect(() => {
@@ -675,9 +683,9 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
     // populated by the eager mount-time loadServer() above — not just its
     // existence, or this pane would show up even when SERVER_BUILTIN is off.
     ...(srv?.feature ? [{ id: "server" as Pane, label: "Sync Server" }] : []),
-    // The Thunderbird add-on has no settings/reminder subsystem (window.api.settings
-    // is undefined there), so hide the empty Notifications & Startup pane for it.
-    ...(window.api.settings ? [{ id: "notifications" as Pane, label: "Notifications & Startup" }] : []),
+    // Hidden when window.api.settings is missing. The add-on has no startup
+    // options (no tray, no login item), so its pane is just "Notifications".
+    ...(window.api.settings ? [{ id: "notifications" as Pane, label: isAddon ? "Notifications" : "Notifications & Startup" }] : []),
     ...(window.api.entitlement ? [{ id: "license" as Pane, label: "License" }] : [])
   ];
   const pendingCount = Object.keys(pendingByCal).length + Object.keys(pendingByBook).length;
@@ -1361,7 +1369,7 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
 
           {activePane === "notifications" && window.api.settings && (
             <>
-              <h3 style={{ marginTop: 18 }}>Notifications &amp; startup</h3>
+              <h3 style={{ marginTop: 18 }}>{isAddon ? "Notifications" : <>Notifications &amp; startup</>}</h3>
             <div className="prefs-grid">
               <label className="pref-row">
                 <input
@@ -1380,6 +1388,14 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
                   onChange={(e) => setPref("reminderTime", e.target.value || "18:00")}
                 />
               </label>
+              {isAddon ? (
+                <p style={{ color: "#9aa0a6", fontSize: 13, margin: "4px 0 0" }}>
+                  Reminders show as system notifications while Thunderbird is running. Ticking the box asks
+                  Thunderbird for permission to show notifications. If you also subscribe to the same
+                  calendars in Thunderbird's own calendar, it may show its own reminder for the same item.
+                </p>
+              ) : (
+              <>
               <label className="pref-row" title="Closing the window keeps the app in the tray so reminders and sync keep working">
                 <input
                   type="checkbox"
@@ -1396,6 +1412,8 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
                 />
                 Start Daynizer when the computer starts
               </label>
+              </>
+              )}
             </div>
           </>
         )}
