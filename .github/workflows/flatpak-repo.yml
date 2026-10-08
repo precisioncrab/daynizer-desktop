@@ -25,13 +25,30 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Same runner as build.yml's linux job, so the frozen server matches the
+    # one in the release's .deb/.flatpak.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12" # keep in step with SERVER_PYTHON_VERSION in build.yml
+
+      # The built-in sync server ships via package.json's linux.extraResources.
+      # electron-builder only warns when that folder is missing, which is how
+      # this repo's flatpak went out without the server from v0.8.0 to v0.8.4.
+      - name: Freeze daynizer-radicale (Linux)
+        working-directory: server
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
+          .venv/bin/pyinstaller radicale.spec
+          test -x dist/daynizer-radicale/daynizer-radicale || { echo "::error::server binary missing"; exit 1; }
 
       - name: Install flatpak, ostree, and the runtimes electron-builder needs
         run: |

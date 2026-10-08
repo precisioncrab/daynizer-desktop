@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, Notification, Tray, nativeImage, shell, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, Notification, Tray, nativeImage, shell, dialog, net } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
@@ -763,8 +763,50 @@ function setupAutoUpdater() {
   autoUpdater.checkForUpdates().catch(() => {});
 }
 
+/** "Update available" notice for macOS and Linux, where nothing installs
+ *  updates in-app: checks GitHub's latest release and tells the renderer,
+ *  which shows a banner with the right way to update for this install. */
+type ManualUpdate = { version: string; url: string; kind: "flatpak" | "deb" | "appimage" | "mac" | "linux" };
+let manualUpdate: ManualUpdate | null = null;
+
+function newerVersion(latest: string, current: string): boolean {
+  const a = latest.replace(/^v/, "").split(/[.-]/).map((n) => parseInt(n, 10) || 0);
+  const b = current.split(/[.-]/).map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  return false;
+}
+
+function installKind(): ManualUpdate["kind"] {
+  if (process.platform === "darwin") return "mac";
+  if (process.env.FLATPAK_ID || fs.existsSync("/.flatpak-info")) return "flatpak";
+  if (process.env.APPIMAGE) return "appimage";
+  if (process.resourcesPath.startsWith("/opt/")) return "deb";
+  return "linux";
+}
+
+async function checkManualUpdate() {
+  try {
+    const res = await net.fetch("https://api.github.com/repos/precisioncrab/daynizer-desktop/releases/latest", {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": `Daynizer/${app.getVersion()}` }
+    });
+    if (!res.ok) return;
+    const rel = await res.json() as { tag_name?: string; html_url?: string; draft?: boolean; prerelease?: boolean };
+    if (!rel.tag_name || rel.draft || rel.prerelease || !newerVersion(rel.tag_name, app.getVersion())) return;
+    manualUpdate = { version: rel.tag_name.replace(/^v/, ""), url: rel.html_url || "https://github.com/precisioncrab/daynizer-desktop/releases/latest", kind: installKind() };
+    mainWindow?.webContents.send("update:manual", manualUpdate);
+  } catch { /* offline or rate-limited: try again next time */ }
+}
+
+function setupManualUpdateCheck() {
+  // Windows updates itself (setupAutoUpdater); dev and experimental builds skip.
+  if (!app.isPackaged || process.platform === "win32" || isExperimental) return;
+  setTimeout(checkManualUpdate, 15_000);
+  setInterval(checkManualUpdate, 12 * 60 * 60_000); // the app can run in the tray for days
+}
+
 function registerIpc() {
   ipcMain.handle("app:version", () => app.getVersion());
+  ipcMain.handle("update:manualInfo", () => manualUpdate);
   ipcMain.handle("update:install", () => autoUpdater.quitAndInstall());
 
   ipcMain.on("menu:savedViews", (_e, views: { id: string; name: string }[]) => {
@@ -1154,6 +1196,7 @@ app.whenReady().then(() => {
   createWindow(!startHidden);
   setupTray();
   setupAutoUpdater();
+  setupManualUpdateCheck();
   applyLaunchAtLogin(getSetting("launchAtLogin") === "1");
   applyTlsSetting();
 

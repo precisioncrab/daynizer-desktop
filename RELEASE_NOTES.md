@@ -2,6 +2,14 @@ Daynizer (unreleased)
 
 Changes since v0.8.4.
 
+- **Linux and macOS tell you when an update is out.** Windows already updates itself; on Linux and
+  macOS, Daynizer now checks for a newer release when it starts (and twice a day while running)
+  and shows a bar at the bottom with how to update: GNOME Software, KDE Discover or
+  `flatpak update` for the Flatpak, the `apt install` command for the .deb, or the release page.
+  "Later" hides it until the next version.
+- **The auto-updating Flatpak includes the built-in sync server again.** Since v0.8.0 the Flatpak
+  from the Daynizer Flatpak repository was built without it (the one attached to each GitHub
+  release had it).
 - **Linux packages now state their license** (GPL-3.0-or-later). The .deb showed "unknown" before.
 
 ---

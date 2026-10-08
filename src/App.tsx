@@ -18,7 +18,8 @@ import { ContactFilter, LabelColors, findDuplicateClusters, contactCategories, c
 import MergeDuplicatesView from "./components/MergeDuplicatesView";
 import ProWall from "./components/ProWall";
 import TrialBanner from "./components/TrialBanner";
-import { Task, TaskList, CaldavAccountPublic, CalendarEvent, Contact, AddressBook, EventOverride, Entitlement } from "./types";
+import { Task, TaskList, CaldavAccountPublic, CalendarEvent, Contact, AddressBook, EventOverride, Entitlement, ManualUpdate } from "./types";
+import UpdateBanner from "./components/UpdateBanner";
 import { selectWidth } from "./selectWidth";
 import { RRule } from "rrule";
 import {
@@ -212,6 +213,13 @@ export default function App() {
   }, []);
   useEffect(() => { loadEntitlement(); }, [loadEntitlement]);
   const proLocked = entitlement?.tier === "free";
+  // macOS/Linux "update available" notice (main checks GitHub; absent in the
+  // add-on and on Windows, which updates itself).
+  const [manualUpdate, setManualUpdate] = useState<ManualUpdate | null>(null);
+  useEffect(() => {
+    window.api.app?.manualUpdate?.().then((u) => { if (u) setManualUpdate(u); }).catch(() => {});
+    return window.api.on("update:manual", (u: ManualUpdate) => setManualUpdate(u));
+  }, []);
   const openLicense = () => { setSettingsPane("license"); setShowSettings(true); };
   const [showAbout, setShowAbout] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -1461,6 +1469,7 @@ export default function App() {
         />
         </>
         )}
+        {manualUpdate && <UpdateBanner key={manualUpdate.version} update={manualUpdate} />}
         {entitlement && <TrialBanner entitlement={entitlement} onEnterLicense={openLicense} />}
       </div>
 

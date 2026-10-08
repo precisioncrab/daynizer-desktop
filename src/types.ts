@@ -207,6 +207,9 @@ declare global {
       app?: {
         version: () => Promise<string>;
         installUpdate: () => Promise<void>;
+        /** macOS/Linux: a newer GitHub release, found at startup (null if none
+         *  yet). Later finds arrive as api.on("update:manual", info). */
+        manualUpdate: () => Promise<ManualUpdate | null>;
       };
       /** Absent in the Thunderbird add-on shim -- always optional-chain. */
       settings?: {
@@ -338,6 +341,14 @@ declare global {
 }
 
 /** Mirrors thunderbird-addon/background/entitlement.ts. */
+/** A newer Daynizer release on macOS/Linux, where the app can't update
+ *  itself; `kind` picks the update instructions shown. */
+export interface ManualUpdate {
+  version: string;
+  url: string;
+  kind: "flatpak" | "deb" | "appimage" | "mac" | "linux";
+}
+
 export interface Entitlement {
   tier: "pro" | "trial" | "free";
   licensed: boolean;
