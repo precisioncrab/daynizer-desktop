@@ -1,3 +1,11 @@
+Daynizer (unreleased)
+
+Changes since v0.8.4.
+
+- **Linux packages now state their license** (GPL-3.0-or-later). The .deb showed "unknown" before.
+
+---
+
 Daynizer v0.8.4
 
 Changes since v0.8.3. Daynizer remains beta, pre-1.0, keep a backup of anything important.

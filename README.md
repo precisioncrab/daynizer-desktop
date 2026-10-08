@@ -46,12 +46,13 @@ installer once. To remove it: Windows Settings → Apps → Installed apps → D
 ### Debian / Ubuntu (.deb)
 
 ```bash
-sudo apt install ./tasks-desktop_x.y.z_amd64.deb
+sudo apt install ./daynizer_x.y.z_amd64.deb
 ```
 
 `apt` resolves the dependencies automatically (plain `dpkg -i` works too, followed by
 `sudo apt -f install` if it complains). Launch from your app menu, or run `daynizer`.
-Update by installing a newer .deb the same way; remove with `sudo apt remove daynizer`.
+Update by installing a newer .deb the same way. The package keeps its original name, so remove it
+with `sudo apt remove tasks-desktop`.
 
 ### Flatpak (auto-updating)
 
@@ -88,6 +89,48 @@ into **Applications**. The build is not code-signed, so the first launch is bloc
 right-click (or Ctrl-click) the app in Applications and choose **Open**, then confirm. This is only
 needed once. Update by installing a newer .dmg over the old copy; remove by deleting the app from
 Applications.
+
+### Upgrading from Tasks Desktop (version 0.3.0 or earlier)
+
+Daynizer used to be called **Tasks Desktop**. Version 0.4.0 renamed the app and moved this
+repository, so an install of 0.3.0 or earlier (it shows up as "Tasks Desktop") can't find new
+versions and never updates. Install Daynizer once by hand as below; from then on it updates like
+any other install. Your tasks, lists, contacts and accounts carry over.
+
+**Windows.** Quit Tasks Desktop (right-click its tray icon, then **Quit**). Download and run the
+latest `Daynizer-Setup-x.y.z.exe`. Daynizer installs next to Tasks Desktop and opens your existing
+data. Once you've checked it, remove the old app: Windows Settings → Apps → Installed apps →
+Tasks Desktop → Uninstall. Your data stays: it lives in `%APPDATA%\tasks-desktop`, which Daynizer
+uses too, and uninstalling doesn't delete it.
+
+**Debian / Ubuntu (.deb).** Nothing special: installing the new `.deb` upgrades Tasks Desktop in
+place, since both use the package name `tasks-desktop`.
+
+**Flatpak.** The old app ID (`com.arlis.tasksdesktop`) and its repository address no longer exist,
+so install Daynizer next to it, copy your data across **before opening Daynizer**, then remove the
+old app. Quit Tasks Desktop first, then:
+
+```bash
+# 1. Install Daynizer (don't open it yet)
+flatpak install --from https://precisioncrab.github.io/daynizer-desktop/daynizer-desktop.flatpakref
+
+# 2. Copy your data into Daynizer. Prints "copied"; prints nothing if Daynizer already has data.
+test ! -e ~/.var/app/com.precisioncrab.daynizer/config/tasks-desktop && mkdir -p ~/.var/app/com.precisioncrab.daynizer/config && cp -a ~/.var/app/com.arlis.tasksdesktop/config/tasks-desktop ~/.var/app/com.precisioncrab.daynizer/config/ && echo copied
+
+# 3. Open Daynizer and check your data. Then remove the old app:
+flatpak uninstall com.arlis.tasksdesktop
+```
+
+If step 2 printed nothing, Daynizer was opened before the copy and made a fresh, empty data folder.
+Quit Daynizer, delete `~/.var/app/com.precisioncrab.daynizer/config/tasks-desktop`, and run step 2
+again. After step 3, if `flatpak remotes` still lists `tasksdesktop-origin` (the old, dead update
+source), remove it with `flatpak remote-delete tasksdesktop-origin`. `flatpak uninstall` keeps the
+old data in `~/.var/app/com.arlis.tasksdesktop` as a backup; delete that folder once you no longer
+need it.
+
+**macOS.** Quit Tasks Desktop, install Daynizer from the latest `.dmg` as above, then drag
+**Tasks Desktop** from Applications to the Trash. Your data stays: it lives in
+`~/Library/Application Support/tasks-desktop`, which Daynizer uses too.
 
 ## Built-in sync server (no external server needed)
 
