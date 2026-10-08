@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { TaskList, Task } from "../types";
 import ContextMenu from "./ContextMenu";
+import { TaskScope, CalendarLists } from "../views";
 
 /** Swatches for list/calendar colors — used for the create-form picker and the
  *  right-click "Change colour" menu. Kept in step with the DB rotation palette. */
@@ -24,8 +25,13 @@ interface Props {
   lists: TaskList[];
   tasks: Task[];
   accounts: { id: string; label: string }[];
-  selectedListId: string | "all" | "today";
-  onSelect: (id: string | "all" | "today") => void;
+  /** Which tab the sidebar is driving. Tasks and Calendar keep separate list
+   *  selections; the calendar has no Today & Overdue. */
+  mode: "tasks" | "calendar";
+  /** The current tab's selection: "all", "today" (tasks only) or list ids. */
+  selection: TaskScope;
+  /** Plain click selects only `id`; Ctrl/Cmd+click (additive) adds/removes it. */
+  onSelect: (id: string, additive: boolean) => void;
   onCreateList: (name: string, color?: string) => void;
   onCreateServerList: (name: string, accountId: string, color?: string) => Promise<void>;
   onSetListColor: (id: string, color: string) => void;
@@ -43,7 +49,7 @@ interface Props {
   smartFilters?: SidebarSmartFilter[];
   onApplyFilter?: (f: any) => void;
   onDeleteFilter?: (id: string) => void;
-  calendarListFilter?: string;
+  calendarListFilter?: CalendarLists;
   onSetCalendarListFilter?: (id: string) => void;
   /** Experimental: when collapsed, only a thin "›" re-expand tab renders,
    *  freeing up width for the calendar/task table (mirrors the Today pane's
@@ -56,7 +62,8 @@ export default function Sidebar({
   lists,
   tasks,
   accounts,
-  selectedListId,
+  mode,
+  selection,
   onSelect,
   onCreateList,
   onCreateServerList,
@@ -134,6 +141,11 @@ export default function Sidebar({
     );
   }
 
+  const isSelected = (id: string) => (Array.isArray(selection) ? selection.includes(id) : selection === id);
+  const additive = (e: React.MouseEvent) => e.ctrlKey || e.metaKey;
+  const calendarShowsOnly = (id: string) =>
+    Array.isArray(calendarListFilter) && calendarListFilter.length === 1 && calendarListFilter[0] === id;
+
   const openCount = (listId: string) => tasks.filter((t) => t.list_id === listId && !t.completed && !t.parent_id).length;
   const todayCount = tasks.filter((t) => {
     if (t.completed || !t.due_date) return false;
@@ -168,26 +180,28 @@ export default function Sidebar({
         <button className="today-pane-collapse-btn" onClick={onToggleCollapsed} title="Hide panel">‹</button>
       </div>
       <div className="sidebar-list">
-        <div className={`sidebar-item ${selectedListId === "today" ? "active" : ""}`} onClick={() => onSelect("today")}>
-          <span className="sidebar-dot" style={{ background: "#e8a23d" }} />
-          <span>Today &amp; Overdue</span>
-          {todayCount > 0 && <span className="count">{todayCount}</span>}
-        </div>
-        <div className={`sidebar-item ${selectedListId === "all" ? "active" : ""}`} onClick={() => onSelect("all")}>
+        {mode === "tasks" && (
+          <div className={`sidebar-item ${isSelected("today") ? "active" : ""}`} onClick={() => onSelect("today", false)}>
+            <span className="sidebar-dot" style={{ background: "#e8a23d" }} />
+            <span>Today &amp; Overdue</span>
+            {todayCount > 0 && <span className="count">{todayCount}</span>}
+          </div>
+        )}
+        <div className={`sidebar-item ${isSelected("all") ? "active" : ""}`} onClick={() => onSelect("all", false)}>
           <span className="sidebar-dot" style={{ background: "#888" }} />
-          <span>All Tasks</span>
+          <span>{mode === "calendar" ? "All lists" : "All Tasks"}</span>
         </div>
         {smartFilters.length > 0 && (
           <>
             <div style={{ height: 8 }} />
-            <div className="sidebar-section-label">Filters</div>
+            <div className="sidebar-section-label">Saved views</div>
             {smartFilters.map((f) => (
               <div key={f.id} className="sidebar-item smart-filter" onClick={() => onApplyFilter?.(f)} title="Apply this saved view">
                 <span className="sidebar-dot" style={{ background: "#7c6fd0" }} />
                 <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{f.name}</span>
                 <button
                   className="smart-filter-delete"
-                  title="Delete filter"
+                  title="Delete view"
                   onClick={(e) => { e.stopPropagation(); onDeleteFilter?.(f.id); }}
                 >×</button>
               </div>
@@ -215,9 +229,10 @@ export default function Sidebar({
           ) : (
             <div
               key={l.id}
-              className={`sidebar-item ${selectedListId === l.id ? "active" : ""}`}
+              className={`sidebar-item ${isSelected(l.id) ? "active" : ""}`}
               style={{ "--accent": l.color } as any}
-              onClick={() => onSelect(l.id)}
+              title="Click to show this list. Ctrl+click to add it to the selection."
+              onClick={(e) => onSelect(l.id, additive(e))}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setListMenu({ x: e.clientX, y: e.clientY, list: l });
@@ -297,7 +312,7 @@ export default function Sidebar({
               : []),
             ...(onSetCalendarListFilter
               ? [
-                  calendarListFilter === listMenu.list.id
+                  calendarShowsOnly(listMenu.list.id)
                     ? { label: "Show all lists in Calendar", onClick: () => onSetCalendarListFilter("all") }
                     : { label: `Show only "${listMenu.list.name}" in Calendar`, onClick: () => onSetCalendarListFilter(listMenu.list.id) }
                 ]

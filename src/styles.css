@@ -122,7 +122,6 @@ input, textarea, select { user-select: text; }
   padding: 5px 16px;
   border-bottom: 1px solid #2c2d30;
   background: #1a1b1e;
-  flex-wrap: wrap;
 }
 .toolbar-filters-right {
   display: flex;
@@ -131,6 +130,13 @@ input, textarea, select { user-select: text; }
   margin-left: auto;
   flex: 0 0 auto;
 }
+/* Filter rows stay on one line (useFitLevel shortens the labels as they
+   squeeze); past the shortest labels the row scrolls sideways. Items keep
+   their measured width instead of shrinking, so overflow can be detected. */
+.fit-toolbar { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.fit-toolbar > *, .fit-toolbar .toolbar-filters-right > * { flex-shrink: 0; }
+.fit-toolbar.fit-level-2 { gap: 6px; }
+.fit-toolbar.fit-level-2 .toolbar-filters-right { gap: 8px; }
 
 .due-filter-select {
   background: #26272a;
@@ -342,6 +348,20 @@ input, textarea, select { user-select: text; }
 }
 .menu-dropdown-item:hover { background: #303136; }
 .menu-hint { color: #7d8187; font-size: 11px; }
+.menu-dropdown-item.disabled { color: #6b6f75; cursor: default; }
+.menu-dropdown-item.disabled:hover { background: transparent; }
+.menu-dropdown-item.has-submenu { position: relative; }
+.menu-dropdown-item.has-submenu:hover,
+.menu-dropdown-item.has-submenu:has(.menu-submenu) { background: #303136; }
+.menu-submenu { top: -5px; left: 100%; max-height: 60vh; overflow-y: auto; }
+.menu-separator { height: 1px; background: #34353a; margin: 4px 6px; }
+
+/* ---------- View > Filters ---------- */
+.filters-modal h3 { font-size: 13px; color: #9aa0a6; margin: 16px 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+.filters-hint { font-size: 12px; color: #9aa0a6; margin: 0 0 4px; line-height: 1.5; }
+.filters-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 0; }
+.filters-show { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #e6e6e6; cursor: pointer; }
+.filters-control { display: flex; align-items: center; }
 
 /* ---------- View tabs (Tasks / Calendar) ---------- */
 .view-tabs { display: flex; gap: 2px; padding: 0 16px 0; border-bottom: 1px solid #2c2d30; }
@@ -377,7 +397,7 @@ input, textarea, select { user-select: text; }
 
 /* ---------- Calendar view ---------- */
 .calendar-view { display: flex; flex-direction: column; min-height: 0; flex: 1; padding: 0 16px 16px; }
-.calendar-view-toolbar { display: flex; align-items: center; gap: 12px; padding: 10px 0; flex-wrap: wrap; }
+.calendar-view-toolbar { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
 .calendar-view-grid {
   flex: 1;
   min-height: 0;
@@ -630,6 +650,20 @@ input, textarea, select { user-select: text; }
   background: #26272a; border: 1px solid #4a90d9; border-radius: 6px;
   padding: 4px 8px; color: #e6e6e6; font-size: 12px; width: 160px;
 }
+/* Calendar "List:" multi-select dropdown (ListPicker.tsx) */
+.list-picker { position: relative; }
+.list-picker > .due-filter-select { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list-picker-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 1000;
+  background: #26272a; border: 1px solid #3a3b3f; border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4); padding: 4px 0;
+  min-width: 200px; max-height: 60vh; overflow-y: auto;
+}
+.list-picker-item { display: flex; align-items: center; gap: 8px; padding: 5px 12px; font-size: 12px; color: #c8c8c8; cursor: pointer; }
+.list-picker-item:hover { background: #34353a; }
+.list-picker-item.active { color: #fff; }
+.list-picker-check { width: 14px; height: 14px; margin: 0; flex: 0 0 auto; cursor: pointer; }
+.list-picker-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-row.drag-over { border-top: 2px solid #4a90d9; }
 .task-row[draggable="true"] { cursor: grab; }
 

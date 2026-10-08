@@ -98,6 +98,9 @@ const api = {
     markConfigured: () => ipcRenderer.invoke("server:markConfigured"),
     openFirewall: () => ipcRenderer.invoke("server:openFirewall")
   },
+  menu: {
+    setSavedViews: (views: { id: string; name: string }[]) => ipcRenderer.send("menu:savedViews", views)
+  },
   on: (channel: string, callback: (...args: any[]) => void) => {
     const listener = (_e: any, ...args: any[]) => callback(...args);
     ipcRenderer.on(channel, listener);

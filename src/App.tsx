@@ -21,24 +21,40 @@ import TrialBanner from "./components/TrialBanner";
 import { Task, TaskList, CaldavAccountPublic, CalendarEvent, Contact, AddressBook, EventOverride, Entitlement } from "./types";
 import { selectWidth } from "./selectWidth";
 import { RRule } from "rrule";
+import {
+  TaskScope, CalendarLists, SavedView, DueFilter, TaskDisplayMode, EventDisplayMode, SortMode, CalView, HiddenFilters,
+  TasksFilterKey,
+  loadSavedViews, saveSavedViews, nextSelection, pruneSelection, selectionLabel,
+  loadCalendarLists, storeCalendarLists, readDefaultView, writeDefaultView, loadHiddenFilters, storeHiddenFilters,
+  DEFAULT_TASKS_VIEW_KEY, DEFAULT_CALENDAR_VIEW_KEY
+} from "./views";
+import {
+  useFitLevel, clip, DUE_LABELS, SORT_LABELS, HIDE_COMPLETED_FIT, SHOW_SCHEDULED_FIT, SAVE_VIEW_FIT
+} from "./filters";
+import FitSelect from "./components/FitSelect";
+import FiltersModal from "./components/FiltersModal";
 
-type Scope = string | "all" | "today";
-type SortMode = "priority" | "due" | "title" | "manual";
-
-/** A saved view: every knob in the toolbar plus the selected scope. */
-interface SmartFilter {
-  id: string;
-  name: string;
-  scope: Scope;
-  search: string;
-  dueFilter: "all" | "today" | "week" | "month";
-  categoryFilter: string;
-  hideCompleted: boolean;
-  showScheduled: boolean;
-}
-
-function loadSmartFilters(): SmartFilter[] {
-  try { return JSON.parse(localStorage.getItem("smartFilters") || "[]"); } catch { return []; }
+/** What each tab shows when the app opens: the saved views, plus the default
+ *  views chosen in Settings (Tasks: All Tasks / Today & Overdue / a view;
+ *  Calendar: last used / All lists / a view). Computed once per mount. */
+function computeStartup() {
+  const views = loadSavedViews();
+  const tasksDefault = readDefaultView(DEFAULT_TASKS_VIEW_KEY);
+  const calendarDefault = readDefaultView(DEFAULT_CALENDAR_VIEW_KEY);
+  const taskView = views.find((v) => v.id === tasksDefault) ?? null;
+  const calView = views.find((v) => v.id === calendarDefault) ?? null;
+  const scope: TaskScope = tasksDefault === "today" ? "today" : taskView ? taskView.lists : "all";
+  const calendarLists: CalendarLists =
+    calendarDefault === "all" ? "all"
+      : calView ? (calView.lists === "today" ? "all" : calView.lists)
+      : loadCalendarLists();
+  // A default view that carries its tab's hidden filters brings them along.
+  const stored = loadHiddenFilters();
+  const hidden: HiddenFilters = {
+    calendar: (calView?.origin === "calendar" && calView.calendar?.hidden) || stored.calendar,
+    tasks: (taskView?.origin === "tasks" && taskView.tasks?.hidden) || stored.tasks
+  };
+  return { views, scope, taskView, calView, calendarLists, hidden };
 }
 
 /** Epoch ms for an occurrence key, tolerant of date-only vs datetime, so a
@@ -63,19 +79,49 @@ function addUntilToRule(rruleStr: string, boundary: string): string {
 }
 
 export default function App() {
+  const [startup] = useState(computeStartup);
   const [lists, setLists] = useState<TaskList[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [mainView, setMainView] = useState<"tasks" | "calendar" | "contacts">("tasks");
   const [calendarShow, setCalendarShow] = useState<CalendarShow>(
-    () => (localStorage.getItem("calendarShow") as CalendarShow) || "both"
+    () => (startup.calView?.origin === "calendar" && startup.calView.calendar?.show)
+      || (localStorage.getItem("calendarShow") as CalendarShow) || "both"
   );
-  // "all" or a single list id -- right-click a list/calendar in the sidebar
-  // ("Show only ...") to isolate the calendar view to it.
-  const [calendarListFilter, setCalendarListFilter] = useState(() => localStorage.getItem("calendarListFilter") || "all");
-  useEffect(() => { localStorage.setItem("calendarListFilter", calendarListFilter); }, [calendarListFilter]);
+  // The calendar's own list selection ("all" or list ids), separate from the
+  // Tasks tab's: click a list in the sidebar (or the List: picker) to isolate
+  // the calendar to it, Ctrl/Cmd+click to add more.
+  const [calendarListFilter, setCalendarListFilter] = useState<CalendarLists>(startup.calendarLists);
+  useEffect(() => { storeCalendarLists(calendarListFilter); }, [calendarListFilter]);
+  // Calendar filters, owned here (not in CalendarView) so saved views can set them.
+  const calViewFilters = startup.calView?.origin === "calendar" ? startup.calView.calendar : undefined;
+  const [calendarCategory, setCalendarCategory] = useState(
+    () => startup.calView?.categoryFilter ?? localStorage.getItem("calendarCategoryFilter") ?? "all"
+  );
+  const [calendarTaskDisplay, setCalendarTaskDisplay] = useState<TaskDisplayMode>(
+    () => calViewFilters?.taskDisplayMode ?? ((localStorage.getItem("calendarTaskDisplayMode") as TaskDisplayMode) || "due")
+  );
+  // Events default to the full start..end range (multi-day events span every day).
+  const [calendarEventDisplay, setCalendarEventDisplay] = useState<EventDisplayMode>(
+    () => calViewFilters?.eventDisplayMode ?? ((localStorage.getItem("calendarEventDisplayMode") as EventDisplayMode) || "range")
+  );
+  const [calView, setCalView] = useState<CalView>(
+    () => calViewFilters?.calView ?? ((localStorage.getItem("calendarView") as CalView) || "dayGridMonth")
+  );
+  useEffect(() => { localStorage.setItem("calendarView", calView); }, [calView]);
+  // Toolbar filters hidden via View > Filters (per tab). Hidden ones still apply.
+  const [hiddenFilters, setHiddenFilters] = useState<HiddenFilters>(startup.hidden);
+  useEffect(() => { storeHiddenFilters(hiddenFilters); }, [hiddenFilters]);
+  const [showFilters, setShowFilters] = useState(false);
+  // Bumped by View > Saved Views > Save Current View… on the Calendar tab.
+  const [calendarSaveSignal, setCalendarSaveSignal] = useState(0);
+  useEffect(() => { localStorage.setItem("calendarCategoryFilter", calendarCategory); }, [calendarCategory]);
+  useEffect(() => { localStorage.setItem("calendarTaskDisplayMode", calendarTaskDisplay); }, [calendarTaskDisplay]);
+  useEffect(() => { localStorage.setItem("calendarEventDisplayMode", calendarEventDisplay); }, [calendarEventDisplay]);
   const [accounts, setAccounts] = useState<CaldavAccountPublic[]>([]);
-  const [scope, setScope] = useState<Scope>("all");
+  // The Tasks tab's selection: "all", "today" or list ids (first = where new
+  // tasks go). Separate from the calendar's.
+  const [scope, setScope] = useState<TaskScope>(startup.scope);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   // One-shot signal: the id of a task/event just created, so its detail panel
@@ -150,7 +196,9 @@ export default function App() {
   const undoRef = React.useRef(undoLast);
   undoRef.current = undoLast;
 
-  const [search, setSearch] = useState("");
+  // A default Tasks view saved from the Tasks tab also restores its filters.
+  const startupTaskFilters = startup.taskView?.origin === "tasks" ? startup.taskView.tasks : undefined;
+  const [search, setSearch] = useState(startupTaskFilters?.search ?? "");
   const [menu, setMenu] = useState<{ x: number; y: number; taskId: string } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsPane, setSettingsPane] = useState<"accounts" | "calendars" | "contacts" | "sync" | "server" | "notifications" | "license" | undefined>(undefined);
@@ -197,25 +245,30 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [forceAddingList, setForceAddingList] = useState(false);
-  const [hideCompleted, setHideCompleted] = useState(() => localStorage.getItem("hideCompleted") === "1");
-  const [dueFilter, setDueFilter] = useState<"all" | "today" | "week" | "month">("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [hideCompleted, setHideCompleted] = useState(
+    () => startupTaskFilters?.hideCompleted ?? localStorage.getItem("hideCompleted") === "1"
+  );
+  const [dueFilter, setDueFilter] = useState<DueFilter>(startupTaskFilters?.dueFilter ?? "all");
+  const [categoryFilter, setCategoryFilter] = useState(startup.taskView?.categoryFilter ?? "all");
   // Persisted like hideCompleted/sortMode beside it -- without this the toggle
   // silently reset to "hidden" on every relaunch.
-  const [showScheduled, setShowScheduled] = useState(() => localStorage.getItem("showScheduled") === "1");
-  const [sortMode, setSortMode] = useState<SortMode>(() => (localStorage.getItem("sortMode") as SortMode) || "priority");
-  // These three toolbar selects show a short label when closed and expand to
-  // the full description while focused/open (same effect as the calendar's
-  // Tasks: Due/Start/Start–Due select).
-  const [dueFocused, setDueFocused] = useState(false);
+  const [showScheduled, setShowScheduled] = useState(
+    () => startupTaskFilters?.showScheduled ?? localStorage.getItem("showScheduled") === "1"
+  );
+  const [sortMode, setSortMode] = useState<SortMode>(
+    () => startupTaskFilters?.sortMode ?? ((localStorage.getItem("sortMode") as SortMode) || "priority")
+  );
+  // The category select shows a short label when closed and expands to the
+  // full description while focused/open (FitSelect does the same for Due/Sort).
   const [categoryFocused, setCategoryFocused] = useState(false);
-  const [sortFocused, setSortFocused] = useState(false);
-  const [smartFilters, setSmartFilters] = useState<SmartFilter[]>(loadSmartFilters);
+  const [savedViews, setSavedViews] = useState<SavedView[]>(startup.views);
   const [savingView, setSavingView] = useState(false);
   const [viewName, setViewName] = useState("");
-  // Set while applying a smart filter so the scope-change effect below doesn't
-  // immediately wipe the filter values the smart filter just set.
-  const applyingFilterRef = React.useRef(false);
+  // Settings -> default views ("" = built-in default; see computeStartup).
+  const [defaultTasksView, setDefaultTasksView] = useState(() => readDefaultView(DEFAULT_TASKS_VIEW_KEY));
+  const [defaultCalendarView, setDefaultCalendarView] = useState(() => readDefaultView(DEFAULT_CALENDAR_VIEW_KEY));
+  useEffect(() => { writeDefaultView(DEFAULT_TASKS_VIEW_KEY, defaultTasksView); }, [defaultTasksView]);
+  useEffect(() => { writeDefaultView(DEFAULT_CALENDAR_VIEW_KEY, defaultCalendarView); }, [defaultCalendarView]);
 
   useEffect(() => {
     localStorage.setItem("hideCompleted", hideCompleted ? "1" : "0");
@@ -226,38 +279,111 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("showScheduled", showScheduled ? "1" : "0");
   }, [showScheduled]);
-  useEffect(() => {
-    localStorage.setItem("smartFilters", JSON.stringify(smartFilters));
-  }, [smartFilters]);
+  useEffect(() => { saveSavedViews(savedViews); }, [savedViews]);
   useEffect(() => {
     localStorage.setItem("calendarShow", calendarShow);
   }, [calendarShow]);
 
-  // Reset filters when switching lists
-  useEffect(() => {
-    if (applyingFilterRef.current) { applyingFilterRef.current = false; return; }
-    setDueFilter("all"); setCategoryFilter("all");
-  }, [scope]);
+  /** Switch the Tasks tab's lists, resetting the due/category filters (they
+   *  rarely make sense carried over to different lists). Saved views set
+   *  scope directly instead, since they bring their own filters. */
+  function changeScope(next: TaskScope) {
+    setScope(next);
+    setDueFilter("all");
+    setCategoryFilter("all");
+  }
 
-  function applySmartFilter(f: SmartFilter) {
-    applyingFilterRef.current = true;
-    setScope(f.scope);
-    setSearch(f.search);
-    setDueFilter(f.dueFilter);
-    setCategoryFilter(f.categoryFilter);
-    setHideCompleted(f.hideCompleted);
-    setShowScheduled(f.showScheduled);
+  /** Sidebar click on the current tab: plain = only that list, Ctrl/Cmd =
+   *  add/remove. The Tasks and Calendar tabs keep separate selections. */
+  function selectSidebarList(id: string, additive: boolean) {
+    if (mainView === "calendar") {
+      setCalendarListFilter((prev) => nextSelection(prev, id, additive) as CalendarLists);
+    } else {
+      changeScope(nextSelection(scope, id, additive));
+    }
+  }
+
+  /** Open a saved view on the current tab. Its lists and category always
+   *  apply; its other filters only on the tab it was saved from. */
+  function applySavedView(v: SavedView) {
+    const known = new Set(lists.map((l) => l.id));
+    if (mainView === "calendar") {
+      setCalendarListFilter(pruneSelection(v.lists === "today" ? "all" : v.lists, known) as CalendarLists);
+      setCalendarCategory(v.categoryFilter);
+      if (v.origin === "calendar" && v.calendar) {
+        const c = v.calendar;
+        setCalendarShow(c.show);
+        setCalendarTaskDisplay(c.taskDisplayMode);
+        setCalendarEventDisplay(c.eventDisplayMode);
+        if (c.calView) setCalView(c.calView);
+        if (c.hidden) setHiddenFilters((h) => ({ ...h, calendar: c.hidden! }));
+      }
+    } else {
+      // From the Contacts tab, a view opens on the Tasks tab.
+      if (mainView === "contacts") setMainView("tasks");
+      setScope(pruneSelection(v.lists, known));
+      setCategoryFilter(v.categoryFilter);
+      if (v.origin === "tasks" && v.tasks) {
+        const t = v.tasks;
+        setSearch(t.search);
+        setDueFilter(t.dueFilter);
+        setHideCompleted(t.hideCompleted);
+        setShowScheduled(t.showScheduled);
+        if (t.sortMode) setSortMode(t.sortMode);
+        if (t.hidden) setHiddenFilters((h) => ({ ...h, tasks: t.hidden! }));
+      }
+    }
+  }
+
+  /** View > Filters: show or hide one toolbar filter on a tab. */
+  function setFilterShown(tab: keyof HiddenFilters, key: string, shown: boolean) {
+    setHiddenFilters((h) => {
+      const rest = (h[tab] as string[]).filter((k) => k !== key);
+      return { ...h, [tab]: shown ? rest : [...rest, key] } as HiddenFilters;
+    });
+  }
+
+  /** View > Saved Views > Save Current View…: opens the name box on the tab
+   *  you're on (Tasks from the Contacts tab). */
+  function startSavingView() {
+    if (mainView === "calendar") { setCalendarSaveSignal((n) => n + 1); return; }
+    if (mainView === "contacts") setMainView("tasks");
+    setSavingView(true);
+  }
+
+  function addSavedView(v: Omit<SavedView, "id">) {
+    setSavedViews((prev) => [...prev, { ...v, name: v.name.trim() || "Untitled view", id: String(Date.now()) }]);
   }
 
   function saveCurrentView(name: string) {
-    const f: SmartFilter = {
-      id: String(Date.now()),
-      name: name.trim() || "Untitled filter",
-      scope, search, dueFilter, categoryFilter, hideCompleted, showScheduled
-    };
-    setSmartFilters((prev) => [...prev, f]);
+    addSavedView({
+      name,
+      origin: "tasks",
+      lists: scope,
+      categoryFilter,
+      tasks: { search, dueFilter, hideCompleted, showScheduled, sortMode, hidden: hiddenFilters.tasks }
+    });
     setSavingView(false);
     setViewName("");
+  }
+
+  function saveCalendarView(name: string) {
+    addSavedView({
+      name,
+      origin: "calendar",
+      lists: calendarListFilter,
+      categoryFilter: calendarCategory,
+      calendar: {
+        show: calendarShow, taskDisplayMode: calendarTaskDisplay, eventDisplayMode: calendarEventDisplay,
+        calView, hidden: hiddenFilters.calendar
+      }
+    });
+  }
+
+  function deleteSavedView(id: string) {
+    setSavedViews((prev) => prev.filter((v) => v.id !== id));
+    if (defaultTasksView === id) setDefaultTasksView("");
+    if (defaultCalendarView === id) setDefaultCalendarView("");
   }
 
   const searchInputRef = React.useRef<HTMLInputElement>(null);
@@ -362,16 +488,39 @@ export default function App() {
     }
   }
 
+  // Live ref for the menu's New Task (Ctrl+N): the listener below is registered
+  // once, so calling createTaskInScope directly would use the first render's
+  // lists/selection/default (empty) and ignore the selected list.
+  const createTaskRef = React.useRef(createTaskInScope);
+  createTaskRef.current = createTaskInScope;
+  // Same for View > Saved Views (they depend on the current tab and lists).
+  const savedViewMenuRef = React.useRef({ apply: (_id: string) => {}, save: () => {} });
+  savedViewMenuRef.current = {
+    apply: (id: string) => { const v = savedViews.find((x) => x.id === id); if (v) applySavedView(v); },
+    save: startSavingView
+  };
+
+  // The desktop's native View > Saved Views submenu lists the views by name,
+  // so main rebuilds the menu whenever they change (absent in the add-on).
+  useEffect(() => {
+    window.api.menu?.setSavedViews(savedViews.map((v) => ({ id: v.id, name: v.name })));
+  }, [savedViews]);
+
   useEffect(() => {
     const offs = [
-      window.api.on("shortcut:new-task", () => createTaskInScope()),
+      window.api.on("shortcut:new-task", () => createTaskRef.current()),
+      window.api.on("shortcut:open-filters", () => setShowFilters(true)),
+      window.api.on("shortcut:apply-view", (id: string) => savedViewMenuRef.current.apply(id)),
+      window.api.on("shortcut:save-view", () => savedViewMenuRef.current.save()),
       window.api.on("shortcut:new-list", () => setForceAddingList(true)),
       window.api.on("shortcut:focus-search", () => searchInputRef.current?.focus()),
       window.api.on("shortcut:sync-now", () => runSync()),
       window.api.on("shortcut:undo", () => undoRef.current()),
       window.api.on("shortcut:open-settings", () => setShowSettings(true)),
       window.api.on("shortcut:open-about", () => setShowAbout(true)),
-      window.api.on("notify:select-task", (id: string) => { setScope("all"); setMainView("tasks"); selectTask(id); }),
+      window.api.on("notify:select-task", (id: string) => {
+        setScope("all"); setDueFilter("all"); setCategoryFilter("all"); setMainView("tasks"); selectTask(id);
+      }),
       window.api.on("notify:select-event", (id: string) => { setMainView("calendar"); selectEvent(id); })
     ];
     return () => offs.forEach((off) => off());
@@ -412,8 +561,8 @@ export default function App() {
       const ids = new Set(base.map((t) => t.id));
       const parentIds = new Set(base.map((t) => t.parent_id).filter(Boolean) as string[]);
       base = tasks.filter((t) => ids.has(t.id) || parentIds.has(t.id) || (t.parent_id && ids.has(t.parent_id)));
-    } else if (scope !== "all") {
-      base = tasks.filter((t) => t.list_id === scope);
+    } else if (Array.isArray(scope)) {
+      base = tasks.filter((t) => scope.includes(t.list_id));
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -508,7 +657,7 @@ export default function App() {
   const categoriesInScope = useMemo(() => {
     if (scope === "today") return [];
     if (scope === "all") return allCategories;
-    const scopeTasks = tasks.filter((t) => t.list_id === scope);
+    const scopeTasks = tasks.filter((t) => scope.includes(t.list_id));
     const seen = new Set<string>();
     for (const t of scopeTasks) {
       (t.tags || "").split(",").map((c) => c.trim()).filter(Boolean).forEach((c) => seen.add(c));
@@ -526,21 +675,27 @@ export default function App() {
     return lists.find((l) => l.caldav_calendar_url)?.id ?? lists[0]?.id;
   }
 
-  function defaultListId(): string {
-    // The list you're currently viewing wins (creating there is intentional).
-    if (typeof scope === "string" && scope !== "all" && scope !== "today") return scope;
-    // Otherwise the configured default, if it still exists; else synced-first.
-    if (defaultTaskList && lists.some((l) => l.id === defaultTaskList)) return defaultTaskList;
+  /** Where a new item goes: a selected list wins (creating there is
+   *  intentional; with several selected, the first one chosen that still
+   *  exists). With "all"/"today" selected, the configured default if it still
+   *  exists, else synced-first. */
+  function listForNewItem(selection: TaskScope, configuredDefault: string): string {
+    if (Array.isArray(selection)) {
+      const picked = selection.find((id) => lists.some((l) => l.id === id));
+      if (picked) return picked;
+    }
+    if (configuredDefault && lists.some((l) => l.id === configuredDefault)) return configuredDefault;
     return firstSyncedListId();
   }
 
-  /** Prefers the calendar's isolated-list filter (right-click "Show only…")
-   *  when one is set, since that's the calendar the user is currently looking
-   *  at; otherwise the configured default calendar, else synced-first. */
+  /** New task from the toolbar, "n", Ctrl+N or the menu: follows the selection
+   *  of the tab you're on (the Calendar tab keeps its own). */
+  function defaultListId(): string {
+    return listForNewItem(mainView === "calendar" ? calendarListFilter : scope, defaultTaskList);
+  }
+
   function defaultEventListId(): string {
-    if (calendarListFilter !== "all") return calendarListFilter;
-    if (defaultEventList && lists.some((l) => l.id === defaultEventList)) return defaultEventList;
-    return firstSyncedListId();
+    return listForNewItem(calendarListFilter, defaultEventList);
   }
 
   async function createEventOnDate(dateStr: string) {
@@ -782,11 +937,9 @@ export default function App() {
    *  (month-view day click) stays a due-date-only task, same as before. */
   async function createTaskOnDate(dateStr: string) {
     // Tasks created from the calendar honor the default TASK list (not the
-    // default event calendar). An active calendar isolation filter still wins,
-    // since that's the collection the user is looking at.
-    const list_id = calendarListFilter !== "all"
-      ? calendarListFilter
-      : ((defaultTaskList && lists.some((l) => l.id === defaultTaskList)) ? defaultTaskList : firstSyncedListId());
+    // default event calendar). A calendar list selection still wins, since
+    // that's the collection the user is looking at.
+    const list_id = listForNewItem(calendarListFilter, defaultTaskList);
     if (!list_id) return;
     const hasTime = dateStr.length > 10;
     const t = await window.api.tasks.create({
@@ -920,7 +1073,7 @@ export default function App() {
       // varied auto) color onto the local list so it isn't just another blue one.
       if (color) await window.api.lists.update(newList.id, { color } as Partial<TaskList>);
       await loadLists();
-      setScope(newList.id);
+      changeScope([newList.id]);
       setSyncMsg(`Created "${name}" on server — syncing…`);
       await syncAccountNow(accountId);
       setSyncMsg(`Created "${name}" on server.`);
@@ -951,7 +1104,9 @@ export default function App() {
       }
     }
     await window.api.lists.delete(id);
-    if (scope === id) setScope("all");
+    const remaining = new Set(lists.filter((l) => l.id !== id).map((l) => l.id));
+    setScope((prev) => pruneSelection(prev, remaining));
+    setCalendarListFilter((prev) => pruneSelection(prev, remaining) as CalendarLists);
     await loadLists();
     await loadTasks();
   }
@@ -1049,27 +1204,20 @@ export default function App() {
   }
 
   const scopeTitle =
-    scope === "all" ? "All Tasks" : scope === "today" ? "Today & Overdue" : lists.find((l) => l.id === scope)?.name || "Tasks";
+    scope === "all" ? "All Tasks"
+      : scope === "today" ? "Today & Overdue"
+      : selectionLabel(scope, (id) => lists.find((l) => l.id === id)?.name) || "Tasks";
 
-  const dueFilterShortLabel: Record<typeof dueFilter, string> = {
-    all: "Due: All", today: "Due: Today", week: "Due: Week", month: "Due: Month"
-  };
-  const dueFilterFullLabel: Record<typeof dueFilter, string> = {
-    all: "Due: All", today: "Due: Today", week: "Due: This week", month: "Due: This month"
-  };
-  const dueFilterLabel = dueFocused ? dueFilterFullLabel : dueFilterShortLabel;
-
-  const sortModeShortLabel: Record<SortMode, string> = {
-    priority: "Sort: Pri", due: "Sort: Due", title: "Sort: Title", manual: "Sort: Man"
-  };
-  const sortModeFullLabel: Record<SortMode, string> = {
-    priority: "Sort: Priority", due: "Sort: Due date", title: "Sort: Title", manual: "Sort: Manual"
-  };
-  const sortModeLabel = sortFocused ? sortModeFullLabel : sortModeShortLabel;
-
-  const categoryFilterLabel = categoryFilter === "all"
-    ? (categoryFocused ? "Category: All" : "All")
-    : (categoryFocused ? `Category: ${categoryFilter}` : categoryFilter);
+  // The Tasks filter row stays on one line: labels shorten as it squeezes.
+  const tasksToolbarRef = React.useRef<HTMLDivElement>(null);
+  const tasksShown = (k: TasksFilterKey) => !hiddenFilters.tasks.includes(k);
+  const tasksFitLevel = useFitLevel(tasksToolbarRef, [
+    scope === "today" ? "today" : "lists", dueFilter, categoryFilter, categoriesInScope.length > 0, sortMode,
+    hiddenFilters.tasks.join(","), savingView
+  ].join("|"));
+  const categoryFilterLabel = categoryFocused
+    ? (categoryFilter === "all" ? "Category: All" : `Category: ${categoryFilter}`)
+    : (categoryFilter === "all" ? "All" : clip(categoryFilter, [40, 16, 10][tasksFitLevel]));
 
   // In the Thunderbird add-on there's no native File/Edit/View/… menu bar (that
   // was Electron-only), so we render an in-app toolbar there. Detected via the
@@ -1113,8 +1261,9 @@ export default function App() {
         lists={lists}
         tasks={tasks}
         accounts={accounts.map((a) => ({ id: a.id, label: a.label }))}
-        selectedListId={scope}
-        onSelect={setScope}
+        mode={mainView === "calendar" ? "calendar" : "tasks"}
+        selection={mainView === "calendar" ? calendarListFilter : scope}
+        onSelect={selectSidebarList}
         onCreateList={createList}
         onCreateServerList={createServerList}
         onSetListColor={setListColor}
@@ -1129,11 +1278,11 @@ export default function App() {
         syncMsg={syncMsg}
         forceAdding={forceAddingList}
         onForceAddingHandled={() => setForceAddingList(false)}
-        smartFilters={smartFilters}
-        onApplyFilter={applySmartFilter}
-        onDeleteFilter={(id) => setSmartFilters((prev) => prev.filter((f) => f.id !== id))}
+        smartFilters={savedViews}
+        onApplyFilter={applySavedView}
+        onDeleteFilter={deleteSavedView}
         calendarListFilter={calendarListFilter}
-        onSetCalendarListFilter={setCalendarListFilter}
+        onSetCalendarListFilter={(id) => setCalendarListFilter(id === "all" ? "all" : [id])}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
@@ -1150,6 +1299,10 @@ export default function App() {
             onAbout={() => setShowAbout(true)}
             onSync={() => runSync()}
             onSetView={setMainView}
+            onFilters={() => setShowFilters(true)}
+            savedViews={savedViews}
+            onApplyView={applySavedView}
+            onSaveView={startSavingView}
             syncing={syncing}
           />
         )}
@@ -1183,7 +1336,18 @@ export default function App() {
             onCreateEvent={createEventOnDate}
             onCreateTask={createTaskOnDate}
             listFilter={calendarListFilter}
-            onSetListFilter={setCalendarListFilter}
+            onSetListFilter={(id, additive) => setCalendarListFilter((prev) => nextSelection(prev, id, additive) as CalendarLists)}
+            categoryFilter={calendarCategory}
+            onSetCategoryFilter={setCalendarCategory}
+            displayMode={calendarTaskDisplay}
+            onSetDisplayMode={setCalendarTaskDisplay}
+            eventDisplayMode={calendarEventDisplay}
+            onSetEventDisplayMode={setCalendarEventDisplay}
+            onSaveView={saveCalendarView}
+            saveViewSignal={calendarSaveSignal}
+            calView={calView}
+            onSetCalView={setCalView}
+            hiddenFilters={hiddenFilters.calendar}
             onUpdateEvent={updateEvent}
             onUpdateTask={updateTask}
           />
@@ -1221,25 +1385,17 @@ export default function App() {
           />
           <button className="primary" onClick={createTaskInScope}>+ New task (Ctrl+N)</button>
         </div>
-        <div className="toolbar-filters">
+        <div ref={tasksToolbarRef} className={`toolbar-filters fit-toolbar fit-level-${tasksFitLevel}`}>
           {scope !== "today" && (<>
-            <select
-              className="due-filter-select"
-              value={dueFilter}
-              style={{ width: selectWidth(dueFilterLabel[dueFilter]) }}
-              onFocus={() => setDueFocused(true)}
-              onBlur={() => setDueFocused(false)}
-              onChange={(e) => setDueFilter(e.target.value as typeof dueFilter)}
-            >
-              <option value="all">{dueFilterLabel.all}</option>
-              <option value="today">{dueFilterLabel.today}</option>
-              <option value="week">{dueFilterLabel.week}</option>
-              <option value="month">{dueFilterLabel.month}</option>
-            </select>
-            {categoriesInScope.length > 0 && (
+            {tasksShown("due") && (
+              <FitSelect value={dueFilter} labels={DUE_LABELS} level={tasksFitLevel} onChange={setDueFilter}
+                title="Show tasks due in this period" />
+            )}
+            {tasksShown("category") && categoriesInScope.length > 0 && (
               <select
                 className="due-filter-select"
                 value={categoryFilter}
+                title={categoryFilter === "all" ? "Category: All" : `Category: ${categoryFilter}`}
                 style={{ width: selectWidth(categoryFilterLabel) }}
                 onFocus={() => setCategoryFocused(true)}
                 onBlur={() => setCategoryFocused(false)}
@@ -1247,39 +1403,33 @@ export default function App() {
               >
                 <option value="all">{categoryFocused ? "Category: All" : "All"}</option>
                 {categoriesInScope.map((c) => (
-                  <option key={c} value={c}>{categoryFocused ? `Category: ${c}` : c}</option>
+                  <option key={c} value={c}>{categoryFocused ? `Category: ${c}` : c === categoryFilter ? categoryFilterLabel : c}</option>
                 ))}
               </select>
             )}
           </>)}
-          <select
-            className="due-filter-select"
-            value={sortMode}
-            style={{ width: selectWidth(sortModeLabel[sortMode]) }}
-            title={sortMode === "manual" ? "Drag tasks to reorder them" : "Switch to Manual to drag-reorder tasks"}
-            onFocus={() => setSortFocused(true)}
-            onBlur={() => setSortFocused(false)}
-            onChange={(e) => setSortMode(e.target.value as SortMode)}
-          >
-            <option value="priority">{sortModeLabel.priority}</option>
-            <option value="due">{sortModeLabel.due}</option>
-            <option value="title">{sortModeLabel.title}</option>
-            <option value="manual">{sortModeLabel.manual}</option>
-          </select>
+          {tasksShown("sort") && (
+            <FitSelect value={sortMode} labels={SORT_LABELS} level={tasksFitLevel} onChange={setSortMode}
+              title={sortMode === "manual" ? "Drag tasks to reorder them" : "Switch to Manual to drag-reorder tasks"} />
+          )}
           <div className="toolbar-filters-right">
-          <label className="hide-completed-toggle">
-            <input type="checkbox" checked={hideCompleted} onChange={(e) => setHideCompleted(e.target.checked)} />
-            Hide completed
-          </label>
-          <label className="hide-completed-toggle" title="Show tasks whose start date is still in the future">
-            <input type="checkbox" checked={showScheduled} onChange={(e) => setShowScheduled(e.target.checked)} />
-            Show scheduled
-          </label>
+          {tasksShown("hideCompleted") && (
+            <label className="hide-completed-toggle" title="Hide completed tasks">
+              <input type="checkbox" checked={hideCompleted} onChange={(e) => setHideCompleted(e.target.checked)} />
+              {HIDE_COMPLETED_FIT[tasksFitLevel]}
+            </label>
+          )}
+          {tasksShown("showScheduled") && (
+            <label className="hide-completed-toggle" title="Show tasks whose start date is still in the future">
+              <input type="checkbox" checked={showScheduled} onChange={(e) => setShowScheduled(e.target.checked)} />
+              {SHOW_SCHEDULED_FIT[tasksFitLevel]}
+            </label>
+          )}
           {savingView ? (
             <input
               className="save-view-input"
               autoFocus
-              placeholder="Filter name… (Enter)"
+              placeholder="View name… (Enter)"
               value={viewName}
               onChange={(e) => setViewName(e.target.value)}
               onKeyDown={(e) => {
@@ -1288,8 +1438,8 @@ export default function App() {
               }}
             />
           ) : (
-            <button className="save-view-btn" title="Save the current scope, search, filters and toggles as a smart filter in the sidebar" onClick={() => setSavingView(true)}>
-              ☆ Save view
+            <button className="save-view-btn" title="Save the selected lists, search, filters and toggles as a view in the sidebar" onClick={() => setSavingView(true)}>
+              {SAVE_VIEW_FIT[tasksFitLevel]}
             </button>
           )}
           </div>
@@ -1401,10 +1551,42 @@ export default function App() {
           onSyncAccount={syncAccountNow}
           onReviewDuplicates={() => { setShowSettings(false); setMainView("contacts"); setContactsMode("duplicates"); }}
           onImportVCard={() => { setShowSettings(false); setMainView("contacts"); setShowImport(true); }}
+          savedViews={savedViews.map((v) => ({ id: v.id, name: v.name }))}
+          defaultTasksView={defaultTasksView}
+          onSetDefaultTasksView={setDefaultTasksView}
+          defaultCalendarView={defaultCalendarView}
+          onSetDefaultCalendarView={setDefaultCalendarView}
         />
       )}
 
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
+
+      {showFilters && (
+        <FiltersModal
+          firstTab={mainView === "calendar" ? "calendar" : "tasks"}
+          hidden={hiddenFilters}
+          onSetShown={setFilterShown}
+          lists={lists}
+          calendar={{
+            calView, onCalView: setCalView,
+            show: calendarShow, onShow: setCalendarShow,
+            taskDisplay: calendarTaskDisplay, onTaskDisplay: setCalendarTaskDisplay,
+            eventDisplay: calendarEventDisplay, onEventDisplay: setCalendarEventDisplay,
+            lists: calendarListFilter,
+            onLists: (id, additive) => setCalendarListFilter((prev) => nextSelection(prev, id, additive) as CalendarLists),
+            category: calendarCategory, onCategory: setCalendarCategory, categories: allCategories
+          }}
+          tasks={{
+            due: dueFilter, onDue: setDueFilter,
+            category: categoryFilter, onCategory: setCategoryFilter,
+            categories: categoriesInScope.length ? categoriesInScope : allCategories,
+            sort: sortMode, onSort: setSortMode,
+            hideCompleted, onHideCompleted: setHideCompleted,
+            showScheduled, onShowScheduled: setShowScheduled
+          }}
+          onClose={() => setShowFilters(false)}
+        />
+      )}
 
       {showImport && (
         <ImportVCardModal

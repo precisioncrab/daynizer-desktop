@@ -6,8 +6,14 @@ import { CalendarEvent, EventOverride, Task, TaskList } from "../types";
 import { selectWidth } from "../selectWidth";
 import { appLocale, firstDayOfWeek, formatTime } from "../dateFormat";
 import ContextMenu from "./ContextMenu";
+import ListPicker from "./ListPicker";
+import { CalendarLists, CalendarShow, TaskDisplayMode, EventDisplayMode, CalView, CalendarFilterKey } from "../views";
+import {
+  useFitLevel, clip, CAL_VIEW_LABELS, SHOW_LABELS, TASK_DISPLAY_LABELS, EVENT_DISPLAY_LABELS, SAVE_VIEW_FIT
+} from "../filters";
+import FitSelect from "./FitSelect";
 
-export type CalendarShow = "both" | "tasks" | "events";
+export type { CalendarShow };
 
 interface Props {
   events: CalendarEvent[];
@@ -24,8 +30,26 @@ interface Props {
   onCreateEvent: (dateStr: string) => void;
   /** "New Task" on a day's context menu -- creates a task due that day. */
   onCreateTask: (dateStr: string) => void;
-  listFilter: string; // "all" or a single list id
-  onSetListFilter: (id: string) => void;
+  /** "all" or the lists to show. Click a name = only that list; tick or
+   *  Ctrl/Cmd+click = add/remove (App.tsx owns the selection). */
+  listFilter: CalendarLists;
+  onSetListFilter: (id: string, additive: boolean) => void;
+  // Owned by App.tsx (not local state) so saved views can set them.
+  categoryFilter: string;
+  onSetCategoryFilter: (v: string) => void;
+  displayMode: TaskDisplayMode;
+  onSetDisplayMode: (v: TaskDisplayMode) => void;
+  eventDisplayMode: EventDisplayMode;
+  onSetEventDisplayMode: (v: EventDisplayMode) => void;
+  /** Month/week/day, owned by App.tsx so saved views and View > Filters can set it. */
+  calView: CalView;
+  onSetCalView: (v: CalView) => void;
+  /** Filters hidden from the toolbar (View > Filters); they still apply. */
+  hiddenFilters: CalendarFilterKey[];
+  /** Saves the calendar's current lists and filters as a named view. */
+  onSaveView: (name: string) => void;
+  /** Bumped by View > Saved Views > Save Current View… to open the name box. */
+  saveViewSignal: number;
   /** Persist a drag/resize of an event bar (same path the detail panel's
    *  Save uses -- writes the row + flags it dirty for CalDAV push). */
   onUpdateEvent: (id: string, patch: Partial<CalendarEvent>) => void;
@@ -39,10 +63,10 @@ interface Props {
   firstDayOverride?: number | null;
 }
 
-type DisplayMode = "range" | "due" | "start";
-// Event equivalent of DisplayMode. "end" is the event's analogue of a task's
-// "due" (a single-day bar on the last day); "range" spans start..end.
-type EventDisplayMode = "range" | "start" | "end";
+type DisplayMode = TaskDisplayMode;
+// EventDisplayMode (views.ts) is the event equivalent: "end" is the event's
+// analogue of a task's "due" (a single-day bar on the last day); "range"
+// spans start..end.
 
 /** One day after a date-only string ("YYYY-MM-DD"), for the exclusive `end`
  *  that all-day ranges use (matches iCalendar's own DTEND convention). */
@@ -190,7 +214,9 @@ function parseOverrides(json: string | undefined): EventOverride[] {
 }
 
 export default function CalendarView({
-  events, tasks, lists, calendarShow, onSetCalendarShow, selectedTaskId, selectedEventId, onSelectTask, onSelectEvent, onCreateEvent, onCreateTask, listFilter, onSetListFilter, onUpdateEvent, onUpdateTask, firstDayOverride
+  events, tasks, lists, calendarShow, onSetCalendarShow, selectedTaskId, selectedEventId, onSelectTask, onSelectEvent, onCreateEvent, onCreateTask, listFilter, onSetListFilter, onUpdateEvent, onUpdateTask, firstDayOverride,
+  categoryFilter, onSetCategoryFilter, displayMode, onSetDisplayMode, eventDisplayMode, onSetEventDisplayMode, onSaveView,
+  calView, onSetCalView, hiddenFilters, saveViewSignal
 }: Props) {
   const elRef = useRef<HTMLDivElement>(null);
   const ecRef = useRef<ReturnType<typeof createCalendar> | null>(null);
@@ -234,34 +260,22 @@ export default function CalendarView({
   // Latest buildEcEvents, so the once-wired grip drag can rebuild with current
   // data (the mount effect's own closure is frozen at first render).
   const buildEcEventsRef = useRef<() => any[]>(() => []);
-  const [categoryFilter, setCategoryFilter] = useState(() => localStorage.getItem("calendarCategoryFilter") || "all");
-  const [displayMode, setDisplayMode] = useState<DisplayMode>(
-    () => (localStorage.getItem("calendarTaskDisplayMode") as DisplayMode) || "due"
-  );
-  // Events default to the full start..end range (multi-day events span every
-  // day). Persisted separately from the task mode.
-  const [eventDisplayMode, setEventDisplayMode] = useState<EventDisplayMode>(
-    () => (localStorage.getItem("calendarEventDisplayMode") as EventDisplayMode) || "range"
-  );
-  // The display-mode select shows a short label when closed and expands to
-  // the full description while focused/open, then shrinks back on blur.
-  const [displayModeFocused, setDisplayModeFocused] = useState(false);
-  const [eventDisplayModeFocused, setEventDisplayModeFocused] = useState(false);
-  // Month/week/day toggle -- replaces the library's default "today" header
-  // button (see headerToolbar in the mount effect below), which sat there
-  // not doing anything useful for this app. Week/day use the TimeGrid
-  // plugin's hourly views (not DayGrid's dayGridWeek) so hours of the day
-  // actually show, rather than just a strip of day cells like month view.
-  const CAL_VIEWS: { view: "dayGridMonth" | "timeGridWeek" | "timeGridDay"; label: string }[] = [
-    { view: "dayGridMonth", label: "Month" },
-    { view: "timeGridWeek", label: "Week" },
-    { view: "timeGridDay", label: "Day" }
-  ];
-  const [calView, setCalView] = useState<"dayGridMonth" | "timeGridWeek" | "timeGridDay">("dayGridMonth");
+  const [savingView, setSavingView] = useState(false);
+  const [viewName, setViewName] = useState("");
+  // View > Saved Views > Save Current View… bumps saveViewSignal. Compared
+  // with the value at mount so a remount (first-day-of-week change) doesn't
+  // reopen the name box.
+  const saveSignalAtMount = useRef(saveViewSignal);
+  useEffect(() => {
+    if (saveViewSignal !== saveSignalAtMount.current) setSavingView(true);
+  }, [saveViewSignal]);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  // Month/week/day toggle (calView prop) -- replaces the library's default
+  // "today" header button (see headerToolbar in the mount effect below), which
+  // sat there not doing anything useful for this app. Week/day use the
+  // TimeGrid plugin's hourly views (not DayGrid's dayGridWeek) so hours of the
+  // day actually show, rather than just a strip of day cells like month view.
 
-  useEffect(() => { localStorage.setItem("calendarCategoryFilter", categoryFilter); }, [categoryFilter]);
-  useEffect(() => { localStorage.setItem("calendarTaskDisplayMode", displayMode); }, [displayMode]);
-  useEffect(() => { localStorage.setItem("calendarEventDisplayMode", eventDisplayMode); }, [eventDisplayMode]);
   const displayModeRef = useRef(displayMode);
   useEffect(() => { displayModeRef.current = displayMode; });
   useEffect(() => { buildEcEventsRef.current = buildEcEvents; });
@@ -311,7 +325,7 @@ export default function CalendarView({
       : events;
     if (showEvents) {
       for (const e of eventsForRender) {
-        if (listFilter !== "all" && e.list_id !== listFilter) continue;
+        if (listFilter !== "all" && !listFilter.includes(e.list_id)) continue;
         if (!matchesCategory(e.tags)) continue;
         const recurring = !!e.recurrence;
         // Per-occurrence exceptions: dates the user removed (exdates) are
@@ -398,7 +412,7 @@ export default function CalendarView({
     if (showTasks) {
       for (const t of tasks) {
         if (t.completed || t.deleted) continue;
-        if (listFilter !== "all" && t.list_id !== listFilter) continue;
+        if (listFilter !== "all" && !listFilter.includes(t.list_id)) continue;
         if (!matchesCategory(t.tags)) continue;
         const recurring = !!t.recurrence;
         // Recurrence is anchored on the due date (Tasks.org convention, matching
@@ -810,110 +824,70 @@ export default function CalendarView({
     ecRef.current.setOption("view", calView);
   }, [ready, calView]);
 
-  const displayModeShortLabel: Record<DisplayMode, string> = {
-    due: "Tasks: Due",
-    start: "Tasks: Start",
-    range: "Tasks: Start–Due"
-  };
-  const displayModeFullLabel: Record<DisplayMode, string> = {
-    due: "Tasks: Due date only",
-    start: "Tasks: Start date only",
-    range: "Tasks: Start–due range"
-  };
-  const displayModeLabel = displayModeFocused ? displayModeFullLabel : displayModeShortLabel;
-  const eventDisplayModeShortLabel: Record<EventDisplayMode, string> = {
-    end: "Events: End",
-    start: "Events: Start",
-    range: "Events: Start–End"
-  };
-  const eventDisplayModeFullLabel: Record<EventDisplayMode, string> = {
-    end: "Events: End date only",
-    start: "Events: Start date only",
-    range: "Events: Start–end range"
-  };
-  const eventDisplayModeLabel = eventDisplayModeFocused ? eventDisplayModeFullLabel : eventDisplayModeShortLabel;
-  const listFilterLabel = listFilter === "all" ? "List: All" : `List: ${lists.find((l) => l.id === listFilter)?.name ?? "All"}`;
-  const showLabel: Record<CalendarShow, string> = {
-    both: "Show both",
-    tasks: "Show tasks",
-    events: "Show events"
-  };
+  // Kept on one line: labels shorten as the toolbar squeezes (useFitLevel).
+  const shown = (k: CalendarFilterKey) => !hiddenFilters.includes(k);
+  const fitKey = [calView, calendarShow, displayMode, eventDisplayMode, categoryFilter,
+    listFilter === "all" ? "all" : listFilter.join(","), hiddenFilters.join(","), allCategories.length > 0, savingView].join("|");
+  const level = useFitLevel(toolbarRef, fitKey);
+  const categoryText = categoryFilter === "all"
+    ? ["Category: All", "Cat: All", "All"][level]
+    : clip(categoryFilter, [40, 16, 10][level]);
 
   return (
     <div className="calendar-view">
-      <div className="calendar-view-toolbar">
-        <select
-          className="due-filter-select"
-          value={calView}
-          title="Switch between month, week, and day view"
-          style={{ width: selectWidth(CAL_VIEWS.find((v) => v.view === calView)?.label ?? "Month") }}
-          onChange={(e) => setCalView(e.target.value as typeof calView)}
-        >
-          {CAL_VIEWS.map((v) => <option key={v.view} value={v.view}>{v.label}</option>)}
-        </select>
-        <select
-          className="due-filter-select"
-          value={calendarShow}
-          title="Show tasks, events, or both on the calendar"
-          style={{ width: selectWidth(showLabel[calendarShow]) }}
-          onChange={(e) => onSetCalendarShow(e.target.value as CalendarShow)}
-        >
-          <option value="both">Show both</option>
-          <option value="tasks">Show tasks</option>
-          <option value="events">Show events</option>
-        </select>
-        <select
-          className="due-filter-select"
-          value={displayMode}
-          disabled={!showTasks}
-          title="How task dates are drawn on the calendar"
-          style={{ width: selectWidth(displayModeLabel[displayMode]) }}
-          onFocus={() => setDisplayModeFocused(true)}
-          onBlur={() => setDisplayModeFocused(false)}
-          onChange={(e) => setDisplayMode(e.target.value as DisplayMode)}
-        >
-          <option value="due">{displayModeLabel.due}</option>
-          <option value="start">{displayModeLabel.start}</option>
-          <option value="range">{displayModeLabel.range}</option>
-        </select>
-        <select
-          className="due-filter-select"
-          value={eventDisplayMode}
-          disabled={!showEvents}
-          title="How event dates are drawn on the calendar"
-          style={{ width: selectWidth(eventDisplayModeLabel[eventDisplayMode]) }}
-          onFocus={() => setEventDisplayModeFocused(true)}
-          onBlur={() => setEventDisplayModeFocused(false)}
-          onChange={(e) => setEventDisplayMode(e.target.value as EventDisplayMode)}
-        >
-          <option value="end">{eventDisplayModeLabel.end}</option>
-          <option value="start">{eventDisplayModeLabel.start}</option>
-          <option value="range">{eventDisplayModeLabel.range}</option>
-        </select>
-        <select
-          className="due-filter-select"
-          value={listFilter}
-          title="Isolate the calendar to one list/calendar (same as right-click → Show only… in the sidebar)"
-          style={{ width: selectWidth(listFilterLabel) }}
-          onChange={(e) => onSetListFilter(e.target.value)}
-        >
-          <option value="all">List: All</option>
-          {lists.map((l) => (
-            <option key={l.id} value={l.id}>List: {l.name}</option>
-          ))}
-        </select>
-        {allCategories.length > 0 && (
+      <div ref={toolbarRef} className={`calendar-view-toolbar fit-toolbar fit-level-${level}`}>
+        {shown("calView") && (
+          <FitSelect value={calView} labels={CAL_VIEW_LABELS} level={level} onChange={onSetCalView}
+            title="Switch between month, week, and day view" />
+        )}
+        {shown("show") && (
+          <FitSelect value={calendarShow} labels={SHOW_LABELS} level={level} onChange={onSetCalendarShow}
+            title="Show tasks, events, or both on the calendar" />
+        )}
+        {shown("taskDisplay") && (
+          <FitSelect value={displayMode} labels={TASK_DISPLAY_LABELS} level={level} onChange={onSetDisplayMode}
+            disabled={!showTasks} title="How task dates are drawn on the calendar" />
+        )}
+        {shown("eventDisplay") && (
+          <FitSelect value={eventDisplayMode} labels={EVENT_DISPLAY_LABELS} level={level} onChange={onSetEventDisplayMode}
+            disabled={!showEvents} title="How event dates are drawn on the calendar" />
+        )}
+        {shown("lists") && <ListPicker lists={lists} value={listFilter} onChange={onSetListFilter} level={level} />}
+        {shown("category") && allCategories.length > 0 && (
           <select
             className="due-filter-select"
             value={categoryFilter}
-            style={{ width: selectWidth(categoryFilter === "all" ? "Category: All" : categoryFilter) }}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            title={categoryFilter === "all" ? "Category: All" : `Category: ${categoryFilter}`}
+            style={{ width: selectWidth(categoryText) }}
+            onChange={(e) => onSetCategoryFilter(e.target.value)}
           >
-            <option value="all">Category: All</option>
+            <option value="all">{categoryFilter === "all" ? categoryText : "Category: All"}</option>
             {allCategories.map((c) => (
-              <option key={c} value={c}>{c}</option>
+              <option key={c} value={c}>{c === categoryFilter ? categoryText : c}</option>
             ))}
           </select>
+        )}
+        {savingView ? (
+          <input
+            className="save-view-input"
+            autoFocus
+            placeholder="View name… (Enter)"
+            value={viewName}
+            onChange={(e) => setViewName(e.target.value)}
+            onBlur={() => { setSavingView(false); setViewName(""); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { onSaveView(viewName); setSavingView(false); setViewName(""); }
+              if (e.key === "Escape") { setSavingView(false); setViewName(""); }
+            }}
+          />
+        ) : (
+          <button
+            className="save-view-btn"
+            title="Save the calendar's lists and filters as a view in the sidebar"
+            onClick={() => setSavingView(true)}
+          >
+            {SAVE_VIEW_FIT[level]}
+          </button>
         )}
       </div>
       <div ref={elRef} className="calendar-view-grid ec-dark" />

@@ -1,10 +1,35 @@
-Daynizer (unreleased)
+Daynizer v0.8.4
 
-Changes since v0.8.3.
+Changes since v0.8.3. Daynizer remains beta, pre-1.0, keep a backup of anything important.
 
 - **Fixed repeating events showing an hour off after a daylight-saving change.** A weekly 4 PM
   meeting created in winter showed at 5 PM in summer on the calendar. Repeats now keep their clock
   time. Completing a timed repeating task had the same drift and is fixed too.
+- **Show several lists at once, and save them as a view.** Click a list in the sidebar to show
+  only that list; Ctrl+click (Cmd+click on Mac) to add more lists or take one away. This works on
+  the Tasks tab and the Calendar tab, which each keep their own selection. On the Calendar tab,
+  clicking a list in the sidebar now narrows the calendar to it, and the List filter is a checkbox
+  list (tick to add a list, click a name to show only that one). The Calendar tab has a Save view
+  button too, and saved views (renamed from "Filters") work from either tab: a view brings its
+  lists and category to whichever tab you open it on. Views you saved before carry over.
+- **Filter bars stay on one line.** On a narrow window (or a Thunderbird tab) the filters on the
+  Tasks and Calendar tabs no longer stack onto extra rows; their labels shorten instead (for
+  example "Tasks: Start–Due" becomes "T: S–D"). Open a filter to see its full choices.
+- **Hide the filters you don't use: View → Filters.** Untick a filter to remove it from the
+  toolbar. A hidden filter still applies, and you can change its setting in the same window.
+  The Calendar's Month/Week/Day picker counts as a filter, and the calendar now remembers it
+  between launches.
+- **View → Saved Views.** Open any saved view, or save the current one, from the menu. Saved views
+  now also remember which filters are hidden, the Tasks sort order, and the calendar's
+  Month/Week/Day.
+- **New tasks and events go into the list you have selected.** With a list selected, anything you
+  create lands in it (with several selected, the first one you picked); with All selected, it goes
+  to your default list from Settings. This now also holds for File → New Task (Ctrl+N), which
+  ignored the selection, and for new tasks made on the Calendar tab, which used the Tasks tab's
+  selection instead of the calendar's.
+- **Choose what each tab shows when Daynizer opens.** Settings → Calendars & Lists has a default
+  Tasks view (All Tasks, Today & Overdue, or a saved view) and a default Calendar view (same as
+  last time, All lists, or a saved view).
 - **Thunderbird add-on: reminders now pop up as notifications.** Turn them on in Settings →
   Notifications; Thunderbird asks once for permission to show notifications. Reminders show while
   Thunderbird is running, and clicking one opens Daynizer on that task or event. In the add-on the

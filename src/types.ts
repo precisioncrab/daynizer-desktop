@@ -327,6 +327,11 @@ declare global {
         activate: (licenseKey: string) => Promise<Entitlement>;
         deactivate: () => Promise<Entitlement>;
       };
+      /** Native menu (Electron desktop only; absent in the add-on shim --
+       *  always optional-chain). Feeds View > Saved Views. */
+      menu?: {
+        setSavedViews: (views: { id: string; name: string }[]) => void;
+      };
       on: (channel: string, callback: (...args: any[]) => void) => () => void;
     };
   }

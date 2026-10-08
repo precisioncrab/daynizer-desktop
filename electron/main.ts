@@ -616,8 +616,18 @@ async function exportLogs() {
   }
 }
 
+// Saved view names for View > Saved Views; the renderer sends them on startup
+// and whenever they change ("menu:savedViews"), and the menu is rebuilt.
+let menuSavedViews: { id: string; name: string }[] = [];
+
 function buildMenu() {
   const isMac = process.platform === "darwin";
+  const savedViewItems: Electron.MenuItemConstructorOptions[] = menuSavedViews.length
+    ? menuSavedViews.map((v) => ({
+        label: v.name.replace(/&/g, "&&"), // a lone & would become an access key
+        click: () => mainWindow?.webContents.send("shortcut:apply-view", v.id)
+      }))
+    : [{ label: "No saved views yet", enabled: false }];
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: "appMenu" as const }] : []),
     {
@@ -682,6 +692,22 @@ function buildMenu() {
       label: "View",
       submenu: [
         {
+          label: "Filters…",
+          click: () => mainWindow?.webContents.send("shortcut:open-filters")
+        },
+        {
+          label: "Saved Views",
+          submenu: [
+            {
+              label: "Save Current View…",
+              click: () => mainWindow?.webContents.send("shortcut:save-view")
+            },
+            { type: "separator" },
+            ...savedViewItems
+          ]
+        },
+        { type: "separator" },
+        {
           label: "Find / Search",
           accelerator: "CmdOrCtrl+F",
           click: () => mainWindow?.webContents.send("shortcut:focus-search")
@@ -740,6 +766,11 @@ function setupAutoUpdater() {
 function registerIpc() {
   ipcMain.handle("app:version", () => app.getVersion());
   ipcMain.handle("update:install", () => autoUpdater.quitAndInstall());
+
+  ipcMain.on("menu:savedViews", (_e, views: { id: string; name: string }[]) => {
+    menuSavedViews = Array.isArray(views) ? views : [];
+    buildMenu();
+  });
 
   ipcMain.handle("settings:all", () => ({ ...SETTING_DEFAULTS, ...settingsAll() }));
   ipcMain.handle("settings:set", (_e, key: string, value: string) => {

@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
+import { SavedView } from "../views";
 
 interface MenuItem {
   label: string;
   hint?: string;
-  onClick: () => void;
+  onClick?: () => void;
+  disabled?: boolean;
+  /** Opens to the side on hover (View > Saved Views). */
+  submenu?: MenuItem[];
+  separator?: boolean;
 }
 interface Menu {
   title: string;
@@ -19,6 +24,10 @@ interface Props {
   onAbout: () => void;
   onSync: () => void;
   onSetView: (v: "tasks" | "calendar" | "contacts") => void;
+  onFilters: () => void;
+  savedViews: SavedView[];
+  onApplyView: (v: SavedView) => void;
+  onSaveView: () => void;
   syncing: boolean;
 }
 
@@ -28,6 +37,7 @@ interface Props {
  *  buildMenu(). Rendered only in the add-on (see isAddon in App.tsx). */
 export default function AddonMenuBar(props: Props) {
   const [open, setOpen] = useState<string | null>(null);
+  const [openSub, setOpenSub] = useState<string | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,6 +47,15 @@ export default function AddonMenuBar(props: Props) {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+  useEffect(() => { setOpenSub(null); }, [open]);
+
+  const savedViewItems: MenuItem[] = [
+    { label: "Save Current View…", onClick: props.onSaveView },
+    { label: "", separator: true },
+    ...(props.savedViews.length
+      ? props.savedViews.map((v) => ({ label: v.name, onClick: () => props.onApplyView(v) }))
+      : [{ label: "No saved views yet", disabled: true }])
+  ];
 
   const menus: Menu[] = [
     {
@@ -63,6 +82,10 @@ export default function AddonMenuBar(props: Props) {
         { label: "Tasks", onClick: () => props.onSetView("tasks") },
         { label: "Calendar", onClick: () => props.onSetView("calendar") },
         { label: "Contacts", onClick: () => props.onSetView("contacts") },
+        { label: "", separator: true },
+        { label: "Filters…", onClick: props.onFilters },
+        { label: "Saved Views", submenu: savedViewItems },
+        { label: "", separator: true },
         { label: "Find / Search", hint: "Ctrl+F", onClick: props.onSearch },
         { label: "About", onClick: props.onAbout }
       ]
@@ -77,6 +100,42 @@ export default function AddonMenuBar(props: Props) {
     }
   ];
 
+  function renderItems(items: MenuItem[], keyPrefix: string, nested = false) {
+    return items.map((item, i) => {
+      const key = `${keyPrefix}-${i}`;
+      if (item.separator) return <div key={key} className="menu-separator" />;
+      if (item.submenu) {
+        return (
+          <div
+            key={key}
+            className="menu-dropdown-item has-submenu"
+            onMouseEnter={() => setOpenSub(item.label)}
+            onClick={() => setOpenSub(openSub === item.label ? null : item.label)}
+          >
+            <span>{item.label}</span>
+            <span className="menu-hint">▸</span>
+            {openSub === item.label && (
+              <div className="menu-dropdown menu-submenu" onClick={(e) => e.stopPropagation()}>
+                {renderItems(item.submenu, key, true)}
+              </div>
+            )}
+          </div>
+        );
+      }
+      return (
+        <div
+          key={key}
+          className={`menu-dropdown-item ${item.disabled ? "disabled" : ""}`}
+          onMouseEnter={nested ? undefined : () => setOpenSub(null)}
+          onClick={() => { if (item.disabled) return; item.onClick?.(); setOpen(null); }}
+        >
+          <span>{item.label}</span>
+          {item.hint && <span className="menu-hint">{item.hint}</span>}
+        </div>
+      );
+    });
+  }
+
   return (
     <div className="menu-bar" ref={barRef}>
       {menus.map((menu) => (
@@ -89,18 +148,7 @@ export default function AddonMenuBar(props: Props) {
             {menu.title}
           </button>
           {open === menu.title && (
-            <div className="menu-dropdown">
-              {menu.items.map((item) => (
-                <div
-                  key={item.label}
-                  className="menu-dropdown-item"
-                  onClick={() => { item.onClick(); setOpen(null); }}
-                >
-                  <span>{item.label}</span>
-                  {item.hint && <span className="menu-hint">{item.hint}</span>}
-                </div>
-              ))}
-            </div>
+            <div className="menu-dropdown">{renderItems(menu.items, menu.title)}</div>
           )}
         </div>
       ))}

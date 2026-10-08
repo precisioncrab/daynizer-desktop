@@ -58,9 +58,20 @@ interface Props {
   initialPane?: SettingsPane;
   /** Add-on only: called after a license is activated or removed. */
   onEntitlementChanged?: (e: Entitlement) => void;
+  /** Saved views, for the default Tasks/Calendar view pickers. */
+  savedViews: { id: string; name: string }[];
+  /** "" = All Tasks, "today" = Today & Overdue, else a saved view id. */
+  defaultTasksView: string;
+  onSetDefaultTasksView: (v: string) => void;
+  /** "" = whatever was showing last time, "all" = All lists, else a saved view id. */
+  defaultCalendarView: string;
+  onSetDefaultCalendarView: (v: string) => void;
 }
 
-export default function SettingsModal({ lists, addressBooks, onClose, onListsChanged, onSyncAccount, onReviewDuplicates, onImportVCard, initialPane, onEntitlementChanged }: Props) {
+export default function SettingsModal({
+  lists, addressBooks, onClose, onListsChanged, onSyncAccount, onReviewDuplicates, onImportVCard, initialPane, onEntitlementChanged,
+  savedViews, defaultTasksView, onSetDefaultTasksView, defaultCalendarView, onSetDefaultCalendarView
+}: Props) {
   // Only the Thunderbird add-on's window.api has an entitlement (freemium) API.
   const isAddon = !!window.api.entitlement;
   const [accounts, setAccounts] = useState<CaldavAccountPublic[]>([]);
@@ -899,6 +910,22 @@ export default function SettingsModal({ lists, addressBooks, onClose, onListsCha
                     {lists.map((l) => (
                       <option key={l.id} value={l.id}>{l.name}{l.caldav_calendar_url ? "" : " (local)"}</option>
                     ))}
+                  </select>
+                </label>
+                <label className="pref-row" title="What the Tasks tab shows when Daynizer opens. Save a view from the Tasks or Calendar tab to add it here.">
+                  Default Tasks view
+                  <select value={defaultTasksView} onChange={(e) => onSetDefaultTasksView(e.target.value)}>
+                    <option value="">All Tasks</option>
+                    <option value="today">Today &amp; Overdue</option>
+                    {savedViews.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  </select>
+                </label>
+                <label className="pref-row" title="What the Calendar tab shows when Daynizer opens. Save a view from the Tasks or Calendar tab to add it here.">
+                  Default Calendar view
+                  <select value={defaultCalendarView} onChange={(e) => onSetDefaultCalendarView(e.target.value)}>
+                    <option value="">Same as last time</option>
+                    <option value="all">All lists</option>
+                    {savedViews.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
                   </select>
                 </label>
                 <label className="pref-row" title="Overrides the automatic choice (based on your computer's region setting) for which day the calendar's week starts on.">
