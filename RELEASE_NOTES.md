@@ -11,6 +11,12 @@ Changes since v0.8.4.
   from the Daynizer Flatpak repository was built without it (the one attached to each GitHub
   release had it).
 - **Linux packages now state their license** (GPL-3.0-or-later). The .deb showed "unknown" before.
+- **Pick a contact's address book at the top of the contact form.** The Address book field was at
+  the bottom and only appeared with more than one book; it's now the first field and always shown,
+  so a new contact's book is easy to set.
+- **Moving a contact to another address book no longer leaves a copy behind.** A contact already
+  synced to the server was re-downloaded into its old book on the next sync. It is now removed from
+  the old book and uploaded to the new one.
 
 ---
 

@@ -1489,6 +1489,22 @@ export function contactUpdate(id: string, patch: Partial<Contact>): Contact {
   else dirty = 1;
   const sequence = dirty === 1 && !isSyncUpdate ? current.sequence + 1 : current.sequence;
   const merged: Contact = { ...current, ...patch, dirty, sequence, updated_at: nowIso() };
+  // Same re-home as taskUpdate: a vCard can't move between address books in
+  // place, so when a user moves a contact out of a server-linked book, leave a
+  // tombstone there (the delete-push removes the old card) and clear this row's
+  // CardDAV identity so it is pushed fresh into the new book. Without this the
+  // old book's next pull re-imports the card and the contact is duplicated.
+  const bookChanged = !isSyncUpdate && patch.address_book_id !== undefined && merged.address_book_id !== current.address_book_id;
+  if (bookChanged && current.carddav_uid) {
+    const oldBook = db.prepare(`SELECT carddav_addressbook_url FROM address_books WHERE id = ?`).get(current.address_book_id) as
+      { carddav_addressbook_url: string | null } | undefined;
+    if (oldBook?.carddav_addressbook_url) {
+      tombstoneMovedContact(current);
+      merged.carddav_uid = null;
+      merged.carddav_href = null;
+      merged.carddav_etag = null;
+    }
+  }
   db.prepare(
     `UPDATE contacts SET address_book_id=?, fn=?, prefix=?, first_name=?, middle_name=?, last_name=?, suffix=?, nickname=?, org=?, title=?, bday=?, anniversary=?, notes=?, categories=?, photo=?, phones=?, emails=?, addresses=?, urls=?, impps=?, related=?, raw_vcard=?, carddav_uid=?, carddav_href=?, carddav_etag=?, deleted=?, dirty=?, sequence=?, updated_at=? WHERE id=?`
   ).run(
@@ -1524,6 +1540,18 @@ export function contactUpdate(id: string, patch: Partial<Contact>): Contact {
     id
   );
   return contactGet(id)!;
+}
+
+/** Soft-deleted tombstone on the moved contact's OLD book carrying its former
+ *  CardDAV identity. That book's sync deletes the card from the server (`deleted
+ *  = 1 AND carddav_uid IS NOT NULL`) and then hard-deletes the tombstone; its
+ *  pull loop also skips the uid meanwhile, so the card can't be re-imported. */
+function tombstoneMovedContact(c: Contact): void {
+  const now = nowIso();
+  getDb().prepare(
+    `INSERT INTO contacts (id, address_book_id, fn, carddav_uid, carddav_href, carddav_etag, deleted, dirty, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?)`
+  ).run(nanoid(), c.address_book_id, c.fn, c.carddav_uid, c.carddav_href, c.carddav_etag, now, now);
 }
 
 export function contactDelete(id: string, hard = false) {

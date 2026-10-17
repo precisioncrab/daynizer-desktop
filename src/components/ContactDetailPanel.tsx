@@ -155,6 +155,13 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
     <div className="detail-panel">
       <h3>Contact details</h3>
 
+      {/* Up top and always shown, so a new contact's destination book is visible
+          and changeable before its first save. ⇄ marks server-synced books. */}
+      <label>Address book</label>
+      <select value={bookId} onChange={(e) => { setBookId(e.target.value); mark(); }}>
+        {addressBooks.map((b) => <option key={b.id} value={b.id}>{b.name}{b.carddav_addressbook_url ? " ⇄" : ""}</option>)}
+      </select>
+
       <div className="detail-row">
         <div>
           <label>First name</label>
@@ -259,15 +266,6 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
         placeholder="Add notes…"
         onChange={(e) => { setNotes(e.target.value); mark(); }}
       />
-
-      {addressBooks.length > 1 && (
-        <>
-          <label>Address book</label>
-          <select value={bookId} onChange={(e) => { setBookId(e.target.value); mark(); }}>
-            {addressBooks.map((b) => <option key={b.id} value={b.id}>{b.name}{b.carddav_addressbook_url ? " ⇄" : ""}</option>)}
-          </select>
-        </>
-      )}
 
       <div className="detail-actions">
         <button className="primary" onClick={handleSave} disabled={!dirty}>{dirty ? "Save" : "Saved"}</button>
