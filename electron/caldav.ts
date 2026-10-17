@@ -870,9 +870,16 @@ async function syncEvents(client: Client, list: TaskList) {
       // can't resurrect the event and it retries next sync.
       let gone = false;
       try {
-        const res: any = await client.deleteCalendarObject({
+        let res: any = await client.deleteCalendarObject({
           calendarObject: { url: e.caldav_href || "", etag: e.caldav_etag || "" }
         });
+        // 412: the server copy changed since our last pull (e.g. edited on a phone).
+        // The pull skips deleted rows, so this stale etag would fail every sync
+        // forever. The user deleted it here, so the delete wins: retry without If-Match.
+        if (res?.status === 412) {
+          syncLog(`delete got 412 for "${e.title}" ({e.caldav_uid}), retrying without etag`);
+          res = await client.deleteCalendarObject({ calendarObject: { url: e.caldav_href || "", etag: "" } });
+        }
         gone = res?.ok === true || isNotFound(res?.status);
         if (!gone) {
           syncLog(`event delete kept pending for "${e.title}" (${e.caldav_uid}): HTTP ${res?.status ?? "?"}`);
@@ -1218,9 +1225,16 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
       // can't resurrect it (it skips deleted rows) and it retries next sync.
       let gone = false;
       try {
-        const res: any = await client.deleteCalendarObject({
+        let res: any = await client.deleteCalendarObject({
           calendarObject: { url: t.caldav_href || "", etag: t.caldav_etag || "" }
         });
+        // 412: the server copy changed since our last pull (e.g. edited on a phone).
+        // The pull skips deleted rows, so this stale etag would fail every sync
+        // forever. The user deleted it here, so the delete wins: retry without If-Match.
+        if (res?.status === 412) {
+          syncLog(`delete got 412 for "${t.title}" ({t.caldav_uid}), retrying without etag`);
+          res = await client.deleteCalendarObject({ calendarObject: { url: t.caldav_href || "", etag: "" } });
+        }
         gone = res?.ok === true || isNotFound(res?.status);
         if (!gone) {
           const detail = `HTTP ${res?.status ?? "?"}${res?.statusText ? ` ${res.statusText}` : ""}`;

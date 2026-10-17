@@ -505,12 +505,25 @@ async function syncAddressBook(client: Client, book: AddressBook): Promise<Conta
       .prepare(`SELECT * FROM contacts WHERE address_book_id = ? AND deleted = 1 AND carddav_uid IS NOT NULL`)
       .all(book.id) as unknown as Contact[];
     for (const c of deletedWithRemote) {
+      // Same guard as tasks/events: only hard-delete locally once the server
+      // copy is gone (2xx or 404/410). Before, a failed delete dropped the
+      // tombstone anyway and the next pull brought the contact back.
+      let gone = false;
       try {
-        await client.deleteVCard({ vCard: { url: c.carddav_href || "", etag: c.carddav_etag || "" } });
+        let res: any = await client.deleteVCard({ vCard: { url: c.carddav_href || "", etag: c.carddav_etag || "" } });
+        // 412: the server copy changed since our last pull (e.g. edited on a phone).
+        // The pull skips deleted rows, so this stale etag would fail every sync
+        // forever. The user deleted it here, so the delete wins: retry without If-Match.
+        if (res?.status === 412) {
+          syncLog(`contact delete got 412 for "${c.fn}", retrying without etag`);
+          res = await client.deleteVCard({ vCard: { url: c.carddav_href || "", etag: "" } });
+        }
+        gone = res?.ok === true || res?.status === 404 || res?.status === 410;
+        if (!gone) syncLog(`contact delete kept pending for "${c.fn}": HTTP ${res?.status ?? "?"}`);
       } catch (err: any) {
         syncLog(`contact delete FAILED for "${c.fn}": ${err?.message || err}`);
       }
-      contactDelete(c.id, true);
+      if (gone) contactDelete(c.id, true);
     }
 
     contactsPruneMissing(book.id, remoteUids);

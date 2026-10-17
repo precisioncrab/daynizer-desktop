@@ -1,3 +1,20 @@
+Daynizer v0.8.6
+
+Changes since v0.8.5. v0.8.5 came out for Windows and macOS only, so on Linux and in the Thunderbird
+add-on this is the first release with its changes too (listed below). Daynizer remains beta,
+pre-1.0, keep a backup of anything important.
+
+- **Settings no longer opens at every start** on builds without the built-in sync server (the
+  Flatpak from the Daynizer Flatpak repository before this release). It opened to the Sync Server
+  page with no "Got it" button to dismiss it.
+- **Deleting something that changed on another device no longer fails forever.** If a task, event
+  or contact was edited elsewhere (on your phone, say) after the last sync, the server refused the
+  delete with "HTTP 412" and Daynizer retried the same way at every sync. Your delete now wins.
+- **Deleted contacts no longer come back** when the server couldn't delete them right away. They
+  are now retried at the next sync, like tasks and events.
+
+---
+
 Daynizer v0.8.5
 
 Changes since v0.8.4. Daynizer remains beta, pre-1.0, keep a backup of anything important.

@@ -233,7 +233,10 @@ export default function App() {
     (async () => {
       try {
         const s = await window.api.server?.status();
-        if (!cancelled && s && s.feature && s.enabled && !s.configured) {
+        // Only when the server is actually in this build: the pane's "Got it"
+        // (which sets configured) shows only then, so without `available`
+        // Settings reopened at every launch with no way to dismiss it.
+        if (!cancelled && s && s.feature && s.available && s.enabled && !s.configured) {
           setSettingsPane("server");
           setShowSettings(true);
         }
