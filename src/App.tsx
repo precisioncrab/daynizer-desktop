@@ -21,6 +21,7 @@ import TrialBanner from "./components/TrialBanner";
 import { Task, TaskList, CaldavAccountPublic, CalendarEvent, Contact, AddressBook, EventOverride, Entitlement, ManualUpdate } from "./types";
 import UpdateBanner from "./components/UpdateBanner";
 import { selectWidth } from "./selectWidth";
+import { ThemePref, applyTheme, getThemePref, normalizeTheme } from "./theme";
 import { RRule } from "rrule";
 import {
   TaskScope, CalendarLists, SavedView, DueFilter, TaskDisplayMode, EventDisplayMode, SortMode, CalView, HiddenFilters,
@@ -407,6 +408,23 @@ export default function App() {
 
   useEffect(() => { runSyncRef.current = runSync; });
 
+  // View > Theme. Saved per computer in the "theme" setting. On desktop main.ts
+  // owns the native menu, saves the choice itself and tells us via
+  // shortcut:set-theme; the add-on's menu bar calls chooseTheme directly.
+  const [themePref, setThemePref] = useState<ThemePref>(getThemePref);
+  useEffect(() => {
+    window.api.settings?.all().then((s: Record<string, string>) => {
+      const t = normalizeTheme(s.theme);
+      applyTheme(t);
+      setThemePref(t);
+    }).catch(() => {});
+  }, []);
+  function chooseTheme(t: ThemePref) {
+    applyTheme(t);
+    setThemePref(t);
+    window.api.settings?.set("theme", t);
+  }
+
   // Read the auto-sync interval at startup and again whenever Settings closes
   // (the user may have just changed it).
   useEffect(() => {
@@ -526,6 +544,7 @@ export default function App() {
       window.api.on("shortcut:undo", () => undoRef.current()),
       window.api.on("shortcut:open-settings", () => setShowSettings(true)),
       window.api.on("shortcut:open-about", () => setShowAbout(true)),
+      window.api.on("shortcut:set-theme", (t: string) => { const v = normalizeTheme(t); applyTheme(v); setThemePref(v); }),
       window.api.on("notify:select-task", (id: string) => {
         setScope("all"); setDueFilter("all"); setCategoryFilter("all"); setMainView("tasks"); selectTask(id);
       }),
@@ -1311,6 +1330,8 @@ export default function App() {
             savedViews={savedViews}
             onApplyView={applySavedView}
             onSaveView={startSavingView}
+            theme={themePref}
+            onSetTheme={chooseTheme}
             syncing={syncing}
           />
         )}
@@ -1452,7 +1473,7 @@ export default function App() {
           )}
           </div>
         </div>
-        {syncMsg && <div style={{ padding: "4px 16px", fontSize: 12, color: "#9aa0a6" }}>{syncMsg}</div>}
+        {syncMsg && <div style={{ padding: "4px 16px", fontSize: 12, color: "var(--text-muted)" }}>{syncMsg}</div>}
         <TaskTable
           tasks={visibleTasks}
           forceExpand={!!search.trim()}

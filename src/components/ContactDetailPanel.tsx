@@ -40,11 +40,11 @@ const EMAIL_TYPES: { value: string; label: string }[] = [
 const ADDR_TYPES = ["home", "work", "other"];
 
 const addBtnStyle: CSSProperties = {
-  background: "transparent", border: "1px dashed #3a3b3f", color: "#9aa0a6",
+  background: "transparent", border: "1px dashed var(--border-alt)", color: "var(--text-muted)",
   borderRadius: 6, padding: "4px 8px", fontSize: 12, cursor: "pointer", marginTop: 4
 };
 const rmBtnStyle: CSSProperties = {
-  background: "none", border: "none", color: "#9aa0a6", cursor: "pointer", fontSize: 14, padding: "0 4px"
+  background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 14, padding: "0 4px"
 };
 
 export default function ContactDetailPanel({ contact, addressBooks, existingLabels = [], onUpdate, onDelete }: Props) {
@@ -180,7 +180,7 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
       <label>Birthday</label>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <input type="date" style={{ flex: 1 }} value={bday} onChange={(e) => { setBday(e.target.value); mark(); }} />
-        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#9aa0a6", whiteSpace: "nowrap" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
           <input type="checkbox" checked={bdayNoYear} onChange={(e) => { setBdayNoYear(e.target.checked); mark(); }} /> no year
         </label>
       </div>
@@ -188,7 +188,7 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
       <label>Anniversary</label>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <input type="date" style={{ flex: 1 }} value={anniversary} onChange={(e) => { setAnniversary(e.target.value); mark(); }} />
-        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#9aa0a6", whiteSpace: "nowrap" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
           <input type="checkbox" checked={anniversaryNoYear} onChange={(e) => { setAnniversaryNoYear(e.target.checked); mark(); }} /> no year
         </label>
       </div>
@@ -219,7 +219,7 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
 
       <label>Addresses</label>
       {addresses.map((a, i) => (
-        <div key={i} style={{ border: "1px solid #2c2d30", borderRadius: 6, padding: 8, marginBottom: 6 }}>
+        <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 6, padding: 8, marginBottom: 6 }}>
           <div className="detail-row" style={{ alignItems: "center", gap: 6 }}>
             <select value={a.type || "home"} onChange={(e) => patchAddr(i, { type: e.target.value })} style={{ flex: "0 0 90px" }}>
               {ADDR_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -271,7 +271,7 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
         <button className="primary" onClick={handleSave} disabled={!dirty}>{dirty ? "Save" : "Saved"}</button>
         <button className="danger" onClick={() => onDelete(contact.id)}>Delete</button>
       </div>
-      {contact.carddav_uid && <div style={{ marginTop: 10, fontSize: 11, color: "#777" }}>Synced via CardDAV</div>}
+      {contact.carddav_uid && <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-faint)" }}>Synced via CardDAV</div>}
     </div>
   );
 }

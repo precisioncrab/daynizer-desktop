@@ -4,6 +4,7 @@ import "@event-calendar/core/index.css";
 import { RRule } from "rrule";
 import { CalendarEvent, EventOverride, Task, TaskList } from "../types";
 import { selectWidth } from "../selectWidth";
+import { useResolvedTheme } from "../theme";
 import { appLocale, firstDayOfWeek, formatTime } from "../dateFormat";
 import ContextMenu from "./ContextMenu";
 import ListPicker from "./ListPicker";
@@ -221,6 +222,7 @@ export default function CalendarView({
   const elRef = useRef<HTMLDivElement>(null);
   const ecRef = useRef<ReturnType<typeof createCalendar> | null>(null);
   const [ready, setReady] = useState(false);
+  const theme = useResolvedTheme();
   // The calendar's currently-visible date span (activeRange, incl. the
   // leading/trailing days a month view shows). Set by the datesSet handler on
   // mount and on every navigate/view change; recurring items are expanded only
@@ -890,7 +892,7 @@ export default function CalendarView({
           </button>
         )}
       </div>
-      <div ref={elRef} className="calendar-view-grid ec-dark" />
+      <div ref={elRef} className={`calendar-view-grid${theme === "dark" ? " ec-dark" : ""}`} />
       {dayMenu && (
         <ContextMenu
           x={dayMenu.x}

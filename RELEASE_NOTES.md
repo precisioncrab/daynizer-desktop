@@ -1,7 +1,10 @@
-Daynizer (unreleased)
+Daynizer v0.8.5
 
-Changes since v0.8.4.
+Changes since v0.8.4. Daynizer remains beta, pre-1.0, keep a backup of anything important.
 
+- **Light mode.** View > Theme now has Match System (the default), Light Mode and Dark Mode, in
+  the desktop app and the Thunderbird add-on. Match System follows your computer's setting (in
+  Thunderbird, Thunderbird's own theme) and switches with it. The choice is saved on each computer.
 - **Linux and macOS tell you when an update is out.** Windows already updates itself; on Linux and
   macOS, Daynizer now checks for a newer release when it starts (and twice a day while running)
   and shows a bar at the bottom with how to update: GNOME Software, KDE Discover or

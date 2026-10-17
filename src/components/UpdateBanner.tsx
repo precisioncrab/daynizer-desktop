@@ -43,16 +43,16 @@ export default function UpdateBanner({ update }: { update: ManualUpdate }) {
         gap: 12,
         padding: "10px 16px",
         fontSize: 13.5,
-        color: "#c8ccd1",
-        background: "#1f2023",
-        borderTop: "1px solid #2c2d31",
+        color: "var(--text-2)",
+        background: "var(--bg-bar)",
+        borderTop: "1px solid var(--border)",
         marginTop: "auto",
         flexShrink: 0
       }}
     >
       <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         <strong>Daynizer {update.version} is available.</strong> {text}
-        {command && <code style={{ marginLeft: 6, padding: "1px 6px", background: "#2a2b2f", borderRadius: 4 }}>{command}</code>}
+        {command && <code style={{ marginLeft: 6, padding: "1px 6px", background: "var(--bg-nav-hover)", borderRadius: 4 }}>{command}</code>}
       </span>
       {command && (
         <button

@@ -41,7 +41,7 @@ export default function ImportVCardModal({ addressBooks, defaultBookId, onClose,
         <button className="modal-close" onClick={onClose}>×</button>
         <h2>Import from vCard</h2>
 
-        <p style={{ color: "#9aa0a6", fontSize: 13, marginTop: 0 }}>
+        <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 0 }}>
           Pick a <code>.vcf</code> file. Contacts already here are matched and updated (not duplicated);
           any label below is added to every contact in the file.
         </p>
@@ -62,12 +62,12 @@ export default function ImportVCardModal({ addressBooks, defaultBookId, onClose,
           ))}
         </select>
 
-        {error && <div style={{ color: "#e5484d", marginTop: 12, fontSize: 13 }}>{error}</div>}
+        {error && <div style={{ color: "var(--danger)", marginTop: 12, fontSize: 13 }}>{error}</div>}
 
         {result && !result.canceled && (
-          <div style={{ marginTop: 14, background: "#26272a", borderRadius: 6, padding: "10px 12px", fontSize: 13, color: "#c8c8c8" }}>
+          <div style={{ marginTop: 14, background: "var(--bg-field)", borderRadius: 6, padding: "10px 12px", fontSize: 13, color: "var(--text-2)" }}>
             Read {result.total} contact(s): matched {result.matched}, labeled {result.labeled}, added {result.created}.
-            <div style={{ color: "#9aa0a6", marginTop: 6 }}>
+            <div style={{ color: "var(--text-muted)", marginTop: 6 }}>
               Labels are added as a change to sync — they'll push to your server on the next sync.
             </div>
           </div>

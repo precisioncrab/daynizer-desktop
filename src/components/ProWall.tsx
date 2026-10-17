@@ -41,11 +41,11 @@ export default function ProWall({
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ maxWidth: 440, textAlign: "center", lineHeight: 1.6 }}>
         <h2 style={{ marginBottom: 8 }}>{feature} is a Daynizer Pro feature</h2>
-        <p style={{ color: "#9aa0a6", fontSize: 13 }}>
+        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
           Your 30-day trial ended on {ended}. Your {feature.toLowerCase()} data is safe: it stays on this
           computer and on your server, and comes back as soon as you activate a license.
         </p>
-        <p style={{ color: "#9aa0a6", fontSize: 13 }}>
+        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
           Tasks keep working on the free version.
         </p>
         <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 16 }}>

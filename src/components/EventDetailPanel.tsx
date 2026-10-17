@@ -420,13 +420,13 @@ export default function EventDetailPanel({ event, lists, allCategories = [], occ
         <button className="primary" onClick={handleSave} disabled={!dirty || !startDate}>{dirty ? "Save" : "Saved"}</button>
         <button className="danger" onClick={handleDelete}>Delete</button>
       </div>
-      {event.caldav_uid && <div style={{ marginTop: 10, fontSize: 11, color: "#777" }}>Synced via CalDAV</div>}
+      {event.caldav_uid && <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-faint)" }}>Synced via CalDAV</div>}
 
       {scopePrompt && (
         <div className="overlay" onClick={() => setScopePrompt(null)}>
           <div className="settings-modal" style={{ width: 380, maxHeight: "none" }} onClick={(e) => e.stopPropagation()}>
             <h2>{scopePrompt.mode === "delete" ? "Delete repeating event" : "Save repeating event"}</h2>
-            <p style={{ color: "#9aa0a6", fontSize: 13, marginTop: 0 }}>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 0 }}>
               {scopePrompt.mode === "delete" ? "Delete which events?" : "Apply your changes to which events?"}
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>

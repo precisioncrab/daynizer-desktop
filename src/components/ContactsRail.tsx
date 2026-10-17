@@ -85,7 +85,7 @@ export default function ContactsRail({ contacts, onSelectContact, collapsed, onT
             <span style={{ flexShrink: 0 }}>{u.kind === "birthday" ? "🎂" : "💍"}</span>
             <span className="today-pane-title">
               {u.name}
-              <span style={{ color: "#8a8d93" }}>
+              <span style={{ color: "var(--text-meta)" }}>
                 {" · "}{formatShortDate(u.date)}
                 {u.turning != null ? ` · turns ${u.turning}` : ""}
               </span>

@@ -720,7 +720,7 @@ export default function SettingsModal({
         <div className="calendar-pick" key={cal.url}>
           <span>{cal.displayName}</span>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            {dirty && <span style={{ fontSize: 11, color: "#e8a23d" }}>Unsaved</span>}
+            {dirty && <span style={{ fontSize: 11, color: "var(--warn)" }}>Unsaved</span>}
             <select
               value={selected}
               disabled={busy}
@@ -762,7 +762,7 @@ export default function SettingsModal({
       <div style={{ display: "flex", gap: 6, flexDirection: "column" }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center", width: "100%" }}>
           <input
-            style={{ flex: 1, background: "#26272a", border: "1px solid #34353a", borderRadius: 6, color: "#e6e6e6", padding: "5px 8px", fontSize: 12 }}
+            style={{ flex: 1, background: "var(--bg-field)", border: "1px solid var(--border-strong)", borderRadius: 6, color: "var(--text)", padding: "5px 8px", fontSize: 12 }}
             placeholder="CardDAV URL (e.g. http://host:5000/carddav.php/…)"
             value={carddavUrlByAccount[acc.id] ?? (acc.carddav_url || "")}
             onChange={(e) => setCarddavUrlByAccount((prev) => ({ ...prev, [acc.id]: e.target.value }))}
@@ -780,7 +780,7 @@ export default function SettingsModal({
             <div className="calendar-pick" key={book.url} style={{ width: "100%" }}>
               <span>{book.displayName}</span>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                {dirty && <span style={{ fontSize: 11, color: "#e8a23d" }}>Unsaved</span>}
+                {dirty && <span style={{ fontSize: 11, color: "var(--warn)" }}>Unsaved</span>}
                 <select
                   value={selected}
                   disabled={busy}
@@ -816,7 +816,7 @@ export default function SettingsModal({
 
   const saveBar = pendingCount > 0 ? (
     <div className="settings-save-bar">
-      <span style={{ fontSize: 12, color: "#9aa0a6" }}>
+      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
         {pendingCount} unsaved change{pendingCount === 1 ? "" : "s"}
       </span>
       <button className="primary" disabled={busy} onClick={saveAllChanges}>Save changes</button>
@@ -860,7 +860,7 @@ export default function SettingsModal({
 
           {activePane === "accounts" && (
             <>
-              <p style={{ color: "#9aa0a6", fontSize: 12 }}>
+              <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
                 Connect a CalDAV server (Nextcloud, Tasks.org sync provider, DAVx5-compatible server, etc.).
                 One account's credentials are shared by its calendars and contacts.
               </p>
@@ -942,7 +942,7 @@ export default function SettingsModal({
                   </select>
                 </label>
               </div>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#9aa0a6", marginBottom: 10 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
                 <input type="checkbox" checked={advancedLinking} onChange={(e) => setAdvancedLinking(e.target.checked)} />
                 Additional list linking options (link a calendar to an existing list)
               </label>
@@ -978,7 +978,7 @@ export default function SettingsModal({
 
           {activePane === "accounts" && (
             <label
-              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#9aa0a6", marginTop: 12 }}
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", marginTop: 12 }}
               title="Enable if your server uses a self-signed certificate (e.g. Synology DSM over HTTPS on your LAN). Turns off certificate verification for the app's sync connections — only use on servers you trust."
             >
               <input
@@ -1031,7 +1031,7 @@ export default function SettingsModal({
                 />
                 <button onClick={fillFromPairingLink} disabled={!pairingInput.trim()}>Fill in</button>
               </div>
-              <p style={{ fontSize: 11, color: "#e8a23d", marginTop: 6, lineHeight: 1.5 }}>
+              <p style={{ fontSize: 11, color: "var(--warn)", marginTop: 6, lineHeight: 1.5 }}>
                 ⚠️ This kind of link carries the password in <strong>plain text</strong>, not just a
                 reference to it — anyone who sees the link or a QR code made from it has the real
                 password. Treat it exactly like the password itself: don't paste it into chat, email,
@@ -1070,7 +1070,7 @@ export default function SettingsModal({
           </div>
           </>
           )}
-          {testMsg && <p style={{ fontSize: 12, color: "#9aa0a6" }}>{testMsg}</p>}
+          {testMsg && <p style={{ fontSize: 12, color: "var(--text-muted)" }}>{testMsg}</p>}
 
           {activePane === "sync" && window.api.settings && (
             <>
@@ -1109,7 +1109,7 @@ export default function SettingsModal({
 
           {activePane === "server" && (
             <>
-              <p style={{ color: "#9aa0a6", fontSize: 12 }}>
+              <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
                 Daynizer can host its own CalDAV/CardDAV sync server, so your tasks, calendar and
                 contacts sync across devices with no third-party account. One address serves both
                 calendars and contacts — add it to Daynizer on another computer, or to apps like
@@ -1117,9 +1117,9 @@ export default function SettingsModal({
               </p>
 
               {srv && srv.available && !srv.configured && (
-                <div className="account-card" style={{ borderColor: "#4a90d9" }}>
+                <div className="account-card" style={{ borderColor: "var(--accent-color)" }}>
                   <strong>Your sync server is ready</strong>
-                  <p style={{ fontSize: 12, color: "#9aa0a6", margin: "6px 0" }}>
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "6px 0" }}>
                     We generated a username and password for you (below). Use them as they are, or
                     change them now — then click "Got it". Daynizer will start with your computer and
                     keep the server running quietly in the tray, so your other devices can always sync.
@@ -1173,7 +1173,7 @@ export default function SettingsModal({
                     ? (srv.error ? `not running (${srv.error})` : "starting…")
                     : "off"}
               </div>
-              {srv?.note && <div className="status" style={{ color: "#e8a23d" }}>{srv.note}</div>}
+              {srv?.note && <div className="status" style={{ color: "var(--warn)" }}>{srv.note}</div>}
               {srv?.running && srv.lastActivity && (
                 <div className="status">Last device sync: {relTime(srv.lastActivity)}</div>
               )}
@@ -1181,7 +1181,7 @@ export default function SettingsModal({
               {srv?.running && (
                 <>
                   <h3 style={{ marginTop: 18 }}>Connect other apps</h3>
-                  <p style={{ color: "#9aa0a6", fontSize: 12 }}>
+                  <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
                     Use this one address in any CalDAV/CardDAV app — it finds both your calendars
                     and your contacts. On the same computer, use the local address instead.
                   </p>
@@ -1208,7 +1208,7 @@ export default function SettingsModal({
                       ) : (
                         <>
                           <button onClick={srvOpenFirewall} disabled={srvBusy}>Allow other devices through Windows Firewall</button>
-                          <div style={{ fontSize: 11, color: "#9aa0a6", marginTop: 4 }}>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
                             A one-time Windows permission prompt so phones and other computers on your
                             network can reach the server. Without it, Windows may block them.
                           </div>
@@ -1228,7 +1228,7 @@ export default function SettingsModal({
                           alt="QR code that configures DAVx5 with this sync server"
                           style={{ background: "#fff", padding: 8, borderRadius: 8, flex: "0 0 auto" }}
                         />
-                        <div style={{ fontSize: 12, color: "#9aa0a6", maxWidth: 300, lineHeight: 1.6 }}>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 300, lineHeight: 1.6 }}>
                           <strong>Install DAVx5 first</strong> — the scan opens straight into it. Then
                           open a QR scanner (<strong>Binary Eye</strong>, free, is the reliable one),
                           scan this, and tap the link: DAVx5 opens with the address, username and
@@ -1237,7 +1237,7 @@ export default function SettingsModal({
                           <div style={{ marginTop: 8 }}>
                             <button onClick={() => srvCopy(pairingUri(srv) ?? "", "Pairing link")}>Copy pairing link</button>
                           </div>
-                          <div style={{ marginTop: 6, fontSize: 11, color: "#e8a23d" }}>
+                          <div style={{ marginTop: 6, fontSize: 11, color: "var(--warn)" }}>
                             ⚠️ The QR code and the copied link both carry your password in plain text —
                             treat either one like the password itself. Don't screenshot the QR or paste
                             the link somewhere that isn't going straight into DAVx5 (chat/notes apps
@@ -1255,7 +1255,7 @@ export default function SettingsModal({
                       </div>
                     </div>
                   ) : srv.baseUrl && new URL(srv.baseUrl).hostname.startsWith("127.") ? (
-                    <div className="status" style={{ marginTop: 12, color: "#e8a23d" }}>
+                    <div className="status" style={{ marginTop: 12, color: "var(--warn)" }}>
                       Connect this computer to Wi-Fi or your network to show a phone-pairing QR code.
                     </div>
                   ) : null}
@@ -1289,7 +1289,7 @@ export default function SettingsModal({
                 <button className="primary" onClick={srvApplyCreds} disabled={srvBusy}>Save credentials</button>
                 <button onClick={srvRegenerate} disabled={srvBusy}>Regenerate password</button>
               </div>
-              <div style={{ fontSize: 11, color: "#9aa0a6", marginTop: 6 }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
                 Changing the password is safe. Changing the username starts a fresh account on the
                 server (existing data stays under the old name).
               </div>
@@ -1302,7 +1302,7 @@ export default function SettingsModal({
                   <button onClick={srvApplyPort} disabled={srvBusy}>Apply</button>
                 </span>
               </label>
-              <div style={{ fontSize: 11, color: "#9aa0a6", marginTop: 6 }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
                 Default 5232 (the standard CalDAV/CardDAV port). Keeping it fixed means connected
                 apps don't need reconfiguring. If it's ever already in use, Daynizer temporarily
                 picks another and notes it above.
@@ -1311,7 +1311,7 @@ export default function SettingsModal({
               <h3 style={{ marginTop: 18 }}>How to connect</h3>
               <details>
                 <summary style={{ cursor: "pointer", fontSize: 13, marginBottom: 4 }}>DAVx5 + Tasks.org (Android)</summary>
-                <ol style={{ fontSize: 12, color: "#c8c8c8", lineHeight: 1.7, marginTop: 4 }}>
+                <ol style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7, marginTop: 4 }}>
                   <li>Make sure the phone is on the same Wi-Fi as this computer.</li>
                   <li>In DAVx5: <strong>+</strong> → "Login with URL and user name".</li>
                   <li>Base URL: the <em>other devices</em> address above. Username / password: the ones above.</li>
@@ -1321,7 +1321,7 @@ export default function SettingsModal({
               </details>
               <details>
                 <summary style={{ cursor: "pointer", fontSize: 13, marginBottom: 4 }}>Apple Calendar / Contacts (macOS, iPhone)</summary>
-                <ol style={{ fontSize: 12, color: "#c8c8c8", lineHeight: 1.7, marginTop: 4 }}>
+                <ol style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7, marginTop: 4 }}>
                   <li>Settings → Calendar → Accounts → Add Account → Other → Add CalDAV account.</li>
                   <li>Account type "Advanced"; Server: this computer's IP; Port: the port above; turn SSL off (LAN).</li>
                   <li>Use the username and password above. Repeat under Contacts for a CardDAV account.</li>
@@ -1329,14 +1329,14 @@ export default function SettingsModal({
               </details>
               <details>
                 <summary style={{ cursor: "pointer", fontSize: 13, marginBottom: 4 }}>Thunderbird</summary>
-                <ol style={{ fontSize: 12, color: "#c8c8c8", lineHeight: 1.7, marginTop: 4 }}>
+                <ol style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7, marginTop: 4 }}>
                   <li>New Calendar → On the Network → paste the address above, enter the username/password.</li>
                   <li>Address Book → New → CardDAV Address Book → same address and credentials.</li>
                 </ol>
               </details>
               <details>
                 <summary style={{ cursor: "pointer", fontSize: 13, marginBottom: 4 }}>Advanced: browse the server directly (troubleshooting)</summary>
-                <div style={{ fontSize: 12, color: "#c8c8c8", lineHeight: 1.7, marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7, marginTop: 4 }}>
                   The built-in server has its own web page for looking at (and manually creating or
                   deleting) calendars and address books — open the <em>this computer</em> address above
                   in a regular browser tab (not a CalDAV app) and log in with the username/password
@@ -1346,12 +1346,12 @@ export default function SettingsModal({
                 </div>
               </details>
               <p style={{ fontSize: 12, marginTop: 10 }}>
-                <a href="https://precisioncrab.com/apps/daynizer/connect/" target="_blank" rel="noreferrer" style={{ color: "#4a90d9" }}>
+                <a href="https://precisioncrab.com/apps/daynizer/connect/" target="_blank" rel="noreferrer" style={{ color: "var(--accent-color)" }}>
                   Full connection guide →
                 </a>
               </p>
 
-              {srvMsg && <p style={{ fontSize: 12, color: "#9aa0a6" }}>{srvMsg}</p>}
+              {srvMsg && <p style={{ fontSize: 12, color: "var(--text-muted)" }}>{srvMsg}</p>}
             </>
           )}
 
@@ -1362,7 +1362,7 @@ export default function SettingsModal({
                 {ent.tier === "trial" && <>Free trial: {ent.trialDaysLeft} day{ent.trialDaysLeft === 1 ? "" : "s"} left with every Pro feature.</>}
                 {ent.tier === "free" && <>Free version. Your trial ended on {new Date(ent.trialEndsAt).toLocaleDateString()}.</>}
               </p>
-              <p style={{ color: "#9aa0a6", fontSize: 12, lineHeight: 1.6 }}>
+              <p style={{ color: "var(--text-muted)", fontSize: 12, lineHeight: 1.6 }}>
                 Free: tasks on one account. Pro: the Calendar and Contacts tabs, and more than one account.
                 One-time purchase; a license works on up to 5 installs.
               </p>
@@ -1378,7 +1378,7 @@ export default function SettingsModal({
                     />
                     <button className="primary" onClick={activateLicense} disabled={busy || !licenseKey.trim()}>Activate</button>
                   </div>
-                  <p style={{ color: "#9aa0a6", fontSize: 11, marginTop: 6 }}>
+                  <p style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 6 }}>
                     Your key is sent to Gumroad once to verify the purchase; Thunderbird will ask you to allow
                     that. Nothing else is sent, then or later.
                   </p>
@@ -1390,7 +1390,7 @@ export default function SettingsModal({
               {ent.licensed && (
                 <button style={{ marginTop: 10 }} onClick={removeLicense} disabled={busy}>Remove license from this install</button>
               )}
-              {licenseMsg && <p style={{ fontSize: 12, color: "#9aa0a6", marginTop: 8 }}>{licenseMsg}</p>}
+              {licenseMsg && <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>{licenseMsg}</p>}
             </>
           )}
 
@@ -1416,7 +1416,7 @@ export default function SettingsModal({
                 />
               </label>
               {isAddon ? (
-                <p style={{ color: "#9aa0a6", fontSize: 13, margin: "4px 0 0" }}>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "4px 0 0" }}>
                   Reminders show as system notifications while Thunderbird is running. Ticking the box asks
                   Thunderbird for permission to show notifications. If you also subscribe to the same
                   calendars in Thunderbird's own calendar, it may show its own reminder for the same item.

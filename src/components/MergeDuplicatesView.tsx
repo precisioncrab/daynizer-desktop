@@ -49,11 +49,11 @@ export default function MergeDuplicatesView({ clusters, onMerge, onDismiss, onBa
           <div className="empty-state">No possible duplicates found. 🎉</div>
         ) : (
           clusters.map((cluster) => (
-            <div key={cluster.map((c) => c.id).join("-")} style={{ borderBottom: "1px solid #2a2b2f", padding: "12px 14px" }}>
+            <div key={cluster.map((c) => c.id).join("-")} style={{ borderBottom: "1px solid var(--border)", padding: "12px 14px" }}>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
                 {cluster.map((c) => (
                   <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                    <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#34353a", color: "#c8c8c8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 600 }}>{initials(c)}</div>
+                    <div style={{ width: 26, height: 26, borderRadius: "50%", background: "var(--menu-hover-strong)", color: "var(--text-2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 600 }}>{initials(c)}</div>
                     <div style={{ minWidth: 0 }}>
                       <div className="title" style={{ fontSize: 13 }}>{c.fn || "Unnamed"}</div>
                       <div className="meta">{c.org || parseTV(c.emails)[0]?.value || parseTV(c.phones)[0]?.value || ""}</div>
@@ -177,12 +177,12 @@ function MergeEditor({ cluster, onCancel, onMerge }: {
 
   const section = (label: string, body: ReactNode) => (
     <div style={{ marginTop: 14 }}>
-      <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5, color: "#8a8f96", marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-meta)", marginBottom: 6 }}>{label}</div>
       {body}
     </div>
   );
   const checkRow = (key: string, text: string) => (
-    <label key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 13, color: "#d0d0d0" }}>
+    <label key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 13, color: "var(--text)" }}>
       <input type="checkbox" checked={!!pick[key]} onChange={() => toggle(key)} style={{ width: "auto" }} />
       {text}
     </label>
@@ -200,13 +200,13 @@ function MergeEditor({ cluster, onCancel, onMerge }: {
         {section("Keep as the primary record", (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {cluster.map((c) => (
-              <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#d0d0d0" }}>
+              <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text)" }}>
                 <input type="radio" name="keeper" checked={keeperId === c.id} onChange={() => { setKeeperId(c.id); setName(c.fn || ""); }} style={{ width: "auto" }} />
                 <strong>{c.fn || "Unnamed"}</strong>
                 <span className="meta">{c.carddav_href ? "synced" : "local"}{c.org ? ` · ${c.org}` : ""}</span>
               </label>
             ))}
-            <div style={{ color: "#8a8f96", fontSize: 12, marginTop: 4 }}>The others are removed after merging (and deleted from the server on the next sync).</div>
+            <div style={{ color: "var(--text-meta)", fontSize: 12, marginTop: 4 }}>The others are removed after merging (and deleted from the server on the next sync).</div>
           </div>
         ))}
 

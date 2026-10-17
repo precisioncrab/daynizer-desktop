@@ -118,7 +118,7 @@ export default function ContactsSidebar({
               <span className="sidebar-dot" style={{ background: b.color }} />
               <input
                 autoFocus
-                style={{ flex: 1, minWidth: 0, background: "#26272a", border: "1px solid #34353a", borderRadius: 6, color: "#fff", padding: "2px 6px" }}
+                style={{ flex: 1, minWidth: 0, background: "var(--bg-field)", border: "1px solid var(--border-strong)", borderRadius: 6, color: "var(--text-strong)", padding: "2px 6px" }}
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
@@ -150,7 +150,7 @@ export default function ContactsSidebar({
           <div style={{ padding: "6px 14px" }}>
             <input
               autoFocus
-              style={{ width: "100%", background: "#26272a", border: "1px solid #34353a", borderRadius: 6, color: "#fff", padding: "4px 6px" }}
+              style={{ width: "100%", background: "var(--bg-field)", border: "1px solid var(--border-strong)", borderRadius: 6, color: "var(--text-strong)", padding: "4px 6px" }}
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") submitNewBook(); if (e.key === "Escape") { setAdding(false); setName(""); setBookTarget("local"); } }}
@@ -166,7 +166,7 @@ export default function ContactsSidebar({
                   onClick={() => setNewColor(p.color)}
                   style={{
                     width: 16, height: 16, borderRadius: "50%", background: p.color, cursor: "pointer", padding: 0,
-                    border: newColor === p.color ? "2px solid #fff" : "2px solid transparent"
+                    border: newColor === p.color ? "2px solid var(--text-strong)" : "2px solid transparent"
                   }}
                 />
               ))}
@@ -174,7 +174,7 @@ export default function ContactsSidebar({
             {accounts.length > 0 && (
               <div style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center" }}>
                 <select
-                  style={{ flex: 1, background: "#26272a", border: "1px solid #34353a", borderRadius: 4, color: "#fff", fontSize: 11, padding: "2px 4px" }}
+                  style={{ flex: 1, background: "var(--bg-field)", border: "1px solid var(--border-strong)", borderRadius: 4, color: "var(--text-strong)", fontSize: 11, padding: "2px 4px" }}
                   value={bookTarget}
                   onChange={(e) => setBookTarget(e.target.value)}
                 >

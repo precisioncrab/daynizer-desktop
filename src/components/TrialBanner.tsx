@@ -32,9 +32,9 @@ export default function TrialBanner({
         gap: 12,
         padding: "10px 16px",
         fontSize: 13.5,
-        color: urgent ? "#e8a23d" : "#9aa0a6",
-        background: "#1f2023",
-        borderTop: "1px solid #2c2d31",
+        color: urgent ? "var(--warn)" : "var(--text-muted)",
+        background: "var(--bg-bar)",
+        borderTop: "1px solid var(--border)",
         // Pinned to the bottom of the main column even when the view above is short.
         marginTop: "auto",
         flexShrink: 0

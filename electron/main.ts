@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, Notification, Tray, nativeImage, shell, dialog, net } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, Notification, Tray, nativeImage, nativeTheme, shell, dialog, net } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
@@ -112,12 +112,22 @@ const SETTING_DEFAULTS: Record<string, string> = {
   firewallRuleAdded: "0", // Windows: set once the inbound firewall rule is in place (C2)
   syncIntervalMinutes: "60", // background auto-sync; matches Tasks.org's default; "0" = manual only
   syncHotkey: "CmdOrCtrl+R", // accelerator for Sync Now; "" = no hotkey
-  allowInsecureCerts: "0" // opt-in: accept self-signed TLS certs (self-hosted LAN servers)
+  allowInsecureCerts: "0", // opt-in: accept self-signed TLS certs (self-hosted LAN servers)
+  theme: "system" // View > Theme: "system" | "light" | "dark"
 };
 
 function getSetting(key: string): string {
   return settingsAll()[key] ?? SETTING_DEFAULTS[key] ?? "";
 }
+
+/** View > Theme. Pointing nativeTheme at the choice makes the renderer's
+ *  prefers-color-scheme (which src/theme.ts follows) and the window frame agree;
+ *  "system" hands both back to the OS. */
+function applyThemeSetting() {
+  const t = getSetting("theme");
+  nativeTheme.themeSource = t === "light" || t === "dark" ? t : "system";
+}
+const windowBackground = () => (nativeTheme.shouldUseDarkColors ? "#1e1f22" : "#ffffff");
 
 /** Opt-in acceptance of self-signed certificates for self-hosted servers on the
  *  LAN (e.g. Synology DSM's default HTTPS cert on :5001). Off by default; when
@@ -311,7 +321,7 @@ function createWindow(show = true) {
     // unpacked exe, or dev). Without this, Windows falls back to the generic
     // Electron icon when no matching AppUserModelID shortcut is registered.
     icon: nativeImage.createFromPath(iconPath(isDistinctBuild ? "32x32-dev.png" : "256x256.png")),
-    backgroundColor: "#1e1f22",
+    backgroundColor: windowBackground(),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -706,6 +716,23 @@ function buildMenu() {
             ...savedViewItems
           ]
         },
+        {
+          label: "Theme",
+          submenu: ([
+            ["system", "Match System"],
+            ["light", "Light Mode"],
+            ["dark", "Dark Mode"]
+          ] as const).map(([value, label]) => ({
+            label,
+            type: "radio" as const,
+            checked: (getSetting("theme") || "system") === value,
+            click: () => {
+              settingSet("theme", value);
+              applyThemeSetting();
+              mainWindow?.webContents.send("shortcut:set-theme", value);
+            }
+          }))
+        },
         { type: "separator" },
         {
           label: "Find / Search",
@@ -822,6 +849,7 @@ function registerIpc() {
     if (key === "launchHidden") applyLaunchAtLogin(getSetting("launchAtLogin") === "1", value !== "0");
     if (key === "syncHotkey") buildMenu(); // apply new accelerator immediately
     if (key === "allowInsecureCerts") applyTlsSetting();
+    if (key === "theme") { applyThemeSetting(); buildMenu(); }
   });
 
   ipcMain.handle("lists:all", () => listsAll());
@@ -1188,6 +1216,10 @@ app.whenReady().then(() => {
   for (const l of davRepairOrphanedLinks()) syncLog(`startup: ${l}`);
 
   registerIpc();
+  applyThemeSetting();
+  // Keep the window's own background (shown while resizing or loading) on the
+  // theme in use, including when "Match System" follows an OS switch.
+  nativeTheme.on("updated", () => mainWindow?.setBackgroundColor(windowBackground()));
   buildMenu();
   // Background start (C1): when launched at login with --hidden (or macOS's
   // openAsHidden), boot straight to the tray with no window. The server still

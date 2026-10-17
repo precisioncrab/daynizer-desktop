@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { SavedView } from "../views";
+import { ThemePref } from "../theme";
 
 interface MenuItem {
   label: string;
   hint?: string;
   onClick?: () => void;
   disabled?: boolean;
+  /** Radio-style check mark (View > Theme). */
+  checked?: boolean;
   /** Opens to the side on hover (View > Saved Views). */
   submenu?: MenuItem[];
   separator?: boolean;
@@ -28,6 +31,8 @@ interface Props {
   savedViews: SavedView[];
   onApplyView: (v: SavedView) => void;
   onSaveView: () => void;
+  theme: ThemePref;
+  onSetTheme: (t: ThemePref) => void;
   syncing: boolean;
 }
 
@@ -57,6 +62,12 @@ export default function AddonMenuBar(props: Props) {
       : [{ label: "No saved views yet", disabled: true }])
   ];
 
+  const themeItems: MenuItem[] = ([
+    ["system", "Match System"],
+    ["light", "Light Mode"],
+    ["dark", "Dark Mode"]
+  ] as [ThemePref, string][]).map(([t, label]) => ({ label, checked: props.theme === t, onClick: () => props.onSetTheme(t) }));
+
   const menus: Menu[] = [
     {
       title: "File",
@@ -85,6 +96,7 @@ export default function AddonMenuBar(props: Props) {
         { label: "", separator: true },
         { label: "Filters…", onClick: props.onFilters },
         { label: "Saved Views", submenu: savedViewItems },
+        { label: "Theme", submenu: themeItems },
         { label: "", separator: true },
         { label: "Find / Search", hint: "Ctrl+F", onClick: props.onSearch },
         { label: "About", onClick: props.onAbout }
@@ -129,7 +141,7 @@ export default function AddonMenuBar(props: Props) {
           onMouseEnter={nested ? undefined : () => setOpenSub(null)}
           onClick={() => { if (item.disabled) return; item.onClick?.(); setOpen(null); }}
         >
-          <span>{item.label}</span>
+          <span>{item.checked !== undefined && <span className="menu-check">{item.checked ? "✓" : ""}</span>}{item.label}</span>
           {item.hint && <span className="menu-hint">{item.hint}</span>}
         </div>
       );

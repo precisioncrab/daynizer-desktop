@@ -353,7 +353,7 @@ export default function DetailPanel({ task, lists, subtasks, allCategories = [],
           {subtasks.map((s) => (
             <div className="subtask-item" key={s.id}>
               <span className={`checkbox ${s.completed ? "done" : ""}`} onClick={() => onToggleComplete(s.id)} style={{ marginTop: 0 }} />
-              <span style={{ flex: 1, textDecoration: s.completed ? "line-through" : "none", color: s.completed ? "#777" : "inherit", cursor: "pointer" }}
+              <span style={{ flex: 1, textDecoration: s.completed ? "line-through" : "none", color: s.completed ? "var(--text-faint)" : "inherit", cursor: "pointer" }}
                 onClick={() => onSelectTask(s.id)}>
                 {s.title}
               </span>
@@ -362,7 +362,7 @@ export default function DetailPanel({ task, lists, subtasks, allCategories = [],
           {pendingSubtasks.map((t, i) => (
             <div className="subtask-item" key={`pending-${i}`}>
               <span className="checkbox" style={{ marginTop: 0, opacity: 0.4 }} title="Not saved yet" />
-              <span style={{ flex: 1, fontStyle: "italic", color: "#9aa0a6" }}>{t}</span>
+              <span style={{ flex: 1, fontStyle: "italic", color: "var(--text-muted)" }}>{t}</span>
               <button
                 className="smart-filter-delete"
                 title="Remove (not yet saved)"
@@ -400,7 +400,7 @@ export default function DetailPanel({ task, lists, subtasks, allCategories = [],
         <button onClick={() => onToggleComplete(task.id)}>{task.completed ? "Mark incomplete" : "Mark complete"}</button>
         <button className="danger" onClick={() => onDelete(task.id)}>Delete</button>
       </div>
-      {task.caldav_uid && <div style={{ marginTop: 10, fontSize: 11, color: "#777" }}>Synced via CalDAV</div>}
+      {task.caldav_uid && <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-faint)" }}>Synced via CalDAV</div>}
     </div>
   );
 }
