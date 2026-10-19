@@ -1,3 +1,14 @@
+Daynizer v0.8.7
+
+Changes since v0.8.6. So far only the Thunderbird add-on has changed; the desktop app is the same
+as v0.8.6. Daynizer remains beta, pre-1.0, keep a backup of anything important.
+
+- **Thunderbird add-on: the Daynizer button in the left sidebar no longer goes missing** after
+  Thunderbird restarts. It came back only once the Daynizer tab was open again or you clicked the
+  toolbar button.
+
+---
+
 Daynizer v0.8.6
 
 Changes since v0.8.5. v0.8.5 came out for Windows and macOS only, so on Linux and in the Thunderbird
