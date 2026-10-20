@@ -1,3 +1,13 @@
+Unreleased
+
+Changes since v0.8.9. Daynizer remains beta, pre-1.0, keep a backup of anything important.
+
+- **The calendar stays where you scrolled it.** In a busy month scrolled down to a later week,
+  clicking a task or event threw the grid back to the top, and a sync or a saved change could do
+  the same. Now it stays put, and a click only moves the highlight.
+
+---
+
 Daynizer v0.8.9
 
 Changes since v0.8.8. Daynizer remains beta, pre-1.0, keep a backup of anything important.

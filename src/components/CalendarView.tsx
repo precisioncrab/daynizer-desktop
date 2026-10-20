@@ -214,6 +214,18 @@ function parseOverrides(json: string | undefined): EventOverride[] {
   try { return JSON.parse(json || "[]"); } catch { return []; }
 }
 
+/** The library's `eventClassNames` callback: marks every bar of the selected
+ *  task/event (all occurrences of a series, via masterId). Swapped in with
+ *  setOption when the selection changes, so the library only re-derives the
+ *  classes on the bars already drawn instead of redrawing the whole grid. */
+function selectedClassNames(taskId: string | null, eventId: string | null) {
+  return ({ event }: any) => {
+    const p = event?.extendedProps ?? {};
+    const hit = (p.kind === "task" && p.masterId === taskId) || (p.kind === "event" && p.masterId === eventId);
+    return hit ? ["ec-selected"] : [];
+  };
+}
+
 export default function CalendarView({
   events, tasks, lists, calendarShow, onSetCalendarShow, selectedTaskId, selectedEventId, onSelectTask, onSelectEvent, onCreateEvent, onCreateTask, listFilter, onSetListFilter, onUpdateEvent, onUpdateTask, firstDayOverride,
   categoryFilter, onSetCategoryFilter, displayMode, onSetDisplayMode, eventDisplayMode, onSetEventDisplayMode, onSaveView,
@@ -393,10 +405,8 @@ export default function CalendarView({
             end: lEnd,
             allDay: lAllDay,
             backgroundColor: colorFor(e.list_id),
-            classNames: [
-              ...(e.id === selectedEventId ? ["ec-selected"] : []),
-              ...(recurring ? ["ec-recurring"] : [])
-            ],
+            // The selected glow comes from eventClassNames (selectedClassNames).
+            classNames: recurring ? ["ec-recurring"] : [],
             editable,
             // State the drag/resize flags per event rather than leaning on the
             // library's global fallback: in @event-calendar/core an event's
@@ -421,11 +431,7 @@ export default function CalendarView({
         // db.ts's completion roll-forward); the same interval is applied to
         // whichever field(s) the current display mode actually draws.
         const anchor = t.due_date || t.start_date;
-        const classNamesFor = () => [
-          "task-bar",
-          ...(t.id === selectedTaskId ? ["ec-selected"] : []),
-          ...(recurring ? ["ec-recurring"] : [])
-        ];
+        const classNamesFor = () => ["task-bar", ...(recurring ? ["ec-recurring"] : [])];
         if (displayMode === "start") {
           const startOnly = t.start_date || t.due_date;
           if (!startOnly) continue;
@@ -524,6 +530,36 @@ export default function CalendarView({
     return out;
   }
 
+  // Hand the library a new events list without losing the scroll position.
+  // A new list makes the library throw away and redraw every bar (it keys bars
+  // by event object, and each rebuild makes new objects). A freshly drawn bar
+  // sits at the top of its day until the library measures it, so for a moment
+  // every busy week row collapses, the grid gets shorter than its scroll box,
+  // and the browser resets the scroll to the top: the jump seen when a sync or
+  // an edit lands while the month is scrolled down. Hold the grid's height
+  // while it redraws, then put the scroll back on the next frame, after the
+  // library has re-measured and before anything is painted. keepScroll is
+  // false on a view switch, where the old position means nothing and a held
+  // height would upset the week/day grid's own first scroll.
+  // Uses only refs, so the mount effect's frozen copy works too.
+  function setEcEvents(list: any[], keepScroll = true) {
+    const ec = ecRef.current;
+    if (!ec) return;
+    const box = elRef.current;
+    const root = box?.firstElementChild as HTMLElement | null | undefined;
+    const top = box?.scrollTop ?? 0;
+    if (!keepScroll || !box || !root || top === 0) {
+      ec.setOption("events", list);
+      return;
+    }
+    root.style.minHeight = `${root.offsetHeight}px`;
+    ec.setOption("events", list);
+    requestAnimationFrame(() => {
+      root.style.minHeight = "";
+      box.scrollTop = top;
+    });
+  }
+
   // Mount once.
   useEffect(() => {
     if (!elRef.current) return;
@@ -576,6 +612,8 @@ export default function CalendarView({
         setRangeVersion((v) => v + 1);
       },
       events: buildEcEvents(),
+      // Selected glow; kept current by the selection effect below.
+      eventClassNames: selectedClassNames(selectedTaskId, selectedEventId),
       // Attach the custom horizontal "span across days" grips as each timed
       // event segment mounts (see mkGrip/startHDrag below). Only week view,
       // only real events, and only on the segment owning the true start/end.
@@ -748,7 +786,7 @@ export default function CalendarView({
       const ev0 = eventsRef.current.find((x) => x.id === id);
       if (!ev0 || ev0.recurrence) return;
       hPreviewRef.current = { id, start_date: ev0.start_date, end_date: ev0.end_date || ev0.start_date };
-      const rebuild = () => ecRef.current?.setOption("events", buildEcEventsRef.current());
+      const rebuild = () => setEcEvents(buildEcEventsRef.current());
       const onMove = (mv: PointerEvent) => {
         const info = ecRef.current?.dateFromPoint(mv.clientX, mv.clientY);
         const cur = hPreviewRef.current;
@@ -820,12 +858,21 @@ export default function CalendarView({
   }, []);
 
   // Reactive updates: push new event data whenever anything relevant changes,
-  // without tearing down/recreating the calendar.
+  // without tearing down/recreating the calendar. Selection is not a dep: it
+  // only changes the glow, handled by the effect below without a rebuild.
+  const lastBuiltViewRef = useRef(calView);
   useEffect(() => {
     if (!ready || !ecRef.current) return;
-    ecRef.current.setOption("events", buildEcEvents());
+    const sameView = lastBuiltViewRef.current === calView;
+    lastBuiltViewRef.current = calView;
+    setEcEvents(buildEcEvents(), sameView);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, rangeVersion, events, tasks, calendarShow, lists, categoryFilter, displayMode, eventDisplayMode, listFilter, selectedTaskId, selectedEventId, calView]);
+  }, [ready, rangeVersion, events, tasks, calendarShow, lists, categoryFilter, displayMode, eventDisplayMode, listFilter, calView]);
+
+  useEffect(() => {
+    if (!ready || !ecRef.current) return;
+    ecRef.current.setOption("eventClassNames", selectedClassNames(selectedTaskId, selectedEventId));
+  }, [ready, selectedTaskId, selectedEventId]);
 
   useEffect(() => {
     if (!ready || !ecRef.current) return;
