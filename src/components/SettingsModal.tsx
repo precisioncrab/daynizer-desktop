@@ -307,6 +307,10 @@ export default function SettingsModal({
   useEffect(() => {
     window.api.app?.version().then(setVersion).catch(() => {});
     window.api.settings?.all().then(setPrefs).catch(() => {});
+    // An update downloaded before Settings opened (Windows): show the restart button.
+    window.api.app?.manualUpdate?.().then((u) => {
+      if (u?.kind === "windows") setUpdate((cur) => cur ?? { state: "downloaded", detail: u.version });
+    }).catch(() => {});
     return window.api.on("update:status", (state: string, detail?: any) => setUpdate({ state, detail }));
   }, []);
 

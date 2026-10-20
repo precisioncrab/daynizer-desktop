@@ -3,9 +3,11 @@ import type { ManualUpdate } from "../types";
 
 const DISMISS_KEY = "dismissedUpdateVersion";
 
-/** How to update, per install type (macOS/Linux; Windows updates itself). */
+/** How to update, per install type. */
 function howTo(u: ManualUpdate): { text: string; command?: string } {
   switch (u.kind) {
+    case "windows":
+      return { text: "It installs the next time Daynizer quits, or restart now." };
     case "flatpak":
       return { text: "Update it in GNOME Software or KDE Discover, or run:", command: "flatpak update" };
     case "deb":
@@ -23,13 +25,17 @@ function howTo(u: ManualUpdate): { text: string; command?: string } {
 }
 
 /** Slim bar at the bottom of the main column when a newer release exists
- *  (same placement as TrialBanner). "Later" hides it until the next version. */
+ *  (same placement as TrialBanner). "Later" hides it until the next version.
+ *  On Windows the update is already downloaded, so it offers a restart. */
 export default function UpdateBanner({ update }: { update: ManualUpdate }) {
   const [dismissed, setDismissed] = useState(() => {
     try { return localStorage.getItem(DISMISS_KEY) === update.version; } catch { return false; }
   });
   const [copied, setCopied] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   if (dismissed) return null;
+
+  const ready = update.kind === "windows";
 
   const { text, command } = howTo(update);
   const button = { fontSize: 13, padding: "5px 14px" };
@@ -51,7 +57,7 @@ export default function UpdateBanner({ update }: { update: ManualUpdate }) {
       }}
     >
       <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        <strong>Daynizer {update.version} is available.</strong> {text}
+        <strong>Daynizer {update.version} is {ready ? "ready to install" : "available"}.</strong> {text}
         {command && <code style={{ marginLeft: 6, padding: "1px 6px", background: "var(--bg-nav-hover)", borderRadius: 4 }}>{command}</code>}
       </span>
       {command && (
@@ -64,7 +70,22 @@ export default function UpdateBanner({ update }: { update: ManualUpdate }) {
           {copied ? "Copied" : "Copy command"}
         </button>
       )}
-      <button style={button} onClick={() => window.open(update.url, "_blank")}>Release page</button>
+      {ready && (
+        <button
+          className="primary"
+          style={button}
+          disabled={restarting}
+          onClick={() => {
+            setRestarting(true);
+            window.api.app?.installUpdate().catch(() => setRestarting(false));
+          }}
+        >
+          {restarting ? "Restarting…" : "Restart now"}
+        </button>
+      )}
+      <button style={button} onClick={() => window.open(update.url, "_blank")}>
+        {ready ? "What's new" : "Release page"}
+      </button>
       <button
         style={button}
         onClick={() => {

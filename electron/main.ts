@@ -435,6 +435,9 @@ function rebuildTrayMenu() {
   const items: Electron.MenuItemConstructorOptions[] = [
     { label: "Open Daynizer", click: () => showMainWindow() }
   ];
+  if (manualUpdate?.kind === "windows") {
+    items.push({ label: `Restart to update to ${manualUpdate.version}`, click: () => { installDownloadedUpdate(); } });
+  }
   if (serverManager.isEnabled()) {
     const s = serverManager.getStatus();
     const label = !s.available
@@ -785,15 +788,41 @@ function setupAutoUpdater() {
   autoUpdater.on("update-available", (info: any) => send("available", info.version));
   autoUpdater.on("update-not-available", () => send("none"));
   autoUpdater.on("download-progress", (p: any) => send("downloading", Math.round(p.percent)));
-  autoUpdater.on("update-downloaded", (info: any) => send("downloaded", info.version));
+  autoUpdater.on("update-downloaded", (info: any) => {
+    send("downloaded", info.version);
+    // The Settings line above only shows while Settings is open, so also show the
+    // update banner and a tray item: it otherwise waits for a full quit, which
+    // can be days away when Daynizer lives in the tray.
+    manualUpdate = {
+      version: info.version,
+      url: `https://github.com/precisioncrab/daynizer-desktop/releases/tag/v${info.version}`,
+      kind: "windows"
+    };
+    mainWindow?.webContents.send("update:manual", manualUpdate);
+    rebuildTrayMenu();
+  });
   autoUpdater.on("error", (err: any) => send("error", err?.message || String(err)));
-  autoUpdater.checkForUpdates().catch(() => {});
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  check();
+  setInterval(check, 12 * 60 * 60_000); // the app can run in the tray for days
 }
 
-/** "Update available" notice for macOS and Linux, where nothing installs
- *  updates in-app: checks GitHub's latest release and tells the renderer,
- *  which shows a banner with the right way to update for this install. */
-type ManualUpdate = { version: string; url: string; kind: "flatpak" | "deb" | "appimage" | "mac" | "linux" };
+/** Restart into a downloaded update (Windows). quitAndInstall closes the windows
+ *  before before-quit fires, so isQuiting must be set first, or close-to-tray
+ *  just hides the window and the quit never happens. Unsynced changes are
+ *  pushed first (best-effort) instead of asking. */
+async function installDownloadedUpdate() {
+  isQuiting = true;
+  syncingBeforeQuit = true;
+  if (accountsAll().length > 0 && countDirtyItems() > 0) await syncAllForQuit();
+  autoUpdater.quitAndInstall(true, true); // silent install, then reopen Daynizer
+}
+
+/** "Update available" notice. macOS and Linux: nothing installs updates
+ *  in-app, so this checks GitHub's latest release and the renderer's banner
+ *  shows the right way to update for this install. Windows ("windows"): set by
+ *  setupAutoUpdater once an update is downloaded; the banner offers a restart. */
+type ManualUpdate = { version: string; url: string; kind: "flatpak" | "deb" | "appimage" | "mac" | "linux" | "windows" };
 let manualUpdate: ManualUpdate | null = null;
 
 function newerVersion(latest: string, current: string): boolean {
@@ -834,7 +863,7 @@ function setupManualUpdateCheck() {
 function registerIpc() {
   ipcMain.handle("app:version", () => app.getVersion());
   ipcMain.handle("update:manualInfo", () => manualUpdate);
-  ipcMain.handle("update:install", () => autoUpdater.quitAndInstall());
+  ipcMain.handle("update:install", () => installDownloadedUpdate());
 
   ipcMain.on("menu:savedViews", (_e, views: { id: string; name: string }[]) => {
     menuSavedViews = Array.isArray(views) ? views : [];

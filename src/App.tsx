@@ -215,8 +215,8 @@ export default function App() {
   }, []);
   useEffect(() => { loadEntitlement(); }, [loadEntitlement]);
   const proLocked = entitlement?.tier === "free";
-  // macOS/Linux "update available" notice (main checks GitHub; absent in the
-  // add-on and on Windows, which updates itself).
+  // "Update available" notice: macOS/Linux (main checks GitHub) and Windows
+  // (once the update is downloaded). Absent in the add-on.
   const [manualUpdate, setManualUpdate] = useState<ManualUpdate | null>(null);
   useEffect(() => {
     window.api.app?.manualUpdate?.().then((u) => { if (u) setManualUpdate(u); }).catch(() => {});

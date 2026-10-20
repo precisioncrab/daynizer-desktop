@@ -1,3 +1,17 @@
+Daynizer v0.8.9
+
+Changes since v0.8.8. Daynizer remains beta, pre-1.0, keep a backup of anything important.
+
+- **Windows tells you when an update is ready.** Daynizer already downloaded updates quietly and
+  installed them the next time it fully quit, which could be days away while it sits in the tray.
+  Now a bar at the bottom says which version is ready, with Restart now, What's new and Later, and
+  the tray menu gets a "Restart to update" item. It also checks for updates twice a day while
+  running, not only at start.
+- **"Restart to update" restarts Daynizer** when it's set to stay in the tray or the built-in sync
+  server is running. Before, it only hid the window. Unsynced changes are synced first.
+
+---
+
 Daynizer v0.8.8
 
 Changes since v0.8.6 (v0.8.7 was a Thunderbird add-on update only, listed below). Daynizer remains
