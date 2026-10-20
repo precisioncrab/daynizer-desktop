@@ -1,6 +1,7 @@
-Daynizer v0.8.7
+Daynizer v0.8.8
 
-Changes since v0.8.6. Daynizer remains beta, pre-1.0, keep a backup of anything important.
+Changes since v0.8.6 (v0.8.7 was a Thunderbird add-on update only, listed below). Daynizer remains
+beta, pre-1.0, keep a backup of anything important.
 
 - **Timed tasks show on the right day in the calendar's month view.** In the Americas, a task due
   in the evening (from 8 PM on in US Eastern summer time, earlier further west) was drawn on the
@@ -13,9 +14,13 @@ Changes since v0.8.6. Daynizer remains beta, pre-1.0, keep a backup of anything 
 - **All-day tasks and events from the server keep their date** in Europe, Asia and Australia.
   They were saved one day early. Items already saved early are corrected the next time they change
   on the server; check any you rely on.
-- **Thunderbird add-on: the Daynizer button in the left sidebar no longer goes missing** after
-  Thunderbird restarts. It came back only once the Daynizer tab was open again or you clicked the
-  toolbar button.
+
+---
+
+Daynizer v0.8.7 (Thunderbird add-on only)
+
+- **The Daynizer button in the left sidebar no longer goes missing** after Thunderbird restarts.
+  It came back only once the Daynizer tab was open again or you clicked the toolbar button.
 
 ---
 
