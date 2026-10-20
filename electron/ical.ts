@@ -197,11 +197,13 @@ export function parseVTodo(ics: string): ParsedVTodo | null {
 }
 
 function icalTimeToString(t: ICAL.Time): string {
-  const jsDate = t.toJSDate();
   if (t.isDate) {
-    return jsDate.toISOString().slice(0, 10);
+    // Straight from the date's own fields. ical.js turns a DATE into LOCAL
+    // midnight, so toISOString() moved it to the previous day east of UTC.
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${t.year}-${pad(t.month)}-${pad(t.day)}`;
   }
-  return jsDate.toISOString();
+  return t.toJSDate().toISOString();
 }
 
 /** Shift a date-only "YYYY-MM-DD" by whole days (UTC-anchored, so no DST/offset

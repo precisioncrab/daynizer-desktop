@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CalendarEvent, Task, TaskList } from "../types";
 import { CalendarShow } from "./CalendarView";
 import { selectWidth } from "../selectWidth";
+import { localDayKey } from "../dateFormat";
 
 interface Props {
   tasks: Task[];
@@ -22,22 +23,24 @@ function todayStr(): string {
   return `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
 }
 
+// Day keys come from localDayKey, not slice(0, 10): timed values are stored in
+// UTC, so slicing gave the UTC day and an evening task fell onto tomorrow.
 function isToday(dateStr: string | null, today: string): boolean {
   if (!dateStr) return false;
-  return dateStr.slice(0, 10) === today;
+  return localDayKey(dateStr) === today;
 }
 
 /** Due today or any day before it (overdue). */
 function isDueByToday(dateStr: string | null, today: string): boolean {
   if (!dateStr) return false;
-  return dateStr.slice(0, 10) <= today;
+  return localDayKey(dateStr) <= today;
 }
 
 /** True for single-day events today, and for multi-day events currently
  *  spanning today (e.g. a vacation Mon–Fri shows all week, not just on Mon). */
 function eventIsToday(e: CalendarEvent, today: string): boolean {
-  const start = e.start_date.slice(0, 10);
-  const end = (e.end_date || e.start_date).slice(0, 10);
+  const start = localDayKey(e.start_date);
+  const end = localDayKey(e.end_date || e.start_date);
   return start <= today && today <= end;
 }
 

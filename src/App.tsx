@@ -21,6 +21,7 @@ import TrialBanner from "./components/TrialBanner";
 import { Task, TaskList, CaldavAccountPublic, CalendarEvent, Contact, AddressBook, EventOverride, Entitlement, ManualUpdate } from "./types";
 import UpdateBanner from "./components/UpdateBanner";
 import { selectWidth } from "./selectWidth";
+import { parseStored } from "./dateFormat";
 import { ThemePref, applyTheme, getThemePref, normalizeTheme } from "./theme";
 import { RRule } from "rrule";
 import {
@@ -583,8 +584,10 @@ export default function App() {
     if (scope === "today") {
       const now = new Date();
       base = tasks.filter((t) => {
-        if (!t.due_date) return false;
-        const due = new Date(t.due_date);
+        // parseStored: new Date("YYYY-MM-DD") is UTC midnight, which west of
+        // UTC is the evening before, so tomorrow's all-day tasks showed here.
+        const due = parseStored(t.due_date);
+        if (!due) return false;
         return !t.completed && (due.toDateString() === now.toDateString() || due < now);
       });
       // include parents of matching subtasks for context, and their other subtasks
@@ -642,8 +645,8 @@ export default function App() {
       const endOfWeek = new Date(startOfToday); endOfWeek.setDate(endOfWeek.getDate() + (7 - startOfToday.getDay()));
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
       base = base.filter((t) => {
-        if (!t.due_date) return false;
-        const due = new Date(t.due_date);
+        const due = parseStored(t.due_date);
+        if (!due) return false;
         if (dueFilter === "today") return due < endOfDay;
         if (dueFilter === "week") return due < endOfWeek;
         if (dueFilter === "month") return due < endOfMonth;

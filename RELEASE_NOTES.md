@@ -1,8 +1,18 @@
 Daynizer v0.8.7
 
-Changes since v0.8.6. So far only the Thunderbird add-on has changed; the desktop app is the same
-as v0.8.6. Daynizer remains beta, pre-1.0, keep a backup of anything important.
+Changes since v0.8.6. Daynizer remains beta, pre-1.0, keep a backup of anything important.
 
+- **Timed tasks show on the right day in the calendar's month view.** In the Americas, a task due
+  in the evening (from 8 PM on in US Eastern summer time, earlier further west) was drawn on the
+  next day. Its stored date and time were right; only the day it was drawn on was wrong. The same
+  went for "Start date only".
+- **The Today panel shows evening tasks and events on their own day.** They were missing from
+  Today and showed up a day late, and a task due last night counted as due today, not overdue.
+- **Today & Overdue and the "Due" filter no longer include tomorrow's all-day tasks** in the
+  Americas.
+- **All-day tasks and events from the server keep their date** in Europe, Asia and Australia.
+  They were saved one day early. Items already saved early are corrected the next time they change
+  on the server; check any you rely on.
 - **Thunderbird add-on: the Daynizer button in the left sidebar no longer goes missing** after
   Thunderbird restarts. It came back only once the Daynizer tab was open again or you clicked the
   toolbar button.

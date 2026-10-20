@@ -95,6 +95,18 @@ export function parseStored(value: Date | string | null | undefined): Date | nul
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+/** The local "YYYY-MM-DD" day a stored value falls on. Date-only values pass
+ *  through unchanged. Datetimes are stored in UTC, so their own first ten
+ *  characters are the UTC day -- for an evening time anywhere west of UTC that
+ *  is already tomorrow (8 PM in New York in summer is 00:00 UTC the next day), which put
+ *  timed tasks on the wrong day. Compare day keys from this instead. */
+export function localDayKey(value: string): string {
+  const d = parseStored(value);
+  if (!d) return value.slice(0, 10);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 // ---------- Display formatting ----------
 
 /** `Intl` formatters are costly to construct and the task table would build a

@@ -445,7 +445,10 @@ export default function CalendarView({
               lEnd = toLocalFloating(shiftStored(s, 3600000));
               lAllDay = false;
             } else {
-              lStart = s; lEnd = nextDay(s); lAllDay = true;
+              // localDay, not the raw value: a timed start is stored in UTC,
+              // and an evening time's UTC date is the next day west of UTC.
+              const day = localDay(s);
+              lStart = day; lEnd = nextDay(day); lAllDay = true;
             }
             out.push({
               id: recurring ? `task-${t.id}::${i}` : `task-${t.id}`,
@@ -494,7 +497,10 @@ export default function CalendarView({
             lEnd = toLocalFloating(shiftStored(shiftedDue, 3600000));
             lAllDay = false;
           } else {
-            lStart = shiftedStart; lEnd = nextDay(shiftedDue); lAllDay = true;
+            // All-day bar (month view, or date-only task): anchor on the LOCAL
+            // day. Passing a timed value through raw used its UTC date, so a
+            // task due 8:22 PM on the 20th drew on the 21st west of UTC.
+            lStart = localDay(shiftedStart); lEnd = nextDay(localDay(shiftedDue)); lAllDay = true;
           }
           out.push({
             id: recurring ? `task-${t.id}::${i}` : `task-${t.id}`,
