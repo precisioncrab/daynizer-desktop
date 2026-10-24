@@ -1,0 +1,26 @@
+# Contacts Cleanup inside Daynizer
+
+This folder is Contacts Cleanup's code (`Projects/Contacts-Cleanup/contacts-cleanup/src/`, MPL-2.0,
+same author), copied at its commit `f30926c` (test build 0.1.21) on 2026-10-24. A fix in one should be
+copied to the other.
+
+**Copied unchanged:** `core/*.js`, `ui/dom.js`, `ui/parts.js`, `ui/merge-fields.js`, `ui/omemo-state.js`,
+`ui/views/duplicates.js`, `lib/omemo.js`. Contacts Cleanup's tests (`npm test` there) cover `core/`.
+
+**Copied with Daynizer changes** (search for "Daynizer" in them):
+- `ui/contact-panel.js`: neutral wording; the OMEMO hint only in the add-on, its "get OMEMO" link only
+  where `ctx.host.omemoPromo`.
+- `ui/views/copies.js`: plain update/create/delete changes (Daynizer reaches every copy), no mailing
+  lists, wording.
+- `ui/views/labels.js`: no mailing lists (moving a book is create + delete), wording.
+- `ui/views/chat.js`: Chat list tab only in the add-on (`chatListShown`), OMEMO offers only with
+  `omemoPromo`, wording.
+- `ui/views/history.js`, `names.js`, `phones.js`: one help sentence each.
+
+**Daynizer's own:** `controller.js` (in place of `ui/tab.js`: no sidebar, menus or theme, drawn into
+the Contacts tab), `lib/addressbook.js` (Daynizer's contacts as whole vCards over `window.api.contacts`),
+`lib/links.js`, `lib/store.js` (IndexedDB in place of `storage.local`), `cleanup.css` (generated from
+`ui/tab.css`, scoped under `.cleanup`).
+
+**Not copied:** `ui/tab.js`, `menu.js`, `theme*.js`, `ui/views/contacts.js` and `about.js` (Daynizer
+has its own contact list, editor and About), `lib/addressbook.js` (Thunderbird's address books).
