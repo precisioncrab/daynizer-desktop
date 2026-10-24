@@ -28,6 +28,8 @@ interface Props {
   onSync: () => void;
   onSetView: (v: "tasks" | "calendar" | "contacts") => void;
   onFilters: () => void;
+  onContactsSidebar: () => void;
+  onMoreApps: () => void;
   savedViews: SavedView[];
   onApplyView: (v: SavedView) => void;
   onSaveView: () => void;
@@ -95,10 +97,12 @@ export default function AddonMenuBar(props: Props) {
         { label: "Contacts", onClick: () => props.onSetView("contacts") },
         { label: "", separator: true },
         { label: "Filters…", onClick: props.onFilters },
+        { label: "Contacts Sidebar…", onClick: props.onContactsSidebar },
         { label: "Saved Views", submenu: savedViewItems },
         { label: "Theme", submenu: themeItems },
         { label: "", separator: true },
         { label: "Find / Search", hint: "Ctrl+F", onClick: props.onSearch },
+        { label: "More from Precision Crab…", onClick: props.onMoreApps },
         { label: "About", onClick: props.onAbout }
       ]
     },

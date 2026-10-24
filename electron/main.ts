@@ -709,6 +709,10 @@ function buildMenu() {
           click: () => mainWindow?.webContents.send("shortcut:open-filters")
         },
         {
+          label: "Contacts Sidebar…",
+          click: () => mainWindow?.webContents.send("shortcut:contacts-sidebar")
+        },
+        {
           label: "Saved Views",
           submenu: [
             {
@@ -747,6 +751,10 @@ function buildMenu() {
         { role: "reload", accelerator: "F5" },
         { role: "toggleDevTools" },
         { type: "separator" },
+        {
+          label: "More from Precision Crab…",
+          click: () => mainWindow?.webContents.send("shortcut:more-apps")
+        },
         {
           label: "About Daynizer",
           click: () => mainWindow?.webContents.send("shortcut:open-about")

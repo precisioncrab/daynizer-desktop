@@ -23,6 +23,10 @@ Changes since v0.8.9. Daynizer remains beta, pre-1.0, keep a backup of anything 
   marker that tells Google Contacts and iCloud a chat address is XMPP, a second phone type, Apple's
   custom labels, the PO box of an address. Now a card nothing changed on goes back exactly as it
   came, and an edited one keeps those details. Imported contacts keep their photo when they sync.
+- **View > Contacts Sidebar…** chooses what the Contacts tab's left pane shows: address books,
+  labels, each clean-up tool, the Chat items, More. Hiding one only takes it off the pane; nothing
+  in your contacts or on the server changes, and ticking it again brings it back.
+- **View > More from Precision Crab…** lists the other Precision Crab apps, each with a link.
 
 ---
 

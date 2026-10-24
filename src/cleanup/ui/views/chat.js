@@ -41,7 +41,7 @@ export const CHAT_HELP = [
 const gatewayOf = (ctx) => normalizeGateway(ctx.state.settings.gateway) ?? DEFAULT_GATEWAY;
 
 /** Whether the Chat list tab shows: in the add-on, once OMEMO for Thunderbird answers, or to offer it where Daynizer may. */
-const chatListShown = (ctx) => ctx.host.addon && (omemoTier(ctx.state.omemo.status) !== "none" || ctx.host.omemoPromo);
+const chatListShown = (ctx) => ctx.host.addon && !ctx.host.hideChatList && (omemoTier(ctx.state.omemo.status) !== "none" || ctx.host.omemoPromo);
 
 /** The help entries that apply here (the chat list ones only with the Chat list tab). */
 const chatHelp = (ctx) => (chatListShown(ctx) ? CHAT_HELP : CHAT_HELP.slice(0, 2));

@@ -272,8 +272,17 @@ doesn't support two-factor auth for third-party CalDAV/CardDAV clients; use your
 - Dedicated Contacts view with a list, detail panel, and a contacts-aware sidebar (address books
   and labels with colors).
 - Two-way CardDAV sync: create, edit, and delete contacts alongside your tasks and calendars.
-- Birthdays & anniversaries, year-less birthdays, per-label colors, label filtering, and a
-  merge-duplicates tool. Delete a label to remove that category from every contact and sync the change.
+- Birthdays & anniversaries, year-less birthdays, per-label colors and label filtering. Delete a label
+  to remove that category from every contact and sync the change.
+- Clean-up tools in the sidebar, the same as the Contacts Cleanup add-on for Thunderbird (Daynizer has
+  all of them, so you don't need both): Duplicates (check which cards are the same person, pick what
+  the merged card keeps), In several books (one contact in two address books with the same ID: link
+  the copies, keep one, or separate them), Phone numbers (one format), Missing names, Lists to labels,
+  and Chat addresses (JMP.chat addresses from phone numbers, chat addresses other apps can't read
+  fixed). Every change is listed under Changes and can be undone.
+- A contact's details Daynizer doesn't show (a chat address's service type, custom labels from Apple
+  Contacts, a second phone type) stay on the card when you edit it.
+- View > Contacts Sidebar… hides any part of the left pane you don't use.
 
 **Sync & reminders**
 - Two-way sync engine (`electron/caldav.ts` / `carddav.ts`): pulls new/changed remote items into the

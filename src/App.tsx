@@ -19,6 +19,8 @@ import { createCleanup, VIEWS as CLEANUP_VIEWS } from "./cleanup/controller.js";
 import { omemoTier } from "./cleanup/lib/omemo.js";
 import { LINKS as CLEANUP_LINKS, openLink } from "./cleanup/lib/links.js";
 import "./cleanup/cleanup.css";
+import ContactsSidebarModal, { SidebarPart, loadSidebarHidden, storeSidebarHidden } from "./components/ContactsSidebarModal";
+import MoreAppsModal from "./components/MoreAppsModal";
 import ProWall from "./components/ProWall";
 import TrialBanner from "./components/TrialBanner";
 import { Task, TaskList, CaldavAccountPublic, CalendarEvent, Contact, AddressBook, EventOverride, Entitlement, ManualUpdate } from "./types";
@@ -157,6 +159,10 @@ export default function App() {
   const [labelColors, setLabelColors] = useState<LabelColors>({});
   // The Contacts tab shows the contact list, or one of the clean-up pages.
   const [contactsMode, setContactsMode] = useState<"list" | CleanupView>("list");
+  // Parts of the Contacts tab's left pane hidden under View > Contacts Sidebar….
+  const [sidebarHidden, setSidebarHidden] = useState<SidebarPart[]>(loadSidebarHidden);
+  const [showSidebarParts, setShowSidebarParts] = useState(false);
+  const [showMoreApps, setShowMoreApps] = useState(false);
   // The specific occurrence (RECURRENCE-ID) the user opened, set when a
   // recurring event is clicked on the calendar; null when selected another way.
   const [selectedEventOccurrence, setSelectedEventOccurrence] = useState<string | null>(null);
@@ -510,7 +516,8 @@ export default function App() {
     onApplied: (entry: any) => void;
     omemoPromo: () => boolean;
     onSetView: (view: string) => void;
-  }>({ onChanged: () => {}, onApplied: () => {}, omemoPromo: () => false, onSetView: () => {} });
+    hideChatList: () => boolean;
+  }>({ onChanged: () => {}, onApplied: () => {}, omemoPromo: () => false, onSetView: () => {}, hideChatList: () => false });
   const cleanup = useMemo(() => {
     let tickQueued = false;
     return createCleanup({
@@ -519,6 +526,7 @@ export default function App() {
       onChanged: () => cleanupHooks.current.onChanged(),
       onApplied: (entry: any) => cleanupHooks.current.onApplied(entry),
       onSetView: (view: string) => cleanupHooks.current.onSetView(view),
+      hideChatList: () => cleanupHooks.current.hideChatList(),
       // Counts and busy state for the sidebar: one redraw per frame at most.
       onUpdate: () => {
         if (tickQueued) return;
@@ -533,8 +541,23 @@ export default function App() {
     onApplied: (entry) => { lastActionRef.current = async () => { await cleanup.undo(entry); }; },
     // OMEMO for Thunderbird is offered only in the add-on's trial and free tier (never with Pro, never on desktop).
     omemoPromo: () => entitlement?.tier === "trial" || entitlement?.tier === "free",
-    onSetView: (view) => { setMainView("contacts"); setContactsMode(isCleanupView(view) ? view : "list"); }
+    onSetView: (view) => { setMainView("contacts"); setContactsMode(isCleanupView(view) ? view : "list"); },
+    hideChatList: () => sidebarHidden.includes("chat") || sidebarHidden.includes("chat.list")
   };
+
+  /** View > Contacts Sidebar…: shows or hides a part of the left pane (an open page that's hidden closes). */
+  function setSidebarPartShown(part: SidebarPart, shown: boolean) {
+    const next = shown ? sidebarHidden.filter((p) => p !== part) : [...new Set([...sidebarHidden, part])];
+    setSidebarHidden(next);
+    storeSidebarHidden(next);
+    const pageOf: Partial<Record<SidebarPart, CleanupView[]>> = {
+      "cleanup.duplicates": ["duplicates"], "cleanup.copies": ["copies"], "cleanup.phones": ["phones"],
+      "cleanup.names": ["names"], "cleanup.labels": ["labels"], chat: ["chat"], "chat.chat": ["chat"], more: ["history"]
+    };
+    if (!shown && contactsMode !== "list" && pageOf[part]?.includes(contactsMode)) setContactsMode("list");
+    // The Chat page draws its Chat list tab from this too.
+    requestAnimationFrame(() => cleanup.ctx.render());
+  }
   useEffect(() => { cleanup.contactsChanged(); }, [contacts, addressBooks, cleanup]);
 
   // Live ref for the menu's New Task (Ctrl+N): the listener below is registered
@@ -559,6 +582,8 @@ export default function App() {
     const offs = [
       window.api.on("shortcut:new-task", () => createTaskRef.current()),
       window.api.on("shortcut:open-filters", () => setShowFilters(true)),
+      window.api.on("shortcut:contacts-sidebar", () => setShowSidebarParts(true)),
+      window.api.on("shortcut:more-apps", () => setShowMoreApps(true)),
       window.api.on("shortcut:apply-view", (id: string) => savedViewMenuRef.current.apply(id)),
       window.api.on("shortcut:save-view", () => savedViewMenuRef.current.save()),
       window.api.on("shortcut:new-list", () => setForceAddingList(true)),
@@ -1342,12 +1367,14 @@ export default function App() {
           onToggleCollapsed={() => setSidebarCollapsed(!sidebarCollapsed)}
           nav={{
             view: cleanupView,
-            cleanup: CLEANUP_GROUPS.cleanup.map(cleanupItem),
-            chat: CLEANUP_GROUPS.chat.map(cleanupItem),
-            more: CLEANUP_GROUPS.more.map(cleanupItem),
+            cleanup: CLEANUP_GROUPS.cleanup.filter((id) => !sidebarHidden.includes(`cleanup.${id}` as SidebarPart)).map(cleanupItem),
+            chat: sidebarHidden.includes("chat") || sidebarHidden.includes("chat.chat") ? [] : CLEANUP_GROUPS.chat.map(cleanupItem),
+            more: sidebarHidden.includes("more") ? [] : CLEANUP_GROUPS.more.map(cleanupItem),
             onOpen: (view) => { if (isCleanupView(view)) setContactsMode(view); },
-            omemoLink
+            omemoLink: sidebarHidden.includes("chat") || sidebarHidden.includes("chat.omemo") ? null : omemoLink
           }}
+          hideBooks={sidebarHidden.includes("books")}
+          hideLabels={sidebarHidden.includes("labels")}
         />
       ) : (
       <Sidebar
@@ -1393,6 +1420,8 @@ export default function App() {
             onSync={() => runSync()}
             onSetView={setMainView}
             onFilters={() => setShowFilters(true)}
+            onContactsSidebar={() => setShowSidebarParts(true)}
+            onMoreApps={() => setShowMoreApps(true)}
             savedViews={savedViews}
             onApplyView={applySavedView}
             onSaveView={startSavingView}
@@ -1655,6 +1684,18 @@ export default function App() {
       )}
 
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
+
+      {showMoreApps && <MoreAppsModal isAddon={IS_ADDON} onClose={() => setShowMoreApps(false)} />}
+
+      {showSidebarParts && (
+        <ContactsSidebarModal
+          hidden={sidebarHidden}
+          onSetShown={setSidebarPartShown}
+          chatList={IS_ADDON && omemoTier(cleanup.omemoStatus()) !== "none"}
+          omemoLink={omemoLink?.text ?? null}
+          onClose={() => setShowSidebarParts(false)}
+        />
+      )}
 
       {showFilters && (
         <FiltersModal

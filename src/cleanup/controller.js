@@ -69,6 +69,7 @@ const noOmemo = {
  * @param {(entry: object) => void} options.onApplied - a change was applied (for Edit > Undo)
  * @param {(view: string) => void} options.onSetView - a page asked to open another page
  * @param {() => void} options.onUpdate - counts, busy or the history changed (redraw the sidebar)
+ * @param {() => boolean} [options.hideChatList] - the Chat page's Chat list tab is hidden (View > Contacts Sidebar…)
  */
 export function createCleanup(options) {
   const state = {
@@ -118,6 +119,10 @@ export function createCleanup(options) {
       addon: Boolean(options.addon),
       get omemoPromo() {
         return Boolean(options.addon && options.omemoPromo());
+      },
+      // Hidden under View > Contacts Sidebar… (the Chat page's Chat list tab).
+      get hideChatList() {
+        return Boolean(options.hideChatList?.());
       },
     },
     render,

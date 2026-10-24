@@ -55,11 +55,14 @@ interface Props {
   collapsed: boolean;
   onToggleCollapsed: () => void;
   nav: CleanupNav;
+  /** Parts hidden under View > Contacts Sidebar… (the clean-up items come already filtered in `nav`). */
+  hideBooks: boolean;
+  hideLabels: boolean;
 }
 
 export default function ContactsSidebar({
   addressBooks, contacts, accounts, filter, onSelect, onCreateBook, onCreateServerBook, onSetBookColor, onRenameBook, labelColors, onSetLabelColor, onDeleteLabel,
-  onDisconnectBook, onDeleteBook, onSync, syncing, onOpenSettings, collapsed, onToggleCollapsed, nav
+  onDisconnectBook, onDeleteBook, onSync, syncing, onOpenSettings, collapsed, onToggleCollapsed, nav, hideBooks, hideLabels
 }: Props) {
   const [folded, setFolded] = useState(readFolded);
   function toggleFold(id: string) {
@@ -165,6 +168,7 @@ export default function ContactsSidebar({
           {live.length > 0 && <span className="count">{live.length}</span>}
         </div>
 
+        {!hideBooks && (<>
         <div style={{ height: 8 }} />
         {heading("books", "Address books")}
         {!folded.has("books") && (<>
@@ -247,8 +251,9 @@ export default function ContactsSidebar({
           <button className="sidebar-add" onClick={openAddBook}>+ New address book</button>
         )}
         </>)}
+        </>)}
 
-        {labels.length > 0 && (
+        {!hideLabels && labels.length > 0 && (
           <>
             <div style={{ height: 8 }} />
             {heading("labels", "Labels")}
