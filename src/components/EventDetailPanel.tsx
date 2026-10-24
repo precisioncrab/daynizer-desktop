@@ -3,7 +3,7 @@ import { CalendarEvent, TaskList } from "../types";
 import RemindersEditor, { PendingReminder } from "./RemindersEditor";
 import { RECURRING_PER_OCCURRENCE } from "../featureFlags";
 import AutoGrowTextarea from "./AutoGrowTextarea";
-import { parseStored } from "../dateFormat";
+import { readStoredDate } from "../dates";
 
 type Scope = "all" | "this" | "following";
 
@@ -320,7 +320,7 @@ export default function EventDetailPanel({ event, lists, allCategories = [], occ
           // weekday from the current start date (e.g. a Saturday-the-6th start
           // defaults to "First Saturday") rather than leaving it at 1st/Sunday.
           if (mode === "monthly-weekday") {
-            const d = parseStored(startDate);
+            const d = readStoredDate(startDate);
             if (d) {
               setMonthlyWeekday(WEEKDAY_CODES[d.getDay()]);
               const pos = Math.ceil(d.getDate() / 7);

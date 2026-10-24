@@ -13,7 +13,7 @@ body:
     id: proposal
     attributes:
       label: Proposed solution
-      description: What would you want Daynizer to do instead?
+      description: What would you want Daynizer to do instead? Describe it in words; code and patches can't be accepted (see CONTRIBUTING.md).
     validations:
       required: true
   - type: textarea

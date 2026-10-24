@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CalendarEvent, Task, TaskList } from "../types";
 import { CalendarShow } from "./CalendarView";
 import { selectWidth } from "../selectWidth";
-import { localDayKey } from "../dateFormat";
+import { localDayKey } from "../dates";
 
 interface Props {
   tasks: Task[];

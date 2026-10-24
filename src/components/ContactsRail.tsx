@@ -1,5 +1,5 @@
 import { Contact } from "../types";
-import { formatRelativeDays, formatShortDate } from "../dateFormat";
+import { relativeDayLabel, shortDateLabel } from "../dates";
 
 interface Props {
   contacts: Contact[];
@@ -38,10 +38,10 @@ function nextOccurrence(month: number, day: number, from: Date) {
   return { date: d, daysUntil };
 }
 
-/** "today" / "tomorrow" / "in 5 days", localized. `Intl.RelativeTimeFormat`
- *  with `numeric: "auto"` produces exactly these three shapes itself. */
+/** How far off an upcoming date is, in the app's language ("today",
+ *  "tomorrow", "in 5 days"). Past dates count as today. */
 function whenLabel(n: number): string {
-  return formatRelativeDays(Math.max(0, n));
+  return relativeDayLabel(n < 0 ? 0 : n);
 }
 
 export default function ContactsRail({ contacts, onSelectContact, collapsed, onToggleCollapsed }: Props) {
@@ -86,7 +86,7 @@ export default function ContactsRail({ contacts, onSelectContact, collapsed, onT
             <span className="today-pane-title">
               {u.name}
               <span style={{ color: "var(--text-meta)" }}>
-                {" · "}{formatShortDate(u.date)}
+                {` · ${shortDateLabel(u.date)}`}
                 {u.turning != null ? ` · turns ${u.turning}` : ""}
               </span>
             </span>

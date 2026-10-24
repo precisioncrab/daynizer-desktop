@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Task, PRIORITY_COLORS } from "../types";
-import { capitalizeFirst, formatRelativeDays, formatShortDate, formatTime, isDateOnly, isSameLocalDay, parseStored } from "../dateFormat";
+import { capitalize, isAllDayValue, readStoredDate, relativeDayLabel, sameLocalDay, shortDateLabel, timeLabel } from "../dates";
 
 interface Props {
   tasks: Task[]; // already filtered to the current scope, includes subtasks
@@ -16,23 +16,18 @@ interface Props {
 }
 
 function formatDue(due: string | null): { text: string; overdue: boolean } | null {
-  if (!due) return null;
-  // parseStored, not `new Date(due)`: the latter reads a date-only value as UTC
-  // midnight, so west of UTC an all-day task due today rendered as yesterday
-  // AND, failing the same-day test below, was styled overdue on its own day.
-  const d = parseStored(due);
-  if (!d) return null;
+  // readStoredDate keeps an all-day due date on its own local day (see dates.ts).
+  const when = due ? readStoredDate(due) : null;
+  if (!due || !when) return null;
   const now = new Date();
-  const hasTime = !isDateOnly(due);
-  const isToday = isSameLocalDay(d, now);
-  // Date-only tasks aren't overdue during their own day; timed tasks are
-  // overdue the moment their time passes.
-  const overdue = hasTime ? d < now : d < now && !isToday;
-  // "Today" comes from Intl rather than a literal, so it follows the locale
-  // ("heute", "aujourd'hui") like the date beside it already does.
-  let text = isToday ? capitalizeFirst(formatRelativeDays(0)) : formatShortDate(d);
-  if (hasTime) text += ` ${formatTime(d)}`;
-  return { text, overdue };
+  const allDay = isAllDayValue(due);
+  const dueToday = sameLocalDay(when, now);
+  // An all-day task is overdue from the day after it's due; a timed one as
+  // soon as its time has passed.
+  const overdue = allDay ? !dueToday && when.getTime() < now.getTime() : when.getTime() < now.getTime();
+  // The word for "today" comes from the locale too, so it matches the dates.
+  const day = dueToday ? capitalize(relativeDayLabel(0)) : shortDateLabel(when);
+  return { text: allDay ? day : `${day} ${timeLabel(when)}`, overdue };
 }
 
 export default function TaskTable({ tasks, selectedTaskId, onSelect, onToggleComplete, onContextMenu, dragEnabled = false, onReorder, forceExpand = false }: Props) {

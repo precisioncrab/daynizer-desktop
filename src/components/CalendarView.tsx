@@ -5,7 +5,7 @@ import { RRule } from "rrule";
 import { CalendarEvent, EventOverride, Task, TaskList } from "../types";
 import { selectWidth } from "../selectWidth";
 import { useResolvedTheme } from "../theme";
-import { appLocale, firstDayOfWeek, formatTime } from "../dateFormat";
+import { displayLocale, timeLabel, weekStartDay } from "../dates";
 import ContextMenu from "./ContextMenu";
 import ListPicker from "./ListPicker";
 import { CalendarLists, CalendarShow, TaskDisplayMode, EventDisplayMode, CalView, CalendarFilterKey } from "../views";
@@ -569,17 +569,15 @@ export default function CalendarView({
       // drop "today" since our own Month/Week/Day toggle button (in
       // .calendar-view-toolbar below) replaces it.
       headerToolbar: { start: "title", center: "", end: "prev,next" },
-      // The library formats its own column headings, view title and hour
-      // gutter through `Intl`; without a locale it resolves one internally,
-      // which needn't match what the rest of the app resolves. Pass ours so
-      // the calendar can't disagree with the task table beside it.
-      locale: appLocale(),
-      // `firstDay` defaults to 0 (Sunday) regardless of locale, so every
-      // Monday-first region -- all of Europe -- got the wrong week layout.
+      // Day names, the title and the hour labels are formatted by the library
+      // itself; give it the app's locale so they match the rest of Daynizer.
+      locale: displayLocale(),
+      // The library always starts the week on Sunday unless told otherwise;
+      // use the locale's (or the user's) week start instead.
       // Resolved once at mount: firstDayOverride comes from Settings (App.tsx
       // remounts this component via a `key` change when it's edited, so a
       // live app restart isn't needed for it to take effect).
-      firstDay: firstDayOfWeek(firstDayOverride),
+      firstDay: weekStartDay(firstDayOverride),
       // Current-time marker line, only shown in the timeGrid week/day views.
       nowIndicator: true,
       // Enable drag-to-reschedule and edge-resize. Per-event `editable` /
@@ -644,7 +642,7 @@ export default function CalendarView({
       // to chase the library's internal conversion, render the time badge
       // ourselves: `arg.event.start`/`.end` here are already a correctly
       //-converted local `Date` (the library's own `toLocalDate()` helper),
-      // so formatting it through dateFormat here is trustworthy.
+      // so timeLabel() gives the right time for it.
       eventContent(arg: any) {
         // Built as DOM nodes with textContent (the library's `domNodes` form),
         // never an HTML string, so server-supplied titles can't inject markup.
@@ -666,8 +664,7 @@ export default function CalendarView({
           if (!recurring) return undefined; // default (title-only) rendering is fine
           return { domNodes: [mark(), el("span", "ec-event-title", arg.event.title)] };
         }
-        const timeText = formatTime(arg.event.start as Date);
-        const nodes = [el("time", "ec-event-time", timeText), el("h4", "ec-event-title", arg.event.title)];
+        const nodes = [el("time", "ec-event-time", timeLabel(arg.event.start as Date)), el("h4", "ec-event-title", arg.event.title)];
         return { domNodes: recurring ? [mark(), ...nodes] : nodes };
       },
       eventClick(info: any) {

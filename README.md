@@ -299,13 +299,18 @@ doesn't support two-factor auth for third-party CalDAV/CardDAV clients; use your
 - Sync conflicts (the same item edited on two devices between syncs) keep the server version and
   preserve the local edits as a "(conflicted copy)"; there's no merge UI yet.
 - Only one level of subtasks is modeled (no infinitely nested subtasks).
-- Recurring events are edited as a whole series only (no per-occurrence exceptions), and the calendar
-  grid draws a recurring event on its first occurrence rather than expanding it across every date; the
-  RRULE itself is stored and synced correctly.
+- Recurring events show on every date they repeat, but they're edited and deleted as a whole series
+  only (no changes to a single occurrence yet).
 - On **DAViCal-based servers (including Synology Calendar)**, deleting a whole list removes it locally
   but cannot remove the calendar collection from the server — DAViCal rejects `DELETE` on a collection
   (`405`). Individual tasks/events still delete and sync normally; only whole-calendar deletion is
   server-side manual (remove it in the server's own UI).
+
+## Contributing
+
+Bug reports and feature ideas are welcome as [issues](https://github.com/precisioncrab/daynizer-desktop/issues).
+Daynizer doesn't accept code contributions, so please describe a fix or an idea in words rather than
+sending a pull request, a patch or code. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Stack
 

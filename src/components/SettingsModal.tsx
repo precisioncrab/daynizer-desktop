@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { CaldavAccountPublic, DiscoveredCalendar, DiscoveredAddressBook, AddressBook, TaskList, ServerStatus, ServerInfo, Entitlement } from "../types";
 import { PRO_STORE_URL, openStore } from "./ProWall";
-import { formatDateTime } from "../dateFormat";
+import { dateTimeLabel } from "../dates";
 
 /** Renderer-side twin of db.ts's davUrlKey: normalize a CalDAV/CardDAV URL so
  *  http<->https, trailing-slash, default-port and host-casing differences don't
@@ -887,7 +887,7 @@ export default function SettingsModal({
                   )}
                   {acc.last_sync_at && (
                     <div className={`status ${acc.last_sync_status === "error" ? "error" : ""}`}>
-                      Last sync: {formatDateTime(acc.last_sync_at)} ({acc.last_sync_status})
+                      {`Last sync: ${dateTimeLabel(acc.last_sync_at)} (${acc.last_sync_status})`}
                     </div>
                   )}
                 </div>
