@@ -269,6 +269,45 @@ function parsedToFields(p: ParsedContact): Partial<Contact> {
   };
 }
 
+/** The UID a card that was never pushed gets: the same on every read and at
+ *  its first push (the task scheme), so the clean-up tools read one card. */
+function stableUid(c: Contact): string {
+  return `${c.id}@tasks-desktop`;
+}
+
+/** A contact's vCard as it stands now, and as it would be pushed: the
+ *  server's card unchanged when nothing modeled changed, else rebuilt on top
+ *  of it. A card never pushed keeps the UID its raw card has (a card the
+ *  clean-up tools brought back keeps its own), else gets stableUid. What the
+ *  contacts clean-up tools read. */
+function contactVCard(c: Contact): { uid: string; vcf: string } {
+  return contactToVCard(contactToParsed(c), c.raw_vcard || undefined, stableUid(c));
+}
+
+/** The vCards of the live contacts (all, or these ids). */
+export function contactsVCards(ids?: string[]): { id: string; address_book_id: string; uid: string; vcf: string }[] {
+  const want = ids ? new Set(ids) : null;
+  return contactsAll()
+    .filter((c) => !want || want.has(c.id))
+    .map((c) => ({ id: c.id, address_book_id: c.address_book_id, ...contactVCard(c) }));
+}
+
+/** Saves a whole vCard onto a contact (the clean-up tools edit cards line by
+ *  line): the modeled fields are read from it and the card itself is what
+ *  gets pushed, so lines Daynizer doesn't model stay exactly as written. */
+export function contactSaveVCard(id: string, vcf: string): Contact {
+  const p = parseVCard(vcf);
+  if (!p) throw new Error("That isn't a vCard Daynizer can read.");
+  return contactUpdate(id, { ...parsedToFields(p), raw_vcard: vcf });
+}
+
+/** A new contact from a whole vCard, in this address book. */
+export function contactCreateFromVCard(bookId: string, vcf: string): Contact {
+  const p = parseVCard(vcf);
+  if (!p) throw new Error("That isn't a vCard Daynizer can read.");
+  return contactCreate({ address_book_id: bookId, ...parsedToFields(p), raw_vcard: vcf });
+}
+
 /** The modeled fields of a local row, as a patch -- used to build a conflict copy. */
 function localFields(c: Contact): Partial<Contact> {
   return {
@@ -427,7 +466,9 @@ async function syncAddressBook(client: Client, book: AddressBook): Promise<Conta
     const freshLocal = contactsByBook(book.id);
     for (const local of freshLocal) {
       if (!local.carddav_uid) {
-        const { uid, vcf } = contactToVCard(contactToParsed(local));
+        // Its raw card (saved whole by the clean-up tools, or imported) goes
+        // along so lines Daynizer doesn't model, photos too, reach the server.
+        const { uid, vcf } = contactVCard(local);
         const filename = `${uid}.vcf`;
         const href = `${url}${filename}`;
         try {
@@ -641,7 +682,9 @@ export function importVCards(text: string, opts: { label: string; bookId: string
         address_book_id: opts.bookId,
         ...parsedToFields(p),
         categories: addCategories(p.categories, label),
-        raw_vcard: block
+        // Without its UID: the card is new here, and a UID the server (or
+        // another address book) already uses would refuse the upload.
+        raw_vcard: block.replace(/^UID[;:].*\r?\n/gim, "")
       });
       summary.created++;
       if (label) summary.labeled++;

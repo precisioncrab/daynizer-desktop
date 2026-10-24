@@ -52,7 +52,7 @@ import {
 } from "./db.js";
 import { testConnection, discoverCalendars, linkListToCalendar, unlinkList, syncAccount, createServerCalendar, deleteServerCalendar, encryptPassword, connectCalendar, syncLog, pushCalendarName, pushCalendarColor } from "./caldav.js";
 import { taskToVTodo, eventToVEvent, bundleIcs } from "./ical.js";
-import { discoverAddressBooks, linkAddressBook, unlinkAddressBook, syncAccountContacts, connectAddressBook, importVCards, createServerAddressBook, deleteServerAddressBook, pushAddressBookName } from "./carddav.js";
+import { discoverAddressBooks, linkAddressBook, unlinkAddressBook, syncAccountContacts, connectAddressBook, importVCards, createServerAddressBook, deleteServerAddressBook, pushAddressBookName, contactsVCards, contactSaveVCard, contactCreateFromVCard } from "./carddav.js";
 import { serverManager, type ServerStatus } from "./serverManager.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1028,6 +1028,10 @@ function registerIpc() {
     return { canceled: false, ...summary };
   });
   ipcMain.handle("contacts:merge", (_e, keeperId: string, loserIds: string[], patch: any) => contactsMerge(keeperId, loserIds, patch));
+  // Whole vCards, for the contacts clean-up tools (they edit cards line by line).
+  ipcMain.handle("contacts:vcards", (_e, ids?: string[]) => contactsVCards(ids));
+  ipcMain.handle("contacts:saveVCard", (_e, id: string, vcf: string) => contactSaveVCard(id, vcf));
+  ipcMain.handle("contacts:createVCard", (_e, bookId: string, vcf: string) => contactCreateFromVCard(bookId, vcf));
 
   ipcMain.handle("reminders:for", (_e, ownerType: "task" | "event", ownerId: string) => remindersForOwner(ownerType, ownerId));
   ipcMain.handle("reminders:create", (_e, ownerType: "task" | "event", ownerId: string, offsetMinutes: number) =>

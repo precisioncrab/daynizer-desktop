@@ -39,6 +39,7 @@
   --danger-bg: #4a2226;
   --danger-border: #6b3a3f;
   --warn: #e8a23d;
+  --ok: #46b06a;
   --shadow: rgba(0, 0, 0, 0.4);
   --overlay: rgba(0, 0, 0, 0.5);
   --hover-tint: rgba(255, 255, 255, 0.06);
@@ -84,6 +85,7 @@
   --danger-bg: #fde8e9;
   --danger-border: #f0b4b7;
   --warn: #b26b00;
+  --ok: #1f7a3d;
   --shadow: rgba(0, 0, 0, 0.15);
   --overlay: rgba(0, 0, 0, 0.3);
   --hover-tint: rgba(0, 0, 0, 0.06);
@@ -724,6 +726,15 @@ input, textarea, select { user-select: text; }
   letter-spacing: 0.5px;
   color: var(--text-faint);
 }
+/* Contacts sidebar: categories that fold away, counts of things to clean up,
+   and the OMEMO link under Chat (Thunderbird add-on only). */
+.sidebar-toggle { display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
+.sidebar-toggle:hover { color: var(--text); }
+.sidebar-toggle .chevron { width: 10px; font-size: 9px; text-align: center; }
+.sidebar-item span.count.has { color: var(--chip-text); font-weight: 600; }
+.sidebar-link { white-space: normal; align-items: flex-start; }
+.sidebar-link .name { flex: 1; min-width: 0; color: var(--chip-text); line-height: 1.35; }
+.sidebar-icon { width: 16px; text-align: center; color: var(--chip-text); flex-shrink: 0; font-size: 12px; }
 .smart-filter-delete {
   background: transparent; border: none; color: var(--text-faint);
   font-size: 14px; line-height: 1; cursor: pointer; padding: 0 2px;

@@ -277,6 +277,12 @@ declare global {
           canceled?: boolean; total?: number; labeled?: number; matched?: number; created?: number; skipped?: number;
         }>;
         merge: (keeperId: string, loserIds: string[], patch: Partial<Contact>) => Promise<Contact>;
+        /** Whole vCards of the live contacts (all, or these ids), for the
+         *  clean-up tools, which edit cards line by line. */
+        vcards: (ids?: string[]) => Promise<{ id: string; address_book_id: string; uid: string; vcf: string }[]>;
+        /** Saves a whole vCard onto a contact; lines Daynizer doesn't model are kept. */
+        saveVCard: (id: string, vcf: string) => Promise<Contact>;
+        createVCard: (bookId: string, vcf: string) => Promise<Contact>;
       };
       /** Absent in the Thunderbird add-on shim -- always optional-chain. */
       reminders?: {

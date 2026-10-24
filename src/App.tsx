@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useState, useCallback } from "react";
 import Sidebar from "./components/Sidebar";
 import AddonMenuBar from "./components/AddonMenuBar";
 import TaskTable from "./components/TaskTable";
@@ -12,10 +12,13 @@ import ContactsRail from "./components/ContactsRail";
 import EventDetailPanel from "./components/EventDetailPanel";
 import ContactsView from "./components/ContactsView";
 import ImportVCardModal from "./components/ImportVCardModal";
-import ContactsSidebar from "./components/ContactsSidebar";
+import ContactsSidebar, { CleanupItem } from "./components/ContactsSidebar";
 import ContactDetailPanel from "./components/ContactDetailPanel";
-import { ContactFilter, LabelColors, findDuplicateClusters, contactCategories, contactLabels } from "./contactUtils";
-import MergeDuplicatesView from "./components/MergeDuplicatesView";
+import { ContactFilter, LabelColors, contactCategories, contactLabels } from "./contactUtils";
+import { createCleanup, VIEWS as CLEANUP_VIEWS } from "./cleanup/controller.js";
+import { omemoTier } from "./cleanup/lib/omemo.js";
+import { LINKS as CLEANUP_LINKS, openLink } from "./cleanup/lib/links.js";
+import "./cleanup/cleanup.css";
 import ProWall from "./components/ProWall";
 import TrialBanner from "./components/TrialBanner";
 import { Task, TaskList, CaldavAccountPublic, CalendarEvent, Contact, AddressBook, EventOverride, Entitlement, ManualUpdate } from "./types";
@@ -36,6 +39,18 @@ import {
 } from "./filters";
 import FitSelect from "./components/FitSelect";
 import FiltersModal from "./components/FiltersModal";
+
+/** Running as the Thunderbird add-on (a WebExtension page), not the desktop app. */
+const IS_ADDON = typeof (globalThis as any).browser !== "undefined" && !!(globalThis as any).browser?.runtime?.id;
+
+/** The Contacts tab's clean-up pages (Contacts Cleanup's, src/cleanup/), by sidebar category. */
+type CleanupView = "duplicates" | "copies" | "phones" | "names" | "labels" | "chat" | "history";
+const CLEANUP_GROUPS: Record<"cleanup" | "chat" | "more", CleanupView[]> = {
+  cleanup: ["duplicates", "copies", "phones", "names", "labels"],
+  chat: ["chat"],
+  more: ["history"]
+};
+const isCleanupView = (v: string): v is CleanupView => v in CLEANUP_VIEWS;
 
 /** What each tab shows when the app opens: the saved views, plus the default
  *  views chosen in Settings (Tasks: All Tasks / Today & Overdue / a view;
@@ -140,8 +155,8 @@ export default function App() {
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [contactFilter, setContactFilter] = useState<ContactFilter>({ kind: "all" });
   const [labelColors, setLabelColors] = useState<LabelColors>({});
-  const [contactsMode, setContactsMode] = useState<"list" | "duplicates">("list");
-  const [dismissedDupPairs, setDismissedDupPairs] = useState<Set<string>>(new Set());
+  // The Contacts tab shows the contact list, or one of the clean-up pages.
+  const [contactsMode, setContactsMode] = useState<"list" | CleanupView>("list");
   // The specific occurrence (RECURRENCE-ID) the user opened, set when a
   // recurring event is clicked on the calendar; null when selected another way.
   const [selectedEventOccurrence, setSelectedEventOccurrence] = useState<string | null>(null);
@@ -482,41 +497,45 @@ export default function App() {
   const loadLabelColors = useCallback(async () => {
     const s = (await window.api.settings?.all()) ?? {};
     try { setLabelColors(JSON.parse(s.contactLabelColors || "{}")); } catch { setLabelColors({}); }
-    try { const a = JSON.parse(s.dismissedDupPairs || "[]"); setDismissedDupPairs(new Set(Array.isArray(a) ? a : [])); } catch { setDismissedDupPairs(new Set()); }
   }, []);
 
   useEffect(() => { loadLists(); loadTasks(); loadAccounts(); loadEvents(); loadContacts(); loadAddressBooks(); loadLabelColors(); }, [loadLists, loadTasks, loadAccounts, loadEvents, loadContacts, loadAddressBooks, loadLabelColors]);
 
-  const duplicateClusters = useMemo(
-    () => findDuplicateClusters(contacts.filter((c) => !c.deleted), dismissedDupPairs),
-    [contacts, dismissedDupPairs]
-  );
-
-  async function dismissDupPairs(pairKeys: string[]) {
-    const next = new Set(dismissedDupPairs);
-    for (const k of pairKeys) next.add(k);
-    setDismissedDupPairs(next);
-    await window.api.settings?.set("dismissedDupPairs", JSON.stringify([...next]));
-  }
-
-  async function mergeContacts(keeperId: string, loserIds: string[], patch: Partial<Contact>) {
-    await window.api.contacts?.merge(keeperId, loserIds, patch);
-    if (selectedContactId && loserIds.includes(selectedContactId)) selectContact(null);
-    const fresh = (await window.api.contacts?.all()) ?? [];
-    setContacts(fresh);
-    scheduleDirtySync();
-    // Where to go next: if other duplicate clusters remain, stay in the
-    // duplicates view so the user can keep resolving them (the merge editor
-    // returns to the cluster list on its own). Only when everything is resolved
-    // do we drop back to the contacts list on the surviving contact.
-    const remaining = findDuplicateClusters(fresh.filter((c) => !c.deleted), dismissedDupPairs);
-    if (remaining.length === 0) {
-      setContactsMode("list");
-      selectContact(keeperId);
-      setSyncMsg(`Merged ${loserIds.length + 1} contacts into one.`);
-      setTimeout(() => setSyncMsg(null), 4000);
-    }
-  }
+  // ---------- Contacts clean-up pages (Contacts Cleanup's, src/cleanup/) ----------
+  // The controller lives for the whole window and draws its page into the two
+  // elements below. Its hooks read the latest closures through this ref.
+  const [, setCleanupTick] = useState(0);
+  const cleanupHooks = React.useRef<{
+    onChanged: () => void;
+    onApplied: (entry: any) => void;
+    omemoPromo: () => boolean;
+    onSetView: (view: string) => void;
+  }>({ onChanged: () => {}, onApplied: () => {}, omemoPromo: () => false, onSetView: () => {} });
+  const cleanup = useMemo(() => {
+    let tickQueued = false;
+    return createCleanup({
+      addon: IS_ADDON,
+      omemoPromo: () => cleanupHooks.current.omemoPromo(),
+      onChanged: () => cleanupHooks.current.onChanged(),
+      onApplied: (entry: any) => cleanupHooks.current.onApplied(entry),
+      onSetView: (view: string) => cleanupHooks.current.onSetView(view),
+      // Counts and busy state for the sidebar: one redraw per frame at most.
+      onUpdate: () => {
+        if (tickQueued) return;
+        tickQueued = true;
+        requestAnimationFrame(() => { tickQueued = false; setCleanupTick((t) => t + 1); });
+      }
+    });
+  }, []);
+  cleanupHooks.current = {
+    onChanged: () => { loadContacts(); scheduleDirtySync(); },
+    // Edit > Undo (Ctrl+Z) undoes the last clean-up change too.
+    onApplied: (entry) => { lastActionRef.current = async () => { await cleanup.undo(entry); }; },
+    // OMEMO for Thunderbird is offered only in the add-on's trial and free tier (never with Pro, never on desktop).
+    omemoPromo: () => entitlement?.tier === "trial" || entitlement?.tier === "free",
+    onSetView: (view) => { setMainView("contacts"); setContactsMode(isCleanupView(view) ? view : "list"); }
+  };
+  useEffect(() => { cleanup.contactsChanged(); }, [contacts, addressBooks, cleanup]);
 
   // Live ref for the menu's New Task (Ctrl+N): the listener below is registered
   // once, so calling createTaskInScope directly would use the first render's
@@ -895,6 +914,8 @@ export default function App() {
 
   async function updateContact(id: string, patch: Partial<Contact>) {
     await window.api.contacts?.update(id, patch);
+    // Copies linked under Clean up > In several books follow the edit.
+    await cleanup.followLinked(id);
     await loadContacts();
     scheduleDirtySync();
   }
@@ -1255,7 +1276,38 @@ export default function App() {
   // In the Thunderbird add-on there's no native File/Edit/View/… menu bar (that
   // was Electron-only), so we render an in-app toolbar there. Detected via the
   // WebExtension `browser` global; the Electron desktop keeps its native menu.
-  const isAddon = typeof (globalThis as any).browser !== "undefined" && !!(globalThis as any).browser?.runtime?.id;
+  const isAddon = IS_ADDON;
+
+  // The clean-up page showing in the Contacts tab (null: the contact list, or another tab).
+  const contactsOpen = mainView === "contacts" && !proLocked;
+  const cleanupView = contactsOpen && contactsMode !== "list" ? contactsMode : null;
+  // Read the contacts for the clean-up pages (and the sidebar counts) once the Contacts tab is first shown.
+  useEffect(() => { if (contactsOpen) cleanup.start(); }, [contactsOpen, cleanup]);
+  // The page draws itself into these: the main column and the right-hand panel
+  // (a detached one while the panel is folded away).
+  const cleanupMainRef = React.useRef<HTMLDivElement>(null);
+  const cleanupRailRef = React.useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!cleanupView || !cleanupMainRef.current) return;
+    cleanup.mount(cleanupView, cleanupMainRef.current, cleanupRailRef.current ?? document.createElement("div"));
+    return () => cleanup.unmount();
+  }, [cleanupView, railCollapsed, cleanup]);
+  const cleanupItem = (id: CleanupView): CleanupItem => ({
+    id, title: CLEANUP_VIEWS[id].title, dot: CLEANUP_VIEWS[id].dot, count: cleanup.count(id)
+  });
+  // Under Chat, in the add-on: OMEMO for Thunderbird's settings once it answers; offers to get it only in the trial and free tier.
+  const omemoLink = (() => {
+    if (!IS_ADDON) return null;
+    const tier = omemoTier(cleanup.omemoStatus());
+    const promo = cleanupHooks.current.omemoPromo();
+    if (tier === "none") {
+      return promo ? { text: "Get OMEMO for Thunderbird", icon: "↗", title: "End-to-end encrypted XMPP chat in Thunderbird. Opens its page in your web browser.", onClick: () => openLink(CLEANUP_LINKS.omemo) } : null;
+    }
+    if (tier === "free" && promo) {
+      return { text: "Get OMEMO for Thunderbird + Calls", icon: "↗", title: "OMEMO for Thunderbird + Calls adds audio calls in Thunderbird, with JMP.chat numbers, Cheogram, Conversations and other XMPP apps. Opens its page in your web browser.", onClick: () => openLink(CLEANUP_LINKS.omemoPro) };
+    }
+    return { text: "OMEMO settings", icon: "⚙", title: "Open the OMEMO add-on's settings", onClick: () => cleanup.openOmemoSettings() };
+  })();
 
   // Every label currently in use across all contacts, for the "add existing
   // label" dropdown in the contact editor (own CATEGORIES + group-card labels).
@@ -1273,7 +1325,7 @@ export default function App() {
           contacts={contacts}
           accounts={accounts.map((a) => ({ id: a.id, label: a.label }))}
           filter={contactFilter}
-          onSelect={setContactFilter}
+          onSelect={(f) => { setContactFilter(f); setContactsMode("list"); }}
           onCreateBook={createAddressBook}
           onCreateServerBook={createServerBook}
           onSetBookColor={setBookColor}
@@ -1288,6 +1340,14 @@ export default function App() {
           onOpenSettings={() => setShowSettings(true)}
           collapsed={sidebarCollapsed}
           onToggleCollapsed={() => setSidebarCollapsed(!sidebarCollapsed)}
+          nav={{
+            view: cleanupView,
+            cleanup: CLEANUP_GROUPS.cleanup.map(cleanupItem),
+            chat: CLEANUP_GROUPS.chat.map(cleanupItem),
+            more: CLEANUP_GROUPS.more.map(cleanupItem),
+            onOpen: (view) => { if (isCleanupView(view)) setContactsMode(view); },
+            omemoLink
+          }}
         />
       ) : (
       <Sidebar
@@ -1387,13 +1447,9 @@ export default function App() {
             onUpdateTask={updateTask}
           />
         ) : mainView === "contacts" ? (
-          contactsMode === "duplicates" ? (
-            <MergeDuplicatesView
-              clusters={duplicateClusters}
-              onMerge={mergeContacts}
-              onDismiss={dismissDupPairs}
-              onBack={() => setContactsMode("list")}
-            />
+          cleanupView ? (
+            // A clean-up page draws itself in here (src/cleanup/controller.js).
+            <div ref={cleanupMainRef} className="cleanup cleanup-main" />
           ) : (
           <ContactsView
             contacts={contacts}
@@ -1404,7 +1460,7 @@ export default function App() {
             onCreate={createContact}
             onImport={() => setShowImport(true)}
             onFindDuplicates={() => setContactsMode("duplicates")}
-            duplicateCount={duplicateClusters.length}
+            duplicateCount={cleanup.count("duplicates") ?? 0}
           />
           )
         ) : (
@@ -1519,7 +1575,10 @@ export default function App() {
             onToggleCollapsed={() => setRailCollapsed(!railCollapsed)}
           />
         )}
-        {!railCollapsed && (selectedContactId ? (
+        {!railCollapsed && (cleanupView ? (
+          // The clean-up page's right-hand panel (its contact editor, help).
+          <div ref={cleanupRailRef} className="cleanup cleanup-rail" />
+        ) : selectedContactId ? (
           <ContactDetailPanel
             contact={contacts.find((c) => c.id === selectedContactId) || null}
             addressBooks={addressBooks}

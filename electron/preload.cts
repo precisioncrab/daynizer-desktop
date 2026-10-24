@@ -54,7 +54,10 @@ const api = {
     update: (id: string, patch: any) => ipcRenderer.invoke("contacts:update", id, patch),
     delete: (id: string, hard?: boolean) => ipcRenderer.invoke("contacts:delete", id, hard),
     import: (opts: { label: string; bookId: string; createNew: boolean }) => ipcRenderer.invoke("contacts:import", opts),
-    merge: (keeperId: string, loserIds: string[], patch: any) => ipcRenderer.invoke("contacts:merge", keeperId, loserIds, patch)
+    merge: (keeperId: string, loserIds: string[], patch: any) => ipcRenderer.invoke("contacts:merge", keeperId, loserIds, patch),
+    vcards: (ids?: string[]) => ipcRenderer.invoke("contacts:vcards", ids),
+    saveVCard: (id: string, vcf: string) => ipcRenderer.invoke("contacts:saveVCard", id, vcf),
+    createVCard: (bookId: string, vcf: string) => ipcRenderer.invoke("contacts:createVCard", bookId, vcf)
   },
   reminders: {
     for: (ownerType: "task" | "event", ownerId: string) => ipcRenderer.invoke("reminders:for", ownerType, ownerId),

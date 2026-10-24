@@ -211,22 +211,66 @@ function setOrClear(comp: ICAL.Component, name: string, value: string) {
   if (value) comp.updatePropertyWithValue(name, value);
 }
 
+/** Rewrite a multi-value property from the modeled values. A value the card
+ *  already holds keeps its line, so parameters we don't model (a second TYPE,
+ *  PREF, X-SERVICE-TYPE on an XMPP address, an Apple item group) survive; only
+ *  its TYPE changes, and only when the modeled type differs. */
 function rebuildTyped(comp: ICAL.Component, name: string, values: TypedValue[]) {
+  const pool = comp.getAllProperties(name);
   removeAll(comp, name);
   for (const v of values) {
     if (!v.value) continue;
-    const p = new ICAL.Property(name, comp);
-    p.setValue(v.value);
-    if (v.type) p.setParameter("type", v.type);
+    const i = pool.findIndex((p) => String(p.getFirstValue() ?? "") === v.value);
+    let p: ICAL.Property;
+    if (i >= 0) {
+      p = pool.splice(i, 1)[0];
+      if (typeOf(p) !== (v.type || "")) {
+        if (v.type) p.setParameter("type", v.type);
+        else p.removeParameter("type");
+      }
+    } else {
+      p = new ICAL.Property(name, comp);
+      p.setValue(v.value);
+      if (v.type) p.setParameter("type", v.type);
+    }
     comp.addProperty(p);
   }
 }
 
+/** The modeled parts of an ADR line, for matching it to a PostalAddress. */
+function adrKey(type: string, street: string, city: string, region: string, postal: string, country: string): string {
+  return JSON.stringify([type, street, city, region, postal, country]);
+}
+
+/** True when a stored contact still carries what its raw card says (UID
+ *  aside). A card without FN is stored with the name made from its parts
+ *  (displayName), so that counts as the same. */
+const MODELED: (keyof ParsedContact)[] = [
+  "fn", "prefix", "first_name", "middle_name", "last_name", "suffix", "nickname", "org", "title", "bday",
+  "anniversary", "notes", "categories", "photo", "phones", "emails", "addresses", "urls", "impps", "related"
+];
+function sameModeled(raw: ParsedContact, c: ParsedContact): boolean {
+  const r: ParsedContact = { ...raw, fn: raw.fn || displayName(raw) };
+  const norm = (v: unknown) => JSON.stringify(v ?? null);
+  return MODELED.every((k) => norm(r[k]) === norm(c[k]));
+}
+
 /** Serialize a contact to a vCard 3.0 string. If `rawVCard` is given (the card
- *  we last received from the server), we start from it and overwrite only the
- *  fields we model -- so photos and any properties we don't understand survive
- *  the round-trip. */
-export function contactToVCard(c: ParsedContact, rawVCard?: string): { uid: string; vcf: string } {
+ *  we last received from the server, or one the clean-up tools saved whole), it
+ *  goes back unchanged when the modeled fields still match it; otherwise we
+ *  start from it and overwrite only the fields we model -- so photos and any
+ *  properties we don't understand survive the round-trip. `fallbackUid` is the
+ *  UID for a card that has none yet. */
+export function contactToVCard(c: ParsedContact, rawVCard?: string, fallbackUid?: string): { uid: string; vcf: string } {
+  // Nothing we model changed since this card was read (or saved whole by the
+  // contacts clean-up tools): send it back exactly as it is.
+  if (rawVCard) {
+    const raw = parseVCard(rawVCard);
+    if (raw && raw.uid && (!c.uid || c.uid === raw.uid) && sameModeled(raw, c)) {
+      return { uid: raw.uid, vcf: rawVCard };
+    }
+  }
+
   let comp: ICAL.Component;
   try {
     comp = rawVCard ? new ICAL.Component(ICAL.parse(rawVCard)) : new ICAL.Component("vcard");
@@ -234,7 +278,7 @@ export function contactToVCard(c: ParsedContact, rawVCard?: string): { uid: stri
     comp = new ICAL.Component("vcard");
   }
 
-  const uid = c.uid || (comp.getFirstPropertyValue("uid") as string) || newContactUid();
+  const uid = c.uid || (comp.getFirstPropertyValue("uid") as string) || fallbackUid || newContactUid();
 
   comp.updatePropertyWithValue("version", "3.0");
   comp.updatePropertyWithValue("uid", uid);
@@ -267,12 +311,25 @@ export function contactToVCard(c: ParsedContact, rawVCard?: string): { uid: stri
   rebuildTyped(comp, "impp", c.impps);
   rebuildTyped(comp, "related", c.related);
 
+  // An address the card already holds keeps its line (PO box, extended part
+  // and parameters included); new or edited ones are written fresh.
+  const adrPool = comp.getAllProperties("adr");
   removeAll(comp, "adr");
   for (const a of c.addresses) {
     if (![a.street, a.city, a.region, a.postal, a.country].some(Boolean)) continue;
-    const p = new ICAL.Property("adr", comp);
-    p.setValue(["", "", a.street || "", a.city || "", a.region || "", a.postal || "", a.country || ""] as any);
-    if (a.type) p.setParameter("type", a.type);
+    const key = adrKey(a.type || "", a.street || "", a.city || "", a.region || "", a.postal || "", a.country || "");
+    const i = adrPool.findIndex((p) => {
+      const parts = structuredParts(p);
+      return adrKey(typeOf(p), parts[2] || "", parts[3] || "", parts[4] || "", parts[5] || "", parts[6] || "") === key;
+    });
+    let p: ICAL.Property;
+    if (i >= 0) {
+      p = adrPool.splice(i, 1)[0];
+    } else {
+      p = new ICAL.Property("adr", comp);
+      p.setValue(["", "", a.street || "", a.city || "", a.region || "", a.postal || "", a.country || ""] as any);
+      if (a.type) p.setParameter("type", a.type);
+    }
     comp.addProperty(p);
   }
 

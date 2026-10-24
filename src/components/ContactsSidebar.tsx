@@ -14,6 +14,26 @@ const PALETTE: { name: string; color: string }[] = [
 ];
 const randomSwatch = () => PALETTE[Math.floor(Math.random() * PALETTE.length)].color;
 
+/** One clean-up page in the sidebar (Contacts Cleanup's pages, src/cleanup/). */
+export interface CleanupItem { id: string; title: string; dot: string; count: number | null }
+
+/** The clean-up part of the sidebar: Clean up, Chat and More, with the page open (null: the contact list). */
+export interface CleanupNav {
+  view: string | null;
+  cleanup: CleanupItem[];
+  chat: CleanupItem[];
+  more: CleanupItem[];
+  onOpen: (view: string) => void;
+  /** Under Chat, in the Thunderbird add-on only: getting OMEMO for Thunderbird, or its settings. */
+  omemoLink: { text: string; title: string; icon: string; onClick: () => void } | null;
+}
+
+// Categories folded away, remembered on this computer.
+const FOLDED_KEY = "contactsSidebarFolded";
+function readFolded(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(FOLDED_KEY) || "[]")); } catch { return new Set(); }
+}
+
 interface Props {
   addressBooks: AddressBook[];
   contacts: Contact[];
@@ -34,12 +54,46 @@ interface Props {
   onOpenSettings: () => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  nav: CleanupNav;
 }
 
 export default function ContactsSidebar({
   addressBooks, contacts, accounts, filter, onSelect, onCreateBook, onCreateServerBook, onSetBookColor, onRenameBook, labelColors, onSetLabelColor, onDeleteLabel,
-  onDisconnectBook, onDeleteBook, onSync, syncing, onOpenSettings, collapsed, onToggleCollapsed
+  onDisconnectBook, onDeleteBook, onSync, syncing, onOpenSettings, collapsed, onToggleCollapsed, nav
 }: Props) {
+  const [folded, setFolded] = useState(readFolded);
+  function toggleFold(id: string) {
+    const next = new Set(folded);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setFolded(next);
+    try { localStorage.setItem(FOLDED_KEY, JSON.stringify([...next])); } catch { /* not remembered */ }
+  }
+  /** A category heading that folds its items away (click the name). */
+  const heading = (id: string, title: string) => (
+    <div
+      className="sidebar-section-label sidebar-toggle"
+      role="button"
+      tabIndex={0}
+      aria-expanded={!folded.has(id)}
+      title={folded.has(id) ? `Show ${title}` : `Fold ${title} away`}
+      onClick={() => toggleFold(id)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleFold(id); } }}
+    >
+      <span className="chevron" aria-hidden="true">{folded.has(id) ? "▸" : "▾"}</span>
+      {title}
+    </div>
+  );
+  const pageItem = (item: CleanupItem) => (
+    <div
+      key={item.id}
+      className={`sidebar-item ${nav.view === item.id ? "active" : ""}`}
+      onClick={() => nav.onOpen(item.id)}
+    >
+      <span className="sidebar-dot" style={{ background: item.dot }} />
+      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</span>
+      {item.count ? <span className="count has">{item.count}</span> : null}
+    </div>
+  );
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [newColor, setNewColor] = useState(randomSwatch()); // color for the book being created
@@ -75,7 +129,8 @@ export default function ContactsSidebar({
     );
   }
 
-  const active = (f: ContactFilter) => JSON.stringify(f) === JSON.stringify(filter);
+  // A filter is active only while the contact list shows (not a clean-up page).
+  const active = (f: ContactFilter) => nav.view === null && JSON.stringify(f) === JSON.stringify(filter);
   const live = contacts.filter((c) => !c.deleted);
   const bookCount = (id: string) => live.filter((c) => c.address_book_id === id).length;
   const labels = (() => {
@@ -111,7 +166,8 @@ export default function ContactsSidebar({
         </div>
 
         <div style={{ height: 8 }} />
-        <div className="sidebar-section-label">Address books</div>
+        {heading("books", "Address books")}
+        {!folded.has("books") && (<>
         {addressBooks.map((b) => (
           editingBookId === b.id ? (
             <div key={b.id} className="sidebar-item" style={{ "--accent": b.color } as any}>
@@ -190,12 +246,13 @@ export default function ContactsSidebar({
         ) : (
           <button className="sidebar-add" onClick={openAddBook}>+ New address book</button>
         )}
+        </>)}
 
         {labels.length > 0 && (
           <>
             <div style={{ height: 8 }} />
-            <div className="sidebar-section-label">Labels</div>
-            {labels.map((l) => (
+            {heading("labels", "Labels")}
+            {!folded.has("labels") && labels.map((l) => (
               <div
                 key={l}
                 className={`sidebar-item ${active({ kind: "label", value: l }) ? "active" : ""}`}
@@ -209,6 +266,37 @@ export default function ContactsSidebar({
             ))}
           </>
         )}
+
+        {nav.cleanup.length > 0 && (<>
+          <div style={{ height: 8 }} />
+          {heading("cleanup", "Clean up")}
+          {!folded.has("cleanup") && nav.cleanup.map(pageItem)}
+        </>)}
+        {(nav.chat.length > 0 || nav.omemoLink) && (<>
+          <div style={{ height: 8 }} />
+          {heading("chat", "Chat")}
+          {!folded.has("chat") && (<>
+            {nav.chat.map(pageItem)}
+            {nav.omemoLink && (
+              <div
+                className="sidebar-item sidebar-link"
+                role="button"
+                tabIndex={0}
+                title={nav.omemoLink.title}
+                onClick={nav.omemoLink.onClick}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav.omemoLink!.onClick(); } }}
+              >
+                <span className="sidebar-icon" aria-hidden="true">{nav.omemoLink.icon}</span>
+                <span className="name">{nav.omemoLink.text}</span>
+              </div>
+            )}
+          </>)}
+        </>)}
+        {nav.more.length > 0 && (<>
+          <div style={{ height: 8 }} />
+          {heading("more", "More")}
+          {!folded.has("more") && nav.more.map(pageItem)}
+        </>)}
       </div>
       <div className="sidebar-footer">
         <button onClick={onSync} disabled={syncing}>{syncing ? "Syncing…" : "Sync now (Ctrl+R)"}</button>

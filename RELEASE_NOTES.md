@@ -5,6 +5,24 @@ Changes since v0.8.9. Daynizer remains beta, pre-1.0, keep a backup of anything 
 - **The calendar stays where you scrolled it.** In a busy month scrolled down to a later week,
   clicking a task or event threw the grid back to the top, and a sync or a saved change could do
   the same. Now it stays put, and a click only moves the highlight.
+- **Contacts clean-up tools, from Contacts Cleanup.** The Contacts tab's sidebar has new sections:
+  - **Clean up:** Duplicates (check the cards that are the same person, pick what the merged card
+    keeps, merge; "Not duplicates" hides a group for good), In several books (the same contact in
+    two address books with one ID: link the copies, keep one with the other books as labels,
+    separate them, or leave them), Phone numbers (one format, +1 555 123 4567, with a default
+    country), Missing names, and Lists to labels (an address book becomes a label, and can move
+    into another book).
+  - **Chat:** Chat addresses: every contact with a phone number or chat address, JMP.chat
+    addresses added from their numbers, and chat addresses other apps can't read (no xmpp:,
+    X-JABBER, Google's x-apple:) fixed.
+  - **More:** Changes, every change made there, each one can be undone (also Edit > Undo).
+  These replace the old Merge duplicates screen. Pairs marked "Not duplicates" there are kept.
+  Categories in the sidebar fold away with a click on their name.
+- **Contact details you don't edit in Daynizer stay on the card.** Saving a contact used to
+  rewrite the whole card from Daynizer's own fields, which dropped what Daynizer doesn't show: the
+  marker that tells Google Contacts and iCloud a chat address is XMPP, a second phone type, Apple's
+  custom labels, the PO box of an address. Now a card nothing changed on goes back exactly as it
+  came, and an edited one keeps those details. Imported contacts keep their photo when they sync.
 
 ---
 
