@@ -141,6 +141,7 @@ export function createCleanup(options) {
     dismiss,
     apply,
     undo,
+    deleteBook,
     saveLinks,
     leaveCopies,
     confirm: (o) => confirmDialog(o),
@@ -202,7 +203,9 @@ export function createCleanup(options) {
    */
   function excludedBooks() {
     const picked = options.scopeBooks?.() ?? [];
-    return new Set(picked.length ? state.books.map((b) => b.id).filter((id) => !picked.includes(id)) : []);
+    // Daynizer: a hidden Thunderbird book (the same contacts as one of Daynizer's) is always left out.
+    const hidden = state.books.filter((b) => b.hidden).map((b) => b.id);
+    return new Set([...hidden, ...(picked.length ? state.books.map((b) => b.id).filter((id) => !picked.includes(id)) : [])]);
   }
 
   /** The cards in scope changed: drops what belonged to cards now out of it, and draws the page again. */
@@ -369,10 +372,45 @@ export function createCleanup(options) {
     return changed ? entry : null;
   }
 
+  /**
+   * Deletes an address book (Thunderbird's: { id, name, contacts, lists }) after
+   * asking, unless `asked`. It can't be undone; Undo refuses an earlier change
+   * that would put contacts back into it. True when it's gone.
+   */
+  async function deleteBook(book, { asked = false } = {}) {
+    if (!asked) {
+      const lists = book.lists?.length ?? 0;
+      const what = [
+        book.contacts.length ? plural(book.contacts.length, "contact", "contacts") : null,
+        lists ? plural(lists, "mailing list", "mailing lists") : null,
+      ].filter(Boolean).join(" and ");
+      const go = await confirmDialog({
+        title: `Delete the address book ${book.name}?`,
+        body: [h("p", {}, `${what ? `Thunderbird deletes it with its ${what}.` : "It's empty."} This can't be undone.`)],
+        ok: "Delete",
+        danger: true,
+      });
+      if (!go) {
+        return false;
+      }
+    }
+    try {
+      await api.deleteBook(book.id);
+    } catch (e) {
+      // Thunderbird refuses its two built-in books with a bare "An unexpected error occurred" (and
+      // doesn't tell add-ons which books are built in), so the message says what that usually means.
+      console.error("[cleanup] deleting an address book", e);
+      toast(`Thunderbird didn't delete ${book.name}, and nothing was changed. It never deletes its two built-in address books (Personal Address Book and Collected Addresses); other address books can be deleted.`, { error: true });
+      return false;
+    }
+    await reload().catch(() => {});
+    options.onChanged();
+    toast(`Deleted the address book ${book.name}.`);
+    return true;
+  }
+
   async function undo(entry) {
     if (!entry || entry.undone || state.busy) {
-      // Daynizer: diagnostic for the Ctrl+Z report (2026-10-26).
-      console.info(`[undo] clean-up undo skipped: ${!entry ? "no entry" : entry.undone ? "already undone" : "busy"}`);
       return;
     }
     applying = true;
@@ -489,7 +527,8 @@ export function createCleanup(options) {
   /** Daynizer: says which address books the page looks at when the sidebar selection narrows it. */
   function scopeNote() {
     const excluded = excludedBooks();
-    if (state.loading || !excluded.size) {
+    // A hidden book is left out without asking, so it doesn't make this note show.
+    if (state.loading || !state.books.some((b) => !b.hidden && excluded.has(b.id))) {
       return null;
     }
     const names = state.books.filter((b) => !excluded.has(b.id)).map((b) => b.name);

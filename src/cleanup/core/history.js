@@ -30,7 +30,7 @@
  * remove(id), photo(id) -> dataUrl|null, setPhoto(id, dataUrl); and for
  * mailing lists, when it has them: listsOf(id) -> [list id],
  * addToList(listId, id), getList(id), createList(parentId, list) -> id,
- * deleteList(id).
+ * deleteList(id); and bookExists(id) -> bool, when it can tell.
  */
 
 import { comparable, parseVCard, parseLine, serializeVCard, insertProp, photoLines, withoutPhoto, withPhoto } from "./vcard.js";
@@ -197,6 +197,29 @@ export async function undoConflicts(api, entry) {
 }
 
 /**
+ * The address books an undo would put cards or mailing lists back into that
+ * are gone (deleted since), by id. Undo doesn't run then: it would take the
+ * moved copies away and have nowhere to put the cards back. Checked with
+ * `api.bookExists(id)` when the api has it.
+ */
+export async function missingBooks(api, entry) {
+  if (!api.bookExists) {
+    return [];
+  }
+  const ids = new Set([
+    ...entry.cards.filter((c) => c.before !== null).map((c) => c.parentId),
+    ...(entry.lists ?? []).map((l) => l.parentId),
+  ]);
+  const missing = [];
+  for (const id of ids) {
+    if (!(await api.bookExists(id).catch(() => true))) {
+      missing.push(id);
+    }
+  }
+  return missing;
+}
+
+/**
  * Undoes an entry: deleted cards come back (with their photos), changed
  * cards get their old vCard. With conflicts and no `force`, nothing is
  * done and { conflicts } comes back. Cards that were deleted since are
@@ -204,6 +227,9 @@ export async function undoConflicts(api, entry) {
  * Returns { conflicts, done, error }.
  */
 export async function undoEntry(api, entry, { force = false } = {}) {
+  if ((await missingBooks(api, entry)).length) {
+    return { conflicts: [], done: false, error: "an address book it would put contacts back into was deleted since, so it can't be undone. Nothing was changed." };
+  }
   const conflicts = await undoConflicts(api, entry);
   if (conflicts.length && !force) {
     return { conflicts, done: false, error: null };

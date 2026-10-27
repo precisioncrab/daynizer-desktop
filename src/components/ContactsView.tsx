@@ -13,6 +13,12 @@ interface Props {
   onImport: () => void;
   onFindDuplicates: () => void;
   duplicateCount: number;
+  /** Add-on: Thunderbird's book names by id, for the Thunderbird tag. */
+  thunderbirdBookNames?: Record<string, string>;
+  /** Add-on, with Thunderbird's books shown: Daynizer's own book names by id, for a Daynizer tag. */
+  daynizerBookNames?: Record<string, string>;
+  /** Add-on: Thunderbird copies add-ons can't change, card id -> the other book that has the same contact ID. */
+  locked?: Map<string, string>;
 }
 
 /** First value out of a JSON-text typed-value column ([{type,value}, ...]). */
@@ -47,7 +53,7 @@ function ContactAvatar({ contact }: { contact: Contact }) {
   );
 }
 
-export default function ContactsView({ contacts, filter, labelColors, selectedContactId, onSelect, onCreate, onImport, onFindDuplicates, duplicateCount }: Props) {
+export default function ContactsView({ contacts, filter, labelColors, selectedContactId, onSelect, onCreate, onImport, onFindDuplicates, duplicateCount, thunderbirdBookNames = {}, daynizerBookNames, locked }: Props) {
   const [search, setSearch] = useState("");
 
   const visible = useMemo(() => {
@@ -104,7 +110,20 @@ export default function ContactsView({ contacts, filter, labelColors, selectedCo
                 <div className="title-col">
                   <div className="title">
                     {c.fn || "Unnamed"}
-                    {isThunderbirdId(c.id) && <span className="contact-source-tag" title="In Thunderbird's address book">Thunderbird</span>}
+                    {isThunderbirdId(c.id) ? (
+                      <span className="contact-source-tag" title="In Thunderbird's address book">
+                        Thunderbird{thunderbirdBookNames[c.address_book_id] ? `: ${thunderbirdBookNames[c.address_book_id]}` : ""}
+                      </span>
+                    ) : daynizerBookNames && (
+                      <span className="contact-source-tag" title="In Daynizer's own address book (Daynizer syncs it with your server)">
+                        Daynizer{daynizerBookNames[c.address_book_id] ? `: ${daynizerBookNames[c.address_book_id]}` : ""}
+                      </span>
+                    )}
+                    {locked?.has(c.id) && (
+                      <span className="contact-source-tag warn" title={`The same contact ID is also in ${locked.get(c.id)}. Thunderbird only lets add-ons change that copy; this one can't be changed here. Sort it out under Clean up > In several books.`}>
+                        can't change: also in {locked.get(c.id)}
+                      </span>
+                    )}
                   </div>
                   {sub && <div className="meta">{sub}</div>}
                   {labels.length > 0 && (

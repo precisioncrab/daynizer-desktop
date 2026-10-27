@@ -10,6 +10,12 @@ interface Props {
   onDelete: (id: string) => void;
   /** A contact in Thunderbird's own address books (add-on): tagged in the heading. */
   thunderbird?: boolean;
+  /**
+   * A Thunderbird copy add-ons can't change: the same contact ID is also in
+   * this other Thunderbird book, and Thunderbird only lets add-ons reach that
+   * copy. Shown as a note; Save and Delete are off.
+   */
+  lockedBy?: string | null;
 }
 
 function parseArr<T>(s: string | undefined): T[] {
@@ -49,7 +55,7 @@ const rmBtnStyle: CSSProperties = {
   background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 14, padding: "0 4px"
 };
 
-export default function ContactDetailPanel({ contact, addressBooks, existingLabels = [], onUpdate, onDelete, thunderbird }: Props) {
+export default function ContactDetailPanel({ contact, addressBooks, existingLabels = [], onUpdate, onDelete, thunderbird, lockedBy }: Props) {
   const [bookId, setBookId] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -156,6 +162,12 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
   return (
     <div className="detail-panel">
       <h3>Contact details{thunderbird && <span className="contact-source-tag">Thunderbird</span>}</h3>
+      {lockedBy && (
+        <div className="contact-locked-note">
+          This contact is also in {lockedBy}, with the same contact ID. Thunderbird only lets add-ons change the
+          copy in {lockedBy}, so this copy can't be saved or deleted here. To sort it out: Clean up &gt; In several books.
+        </div>
+      )}
 
       {/* Up top and always shown, so a new contact's destination book is visible
           and changeable before its first save. ⇄ marks server-synced books. */}
@@ -269,8 +281,8 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
         onChange={(e) => { setNotes(e.target.value); mark(); }}
       />
       <div className="detail-actions">
-        <button className="primary" onClick={handleSave} disabled={!dirty}>{dirty ? "Save" : "Saved"}</button>
-        <button className="danger" onClick={() => onDelete(contact.id)}>Delete</button>
+        <button className="primary" onClick={handleSave} disabled={!dirty || Boolean(lockedBy)}>{dirty ? "Save" : "Saved"}</button>
+        <button className="danger" onClick={() => onDelete(contact.id)} disabled={Boolean(lockedBy)}>Delete</button>
       </div>
       {contact.carddav_uid && <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-faint)" }}>Synced via CardDAV</div>}
     </div>

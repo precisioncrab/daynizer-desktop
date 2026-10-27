@@ -267,19 +267,32 @@ export default {
       sets.set(booksKey(g), [...(sets.get(booksKey(g)) ?? []), g]);
     }
     const leftCount = copyGroups(ctx).filter((g) => g.left).length;
+    const selected = open.find((g) => rowKey(g) === ctx.state.selected) ?? null;
     return [
       toolbar(ctx, { title: "In several address books" }),
       h("div", { class: "toolbar-filters" },
-        h("span", {}, "The same contact in more than one address book, with one contact ID. Thunderbird and some phones treat one ID as one contact, so they show or change only one of the copies. Choose what to do with them, one at a time (select a contact) or all at once (below)."),
+        h("span", {}, "The same contact in more than one address book, with one contact ID. Thunderbird and some phones treat one ID as one contact, so they show or change only one of the copies. Choose what to do with them all at once (below), or select a contact to sort out just that one."),
         leftCount
           ? h("label", { class: "right" }, h("input", { type: "checkbox", checked: ctx.state.copiesShowLeft, onChange: (e) => {
             ctx.state.copiesShowLeft = e.target.checked;
             ctx.render();
           } }), `Show the ones left as is (${leftCount})`)
           : null),
-      [...sets].map(([key, list]) => h("div", { class: "copies-box" },
-        h("div", { class: "copies-box-title" }, `${plural(list.length, "contact is", "contacts are")} in both ${names(bookIds(list[0]).map((id) => bookName(ctx, id)))}.`),
-        controls(ctx, `set:${key}`, list))),
+      // A selected contact: the box is for it alone (the same choice as in the right-hand panel);
+      // otherwise one box per set of address books, for every contact in them at once.
+      selected
+        ? h("div", { class: "copies-box" },
+          h("div", { class: "copies-box-title" }, `${selected.name} (selected), in ${names(bookIds(selected).map((id) => bookName(ctx, id)))}:`),
+          controls(ctx, `one:${selected.uid}`, [selected]),
+          open.length > 1
+            ? h("a", { href: "#", class: "cp-hint", onClick: (e) => {
+              e.preventDefault();
+              ctx.select(null);
+            } }, `Or choose for all ${open.length} at once`)
+            : null)
+        : [...sets].map(([key, list]) => h("div", { class: "copies-box" },
+          h("div", { class: "copies-box-title" }, `${plural(list.length, "contact is", "contacts are")} in both ${names(bookIds(list[0]).map((id) => bookName(ctx, id)))}. Select one to sort out just that one.`),
+          controls(ctx, `set:${key}`, list))),
       virtualList("copies", groups, (g) => {
         const diff = differences(g.cards);
         return row(ctx, {

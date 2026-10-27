@@ -10,10 +10,11 @@
  * A card's id is the contact's id in Daynizer. Daynizer reaches every copy
  * of a contact on its own, so nothing of Daynizer's is ever "shadowed", and
  * it has no mailing lists (CardDAV group cards show as labels). Thunderbird's
- * books do: listsOf and addToList answer for its contacts only, so a copy
- * made again under a new ID stays in its lists and undo puts a deleted card
- * back in them. (The books' `lists` stay empty, so the pages don't offer
- * Thunderbird's lists as labels yet; Contacts Cleanup does.)
+ * books do, as in Contacts Cleanup: their `lists` are loaded (Lists to labels
+ * offers them, and "keep one copy" labels with them), and the list calls
+ * (listsOf, addToList, getList, createList, deleteList) answer for
+ * Thunderbird's contacts and lists only, so a copy made again under a new ID
+ * stays in its lists, a list can be deleted, and undo puts it all back.
  *
  * Thunderbird's own contacts (add-on only, src/thunderbirdBooks.ts) have
  * "tb:" ids. They're read here, in the tab, and written through the same
@@ -30,44 +31,15 @@
  */
 
 import {
-  readThunderbirdBooks, readThunderbirdCard, readThunderbirdByUid, reachableThunderbirdBook, thunderbirdPhoto, setThunderbirdPhoto,
-  thunderbirdListsOf, addToThunderbirdList, isThunderbirdId,
+  readThunderbirdBooks, sameAsDaynizer, shownThunderbirdBooks, readThunderbirdCard, readThunderbirdByUid, thunderbirdShadowed,
+  thunderbirdPhoto, setThunderbirdPhoto, thunderbirdBookExists, deleteThunderbirdBook,
+  thunderbirdListsOf, addToThunderbirdList, readThunderbirdList, createThunderbirdList, deleteThunderbirdList, isThunderbirdId,
 } from "../../thunderbirdBooks";
 
 const contacts = () => window.api.contacts;
 
 /** A contact as the clean-up pages use it: { id, uid, parentId, readOnly, vCard, tb }. */
 const nodeOf = (c) => ({ id: c.id, uid: c.uid, parentId: c.address_book_id, readOnly: false, vCard: c.vcf, tb: false });
-
-/**
- * Thunderbird's copies that add-ons can't change: card id -> the name of the
- * book whose copy Thunderbird reaches instead (Contacts Cleanup's markShadowed).
- */
-async function shadowedCopies(tbBooks) {
-  const byUid = new Map();
-  for (const book of tbBooks.filter((b) => !b.readOnly)) {
-    for (const card of book.cards) {
-      byUid.set(card.uid, [...(byUid.get(card.uid) ?? []), card]);
-    }
-  }
-  const nameOf = (id) => {
-    const book = tbBooks.find((b) => b.id === id);
-    return book ? `${book.name} (Thunderbird)` : "another address book";
-  };
-  const shadowed = new Map();
-  for (const [uid, copies] of byUid) {
-    if (copies.length < 2) {
-      continue;
-    }
-    const target = await reachableThunderbirdBook(uid);
-    for (const card of copies) {
-      if (target && target !== card.parentId) {
-        shadowed.set(card.id, nameOf(target));
-      }
-    }
-  }
-  return shadowed;
-}
 
 /**
  * Every address book with its cards: [{ id, name, readOnly, remote, synced,
@@ -77,8 +49,17 @@ async function shadowedCopies(tbBooks) {
  * own (a read-only CardDAV book, say).
  */
 export async function loadBooks() {
-  const [books, cards, tbBooks] = await Promise.all([window.api.addressbooks.all(), contacts().vcards(), readThunderbirdBooks().catch(() => [])]);
-  const shadowed = await shadowedCopies(tbBooks).catch(() => new Map());
+  const [books, cards, allTbBooks] = await Promise.all([
+    window.api.addressbooks.all(), contacts().vcards(), readThunderbirdBooks().then(sameAsDaynizer).catch(() => []),
+  ]);
+  // Thunderbird's copies add-ons can't change (one UID in two of its books), over all its books.
+  const shadowed = await thunderbirdShadowed(allTbBooks).catch(() => new Map());
+  // A Thunderbird book with the same contacts as one of Daynizer's is hidden, as in the contact list,
+  // but stays here marked `hidden`: its copies still count (one ID in it and in a shown book is a
+  // contact in two books, and moving or sorting the shown copy has to go through the "copies"
+  // change). The controller leaves it out of every page.
+  const shownIds = new Set(shownThunderbirdBooks(allTbBooks).map((b) => b.id));
+  const tbBooks = allTbBooks;
   return [
     ...books.map((book) => ({
       id: book.id,
@@ -93,6 +74,9 @@ export async function loadBooks() {
     ...tbBooks.map((book) => ({
       id: book.id,
       name: `${book.name} (Thunderbird)`,
+      // Lists to labels names the label after the book, without " (Thunderbird)".
+      labelName: book.name,
+      hidden: !shownIds.has(book.id),
       readOnly: book.readOnly,
       remote: false,
       synced: false,
@@ -100,7 +84,7 @@ export async function loadBooks() {
       contacts: book.cards.map((c) => ({
         id: c.id, uid: c.uid, parentId: c.parentId, readOnly: c.readOnly, vCard: c.vCard, tb: true, shadowed: shadowed.get(c.id) ?? null,
       })),
-      lists: [],
+      lists: book.lists ?? [],
     })),
   ];
 }
@@ -151,6 +135,25 @@ export const api = {
   },
   async addToList(listId, id) {
     return isThunderbirdId(id) ? addToThunderbirdList(listId, id) : false;
+  },
+  async getList(id) {
+    return readThunderbirdList(id);
+  },
+  async createList(parentId, list) {
+    return createThunderbirdList(parentId, list);
+  },
+  async deleteList(id) {
+    return deleteThunderbirdList(id);
+  },
+  // Undo checks a book is still there; only Thunderbird's books are deleted from the clean-up pages.
+  async bookExists(id) {
+    if (isThunderbirdId(id)) {
+      return thunderbirdBookExists(id);
+    }
+    return (await window.api.addressbooks.all()).some((b) => b.id === id);
+  },
+  async deleteBook(id) {
+    return deleteThunderbirdBook(id);
   },
   // Photos are inside Daynizer's vCards (PHOTO lines), so a deleted card's
   // photo comes back with its vCard. Thunderbird keeps a card's photo apart

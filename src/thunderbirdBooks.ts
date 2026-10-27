@@ -84,7 +84,18 @@ export function setThunderbirdBooksShown(on: boolean) {
 
 /** A Thunderbird contact as the clean-up pages read it. */
 export interface ThunderbirdCard { id: string; uid: string; parentId: string; vCard: string; readOnly: boolean }
-export interface ThunderbirdBook { id: string; name: string; readOnly: boolean; cards: ThunderbirdCard[] }
+/** A mailing list of a Thunderbird book; `members` are UIDs (a list holds cards of its own book). */
+export interface ThunderbirdList { id: string; parentId: string; name: string; nickName: string; description: string; members: string[] }
+export interface ThunderbirdBook {
+  id: string; name: string; readOnly: boolean; cards: ThunderbirdCard[]; lists: ThunderbirdList[];
+  /** The Daynizer address book this one is the same server book as (see sameAsDaynizer), or null. */
+  sameAs: string | null;
+}
+
+const listOf = (node: any, book: string): ThunderbirdList => ({
+  id: node.id, parentId: `${TB_PREFIX}${book}`, name: node.name ?? "", nickName: node.nickName ?? "",
+  description: node.description ?? "", members: (node.contacts ?? []).map((c: any) => c.id)
+});
 
 /** Thunderbird's address books with their contacts (none when the setting is off or there's no Thunderbird). */
 export async function readThunderbirdBooks(): Promise<ThunderbirdBook[]> {
@@ -103,8 +114,52 @@ export async function readThunderbirdBooks(): Promise<ThunderbirdBook[]> {
         .map((c: any) => ({
           id: thunderbirdCardId(b.id, c.id), uid: c.id, parentId: `${TB_PREFIX}${b.id}`, vCard: vCardOf(c)!,
           readOnly: Boolean(b.readOnly || c.readOnly)
-        }))
+        })),
+      lists: (b.mailingLists ?? []).map((l: any) => listOf(l, b.id)),
+      sameAs: null as string | null
     }));
+}
+
+/**
+ * Marks each Thunderbird book that's the same server address book as one of
+ * Daynizer's own (`sameAs`: that book's name): when Thunderbird and Daynizer
+ * both sync one CardDAV book (Synology Contacts and My Contacts, say), every
+ * contact would show twice. Thunderbird's API doesn't give a book's server
+ * address, so it's told by contact IDs: at least 80% of the book's contacts
+ * have an ID that's in one Daynizer book.
+ */
+export async function sameAsDaynizer(books: ThunderbirdBook[]): Promise<ThunderbirdBook[]> {
+  const api = (globalThis as any).window?.api;
+  if (!books.length || !api?.contacts?.vcards || !api?.addressbooks?.all) return books;
+  const [ours, rows] = await Promise.all([api.addressbooks.all(), api.contacts.vcards()]);
+  const bookOfUid = new Map<string, string>();
+  for (const r of rows as { uid: string; address_book_id: string }[]) if (r.uid) bookOfUid.set(r.uid, r.address_book_id);
+  return books.map((b) => {
+    if (!b.cards.length) return b;
+    const counts = new Map<string, number>();
+    for (const c of b.cards) {
+      const ourBook = bookOfUid.get(c.uid);
+      if (ourBook) counts.set(ourBook, (counts.get(ourBook) ?? 0) + 1);
+    }
+    const [best, n] = [...counts].sort((x, y) => y[1] - x[1])[0] ?? [null, 0];
+    const name = best ? (ours as { id: string; name: string }[]).find((o) => o.id === best)?.name : null;
+    return name && n >= b.cards.length * 0.8 ? { ...b, sameAs: name } : b;
+  });
+}
+
+const SAME_KEY = "showThunderbirdSameBooks";
+/** Thunderbird books shown although they're the same as one of Daynizer's (per computer). */
+function sameShownIds(): string[] {
+  try { return JSON.parse(localStorage.getItem(SAME_KEY) || "[]"); } catch { return []; }
+}
+export function setThunderbirdSameShown(id: string, on: boolean) {
+  const ids = sameShownIds().filter((x) => x !== id);
+  try { localStorage.setItem(SAME_KEY, JSON.stringify(on ? [...ids, id] : ids)); } catch { /* not remembered */ }
+}
+/** The books to show: a book that's the same as one of Daynizer's stays hidden unless shown on purpose. */
+export function shownThunderbirdBooks(books: ThunderbirdBook[]): ThunderbirdBook[] {
+  const shown = new Set(sameShownIds());
+  return books.filter((b) => !b.sameAs || shown.has(b.id));
 }
 
 /** One contact's current vCard, or null when it's gone. */
@@ -166,6 +221,33 @@ export async function addToThunderbirdList(listId: string, id: string): Promise<
   return true;
 }
 
+/** A mailing list with its members as card ids ("tb:<book>»<UID>"), for undo; null when it's gone. */
+export async function readThunderbirdList(id: string): Promise<ThunderbirdList | null> {
+  const lists = mailingListsApi();
+  if (!lists) return null;
+  try {
+    const node = await lists.get(id);
+    const members = await lists.listMembers(id);
+    return { ...listOf(node, node.parentId), members: members.map((m: any) => thunderbirdCardId(node.parentId, m.id)) };
+  } catch {
+    return null;
+  }
+}
+
+/** Makes a mailing list in a Thunderbird book ("tb:<book>"); its id. */
+export async function createThunderbirdList(parentId: string, list: { name: string; nickName?: string; description?: string }): Promise<string> {
+  const lists = mailingListsApi();
+  if (!lists || !isThunderbirdId(parentId)) throw new Error("Only Thunderbird's address books have mailing lists.");
+  return lists.create(parentId.slice(TB_PREFIX.length), { name: list.name, nickName: list.nickName ?? "", description: list.description ?? "" });
+}
+
+/** Deletes a Thunderbird mailing list (its contacts stay). */
+export async function deleteThunderbirdList(id: string): Promise<void> {
+  const lists = mailingListsApi();
+  if (!lists) throw new Error("Only Thunderbird's address books have mailing lists.");
+  await lists.delete(id);
+}
+
 /** Which book's copy Thunderbird reaches for this UID (the one add-ons can change), as "tb:<book>", or null. */
 export async function reachableThunderbirdBook(uid: string): Promise<string | null> {
   try {
@@ -174,6 +256,51 @@ export async function reachableThunderbirdBook(uid: string): Promise<string | nu
   } catch {
     return null;
   }
+}
+
+/**
+ * Thunderbird's copies add-ons can't change: card id -> the name of the book
+ * whose copy Thunderbird reaches instead ("<name> (Thunderbird)"). One UID in
+ * two of Thunderbird's books: Thunderbird finds a contact by UID only, so
+ * add-ons reach just one of the copies (Contacts Cleanup's markShadowed).
+ * Used by the contact list and editor (App) and the clean-up pages.
+ */
+export async function thunderbirdShadowed(books: ThunderbirdBook[]): Promise<Map<string, string>> {
+  const byUid = new Map<string, ThunderbirdCard[]>();
+  for (const book of books.filter((b) => !b.readOnly)) {
+    for (const card of book.cards) byUid.set(card.uid, [...(byUid.get(card.uid) ?? []), card]);
+  }
+  const nameOf = (id: string) => {
+    const book = books.find((b) => b.id === id);
+    return book ? `${book.name} (Thunderbird)` : "another address book";
+  };
+  const shadowed = new Map<string, string>();
+  for (const [uid, copies] of byUid) {
+    if (copies.length < 2) continue;
+    const target = await reachableThunderbirdBook(uid);
+    for (const card of copies) {
+      if (target && target !== card.parentId) shadowed.set(card.id, nameOf(target));
+    }
+  }
+  return shadowed;
+}
+
+/** Whether a Thunderbird book ("tb:<book>") is still there (true when Thunderbird can't be asked). */
+export async function thunderbirdBookExists(id: string): Promise<boolean> {
+  const api = addressBooks();
+  if (!api?.get || !isThunderbirdId(id)) return true;
+  try {
+    return Boolean(await api.get(id.slice(TB_PREFIX.length)));
+  } catch {
+    return false;
+  }
+}
+
+/** Deletes a Thunderbird book ("tb:<book>") with its contacts and mailing lists; can't be undone. */
+export async function deleteThunderbirdBook(id: string): Promise<void> {
+  const api = addressBooks();
+  if (!api?.delete || !isThunderbirdId(id)) throw new Error("Only Thunderbird's address books can be deleted here.");
+  await api.delete(id.slice(TB_PREFIX.length));
 }
 
 /** A contact's photo as Thunderbird keeps it (outside the vCard), or null. */

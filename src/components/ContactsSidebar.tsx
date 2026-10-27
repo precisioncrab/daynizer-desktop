@@ -61,11 +61,20 @@ interface Props {
   hideLabels: boolean;
   /** Add-on: Thunderbird's own address books, in their own section. */
   thunderbirdBooks: AddressBook[];
+  /** Add-on: Thunderbird books that are the same server book as one of Daynizer's (hidden unless shown). */
+  sameThunderbirdBooks?: { id: string; name: string; sameAs: string; shown: boolean }[];
+  onShowSameThunderbirdBook?: (id: string, on: boolean) => void;
+  /** Ids of those books whose sidebar note was closed. */
+  dismissedSameNotes?: string[];
+  onDismissSameNote?: (id: string) => void;
+  /** Add-on: right-click > Delete on one of Thunderbird's books (asks first). */
+  onDeleteThunderbirdBook?: (id: string) => void;
 }
 
 export default function ContactsSidebar({
   addressBooks, contacts, accounts, filter, onSelect, onCreateBook, onCreateServerBook, onSetBookColor, onRenameBook, labelColors, onSetLabelColor, onDeleteLabel,
-  onDisconnectBook, onDeleteBook, onSync, syncing, onOpenSettings, collapsed, onToggleCollapsed, nav, hideBooks, hideLabels, thunderbirdBooks
+  onDisconnectBook, onDeleteBook, onSync, syncing, onOpenSettings, collapsed, onToggleCollapsed, nav, hideBooks, hideLabels, thunderbirdBooks,
+  sameThunderbirdBooks = [], onShowSameThunderbirdBook, dismissedSameNotes = [], onDismissSameNote, onDeleteThunderbirdBook
 }: Props) {
   const [folded, setFolded] = useState(readFolded);
   function toggleFold(id: string) {
@@ -106,6 +115,7 @@ export default function ContactsSidebar({
   const [bookTarget, setBookTarget] = useState("local"); // "local" or accountId
   const [labelMenu, setLabelMenu] = useState<{ x: number; y: number; label: string } | null>(null);
   const [bookMenu, setBookMenu] = useState<{ x: number; y: number; book: AddressBook } | null>(null);
+  const [tbBookMenu, setTbBookMenu] = useState<{ x: number; y: number; id: string } | null>(null);
   // Inline rename of an address book, mirroring the Calendar/List sidebar.
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -266,15 +276,31 @@ export default function ContactsSidebar({
         </>)}
         </>)}
 
-        {thunderbirdBooks.length > 0 && (<>
+        {(thunderbirdBooks.length > 0 || sameThunderbirdBooks.length > 0) && (<>
           <div style={{ height: 8 }} />
           {heading("tbbooks", "Thunderbird address books")}
+          {!folded.has("tbbooks") && sameThunderbirdBooks.filter((b) => !dismissedSameNotes.includes(b.id)).map((b) => (
+            <div key={`same:${b.id}`} style={{ display: "flex", gap: 4, padding: "2px 8px 6px 30px", fontSize: 11, color: "var(--text-faint)", lineHeight: 1.4 }}>
+              <span style={{ flex: 1 }}>
+                {b.name} has the same contacts as {b.sameAs}.{" "}
+                {b.shown ? "Both are shown, so they're listed twice." : "It's hidden, so they're listed only once."}{" "}
+                <a href="#" onClick={(e) => { e.preventDefault(); onShowSameThunderbirdBook?.(b.id, !b.shown); }}>{b.shown ? "Hide it" : "Show it"}</a>
+              </span>
+              <button
+                style={{ alignSelf: "flex-start", padding: "0 4px", fontSize: 13, lineHeight: 1, background: "none", border: "none", color: "inherit", cursor: "pointer" }}
+                title="Close this note (Settings > Contacts can still show the address book)"
+                aria-label="Close this note"
+                onClick={() => onDismissSameNote?.(b.id)}
+              >×</button>
+            </div>
+          ))}
           {!folded.has("tbbooks") && thunderbirdBooks.map((b) => (
             <div
               key={b.id}
               className={`sidebar-item ${picked("book", b.id) ? "active" : ""}`}
               onClick={(e) => choose(e, "book", b.id)}
-              title="Thunderbird's own address book: changes made here are saved in Thunderbird, which syncs it as usual. Daynizer's address books (above) sync with your server separately."
+              onContextMenu={(e) => { e.preventDefault(); if (onDeleteThunderbirdBook) setTbBookMenu({ x: e.clientX, y: e.clientY, id: b.id }); }}
+              title="Thunderbird's own address book: changes made here are saved in Thunderbird, which syncs it as usual. Daynizer's address books (above) sync with your server separately. Right-click to delete it."
             >
               <span className="sidebar-dot" style={{ background: "transparent", border: "1px solid var(--text-faint)" }} />
               <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{b.name}</span>
@@ -365,6 +391,14 @@ export default function ContactsSidebar({
               : []),
             { label: "Delete address book", danger: true, onClick: () => onDeleteBook(bookMenu.book) }
           ]}
+        />
+      )}
+      {tbBookMenu && (
+        <ContextMenu
+          x={tbBookMenu.x}
+          y={tbBookMenu.y}
+          onClose={() => setTbBookMenu(null)}
+          items={[{ label: "Delete address book…", danger: true, onClick: () => onDeleteThunderbirdBook?.(tbBookMenu.id) }]}
         />
       )}
     </div>

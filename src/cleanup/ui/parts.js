@@ -129,10 +129,15 @@ export function selectAll(text, states, onChange) {
 }
 
 /** One list row. `check` is { checked, disabled, onChange, title } or null. */
-export function row(ctx, { key, check, lead, title, meta = [], actions = [], muted = false }) {
+export function row(ctx, { key, check, lead, title, meta = [], actions = [], muted = false, onContextMenu = null }) {
   return h("div", {
     class: `row${ctx.state.selected === key ? " selected" : ""}${muted ? " muted" : ""}`,
     onClick: () => ctx.select(key),
+    // A right-click action (the row's own, in place of the browser's menu), when the row has one.
+    ...(onContextMenu ? { onContextMenu: (e) => {
+      e.preventDefault();
+      onContextMenu(e);
+    } } : {}),
   },
   check && h("input", {
     type: "checkbox",

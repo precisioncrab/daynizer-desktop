@@ -57,6 +57,9 @@ interface Props {
   onImportVCard: () => void;
   /** Add-on only: "Show Thunderbird's address books" was switched (read them again). */
   onThunderbirdBooksChanged?: () => void;
+  /** Add-on only: Thunderbird books with the same contacts as one of Daynizer's (hidden unless shown). */
+  sameThunderbirdBooks?: { id: string; name: string; sameAs: string; shown: boolean }[];
+  onShowSameThunderbirdBook?: (id: string, on: boolean) => void;
   /** Pane to open on mount (e.g. "server" for the first-run server setup cue). */
   initialPane?: SettingsPane;
   /** Add-on only: called after a license is activated or removed. */
@@ -73,7 +76,8 @@ interface Props {
 
 export default function SettingsModal({
   lists, addressBooks, onClose, onListsChanged, onSyncAccount, onReviewDuplicates, onImportVCard, onThunderbirdBooksChanged, initialPane, onEntitlementChanged,
-  savedViews, defaultTasksView, onSetDefaultTasksView, defaultCalendarView, onSetDefaultCalendarView
+  savedViews, defaultTasksView, onSetDefaultTasksView, defaultCalendarView, onSetDefaultCalendarView,
+  sameThunderbirdBooks = [], onShowSameThunderbirdBook
 }: Props) {
   // Only the Thunderbird add-on's window.api has an entitlement (freemium) API.
   const isAddon = !!window.api.entitlement;
@@ -1032,6 +1036,12 @@ export default function SettingsModal({
                     make to them in Daynizer are saved in Thunderbird, which syncs them as it always does.
                     Daynizer's own address books sync with your server separately.
                   </div>
+                  {tbBooks && sameThunderbirdBooks.map((b) => (
+                    <label key={b.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginTop: 8 }}>
+                      <input type="checkbox" checked={b.shown} onChange={(e) => onShowSameThunderbirdBook?.(b.id, e.target.checked)} />
+                      Show {b.name} too (it has the same contacts as {b.sameAs}, so they'd be listed twice)
+                    </label>
+                  ))}
                 </>
               )}
             </>

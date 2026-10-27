@@ -6,8 +6,17 @@ Changes since v0.8.10. Daynizer remains beta, pre-1.0, keep a backup of anything
   beside Daynizer's (Settings > Contacts can hide them), and the contact editor and every clean-up
   tool can change them; Thunderbird syncs them as it always does. A contact in two of Thunderbird's books with one
   contact ID can only be changed in the copy Thunderbird lets add-ons reach; the other copy is marked,
-  and Clean up > In several books sorts such contacts out (mailing lists kept). Every change can be
+  and Clean up > In several books sorts such contacts out (mailing lists kept). Their mailing lists show under Clean up > Lists to labels and can become labels too. Every change can be
   undone from Changes.
+- **No doubled contacts when Thunderbird and Daynizer sync the same address book.** A Thunderbird
+  book that holds the same contacts as one of Daynizer's (told by contact ID) is hidden, so each contact
+  shows once; the sidebar says so and can show it again. Thunderbird contacts are tagged with their book's name.
+- **Lists to labels: a mailing list's members can move into another address book** (Thunderbird's or
+  Daynizer's) with the label, like a whole address book's contacts, and the emptied list is deleted.
+  Right-click a mailing list there to delete it. Undo brings it all back.
+- **Delete Thunderbird address books:** right-click one in the sidebar (it asks first), or tick "then
+  delete" when Lists to labels moves a whole book's contacts out. This can't be undone, and Undo won't
+  run a change whose address book is gone.
 - **The desktop app is unchanged from v0.8.10** apart from wording.
 
 ---

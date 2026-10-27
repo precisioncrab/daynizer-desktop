@@ -22,7 +22,7 @@ import "./cleanup/cleanup.css";
 import ContactsSidebarModal, { SidebarPart, loadSidebarHidden, storeSidebarHidden } from "./components/ContactsSidebarModal";
 import MoreAppsModal from "./components/MoreAppsModal";
 import {
-  ThunderbirdBook, readThunderbirdBooks, onThunderbirdChange, thunderbirdAddressBooks, thunderbirdContacts,
+  ThunderbirdBook, readThunderbirdBooks, sameAsDaynizer, shownThunderbirdBooks, setThunderbirdSameShown, thunderbirdShadowed, onThunderbirdChange, thunderbirdAddressBooks, thunderbirdContacts,
   isThunderbirdId, thunderbirdBookOf
 } from "./thunderbirdBooks";
 import ProWall from "./components/ProWall";
@@ -570,9 +570,48 @@ export default function App() {
   }
   // Add-on: Thunderbird's own address books (Settings > Contacts), editable since the
   // add-on's Manifest V2 move (0.9.0); read again whenever Thunderbird changes a contact or book.
-  const [tbBooks, setTbBooks] = useState<ThunderbirdBook[]>([]);
+  const [tbAllBooks, setTbAllBooks] = useState<ThunderbirdBook[]>([]);
+  // Copies add-ons can't change (one contact ID in two of Thunderbird's books): card id -> the other book.
+  const [tbLocked, setTbLocked] = useState<Map<string, string>>(new Map());
   const loadThunderbirdBooks = useCallback(async () => {
-    try { setTbBooks(await readThunderbirdBooks()); } catch { setTbBooks([]); }
+    let books: ThunderbirdBook[] = [];
+    try { books = await sameAsDaynizer(await readThunderbirdBooks()); } catch { books = []; }
+    setTbAllBooks(books);
+    setTbLocked(await thunderbirdShadowed(books).catch(() => new Map<string, string>()));
+  }, []);
+  // A Thunderbird book that's the same server book as one of Daynizer's (Synology Contacts and
+  // My Contacts, say) stays hidden, so its contacts don't show twice, unless shown from the sidebar.
+  const [tbSameShownTick, setTbSameShownTick] = useState(0);
+  const tbBooks = useMemo(() => {
+    void tbSameShownTick; // the setting is read again after Show or Hide
+    return shownThunderbirdBooks(tbAllBooks);
+  }, [tbAllBooks, tbSameShownTick]);
+  const showSameThunderbirdBook = useCallback((id: string, on: boolean) => {
+    setThunderbirdSameShown(id, on);
+    setTbSameShownTick((n) => n + 1);
+  }, []);
+  const sameThunderbirdBooks = useMemo(() => tbAllBooks.filter((b) => b.sameAs).map((b) => ({
+    id: b.id, name: b.name, sameAs: b.sameAs!, shown: tbBooks.some((s) => s.id === b.id)
+  })), [tbAllBooks, tbBooks]);
+  // Right-click > Delete on one of Thunderbird's books: the clean-up pages' dialog (asks, can't be undone).
+  const deleteThunderbirdBookAsked = useCallback(async (id: string) => {
+    const b = tbAllBooks.find((x) => x.id === id);
+    if (!b) return;
+    if (await cleanup.ctx.deleteBook({ id: b.id, name: `${b.name} (Thunderbird)`, contacts: b.cards, lists: b.lists })) {
+      setContactFilter((f) => dropFromFilter(f, "book", id));
+      loadThunderbirdBooks();
+    }
+  }, [tbAllBooks, cleanup, loadThunderbirdBooks]);
+  // The sidebar's note about such a book can be closed once read (Settings > Contacts still has Show).
+  const [dismissedSameNotes, setDismissedSameNotes] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("dismissedThunderbirdSameNotes") || "[]"); } catch { return []; }
+  });
+  const dismissSameNote = useCallback((id: string) => {
+    setDismissedSameNotes((was) => {
+      const next = [...was.filter((x) => x !== id), id];
+      try { localStorage.setItem("dismissedThunderbirdSameNotes", JSON.stringify(next)); } catch { /* not remembered */ }
+      return next;
+    });
   }, []);
   useEffect(() => {
     if (!IS_ADDON) return;
@@ -580,6 +619,8 @@ export default function App() {
     return onThunderbirdChange(loadThunderbirdBooks);
   }, [loadThunderbirdBooks]);
   const tbAddressBooks = useMemo(() => thunderbirdAddressBooks(tbBooks), [tbBooks]);
+  const tbBookNames = useMemo(() => Object.fromEntries(tbBooks.map((b) => [b.id, b.name])), [tbBooks]);
+  const daynizerBookNames = useMemo(() => Object.fromEntries(addressBooks.map((b) => [b.id, b.name])), [addressBooks]);
   // Daynizer's contacts and Thunderbird's, for the list, the sidebar counts and labels, and birthdays.
   const shownContacts = useMemo(() => (tbBooks.length ? [...contacts, ...thunderbirdContacts(tbBooks)] : contacts), [contacts, tbBooks]);
   useEffect(() => { cleanup.contactsChanged(); }, [contacts, addressBooks, tbBooks, cleanup]);
@@ -634,8 +675,6 @@ export default function App() {
       const textInput = tag === "input" && !/^(checkbox|radio|button|submit|reset|range|color|file|image)$/i.test((el as HTMLInputElement).type);
       const typing = textInput || tag === "textarea" || Boolean(el?.isContentEditable);
       if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z") && !e.shiftKey) {
-        // Diagnostic for the clean-up Ctrl+Z report (2026-10-26): View > Toggle Developer Tools > Console.
-        console.info(`[undo] Ctrl+Z: focus=${tag || "none"}${typing ? " (typing, left to the field)" : ""}, action=${lastActionRef.current ? "yes" : "none"}`);
         if (typing) return;
         e.preventDefault();
         undoLast().catch((err) => console.error("[undo] failed", err));
@@ -1427,6 +1466,11 @@ export default function App() {
           }}
           hideBooks={sidebarHidden.includes("books")}
           thunderbirdBooks={sidebarHidden.includes("tbbooks") ? [] : tbAddressBooks}
+          sameThunderbirdBooks={sidebarHidden.includes("tbbooks") ? [] : sameThunderbirdBooks}
+          onShowSameThunderbirdBook={showSameThunderbirdBook}
+          dismissedSameNotes={dismissedSameNotes}
+          onDismissSameNote={dismissSameNote}
+          onDeleteThunderbirdBook={deleteThunderbirdBookAsked}
           hideLabels={sidebarHidden.includes("labels")}
         />
       ) : (
@@ -1543,6 +1587,9 @@ export default function App() {
             onImport={() => setShowImport(true)}
             onFindDuplicates={() => setContactsMode("duplicates")}
             duplicateCount={cleanup.count("duplicates") ?? 0}
+            locked={tbLocked}
+            thunderbirdBookNames={tbBookNames}
+            daynizerBookNames={tbBooks.length ? daynizerBookNames : undefined}
           />
           )
         ) : (
@@ -1666,6 +1713,7 @@ export default function App() {
             // A Thunderbird contact stays in its own book (Daynizer can't move it between them).
             addressBooks={isThunderbirdId(selectedContactId) ? tbAddressBooks.filter((b) => b.id === thunderbirdBookOf(selectedContactId)) : addressBooks}
             thunderbird={isThunderbirdId(selectedContactId)}
+            lockedBy={selectedContactId ? tbLocked.get(selectedContactId) ?? null : null}
             existingLabels={existingLabels}
             onUpdate={updateContact}
             onDelete={deleteContact}
@@ -1731,6 +1779,8 @@ export default function App() {
           onReviewDuplicates={() => { setShowSettings(false); setMainView("contacts"); setContactsMode("duplicates"); }}
           onImportVCard={() => { setShowSettings(false); setMainView("contacts"); setShowImport(true); }}
           onThunderbirdBooksChanged={loadThunderbirdBooks}
+          sameThunderbirdBooks={sameThunderbirdBooks}
+          onShowSameThunderbirdBook={showSameThunderbirdBook}
           savedViews={savedViews.map((v) => ({ id: v.id, name: v.name }))}
           defaultTasksView={defaultTasksView}
           onSetDefaultTasksView={setDefaultTasksView}

@@ -719,6 +719,12 @@ input, textarea, select { user-select: text; }
   font-size: 10px; font-weight: normal; line-height: 15px; padding: 0 6px; border-radius: 8px;
   border: 1px solid var(--border-alt); color: var(--text-meta); text-transform: none; letter-spacing: 0;
 }
+.contact-source-tag.warn { border-color: var(--warn); color: var(--warn); }
+/* A Thunderbird copy add-ons can't change (the same contact ID is in another of its books). */
+.contact-locked-note {
+  margin: 4px 0 10px; padding: 8px 10px; border-radius: 6px; font-size: 12px; line-height: 1.45;
+  border: 1px solid var(--warn); color: var(--text);
+}
 
 /* View > More from Precision Crab */
 .more-apps-modal { max-width: 560px; }
