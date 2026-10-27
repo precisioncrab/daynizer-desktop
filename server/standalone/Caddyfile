@@ -1,0 +1,10 @@
+# Terminates TLS for Radicale with a self-signed ("internal") certificate —
+# there's no real domain name here, just a LAN IP, so Caddy's normal
+# Let's-Encrypt automatic HTTPS doesn't apply. Clients (phones, Daynizer,
+# Thunderbird) will see the same "unknown certificate authority" warning on
+# first connect that Daynizer's own bundled server shows — trust it once, per
+# device, same as usual.
+:443 {
+	tls internal
+	reverse_proxy radicale:5232
+}

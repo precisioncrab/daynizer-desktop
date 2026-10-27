@@ -1,0 +1,798 @@
+* { box-sizing: border-box; }
+/* ---------- Theme colors (View > Theme, see src/theme.ts) ----------
+   Dark is the original palette. theme.ts sets data-theme on <html> to the
+   theme actually showing, so "Match System" needs no extra rules here. */
+:root {
+  color-scheme: dark;
+  --bg: #1e1f22;
+  --bg-sidebar: #19191b;
+  --bg-bar: #1a1b1e;
+  --bg-hover: #232326;
+  --bg-active: #28292d;
+  --bg-nav-hover: #2a2b2f;
+  --menu-hover: #303136;
+  --menu-hover-strong: #34353a;
+  --bg-field: #26272a;
+  --bg-control: #26272a;
+  --bg-button: #26272a;
+  --bg-card: #232326;
+  --bg-panel: #1e1f22;
+  --bg-panel-nav: #232326;
+  --menu-bar-hover: #26272a;
+  --border: #2c2d30;
+  --border-strong: #34353a;
+  --border-alt: #3a3b3f;
+  --checkbox-border: #5b5c61;
+  --text: #e6e6e6;
+  --text-strong: #fff;
+  --text-2: #c8c8c8;
+  --text-muted: #9aa0a6;
+  --text-meta: #8a8d93;
+  --text-faint: #777;
+  --accent-color: #4a90d9;
+  --accent-hover: #3f7fc1;
+  --on-accent: #fff;
+  --selected-bg: #2a3b4d;
+  --chip-text: #7cb8f0;
+  --danger: #e5484d;
+  --danger-text: #f08a8e;
+  --danger-bg: #4a2226;
+  --danger-border: #6b3a3f;
+  --warn: #e8a23d;
+  --ok: #46b06a;
+  --shadow: rgba(0, 0, 0, 0.4);
+  --overlay: rgba(0, 0, 0, 0.5);
+  --hover-tint: rgba(255, 255, 255, 0.06);
+  --glow-ring: rgba(255, 255, 255, 0.25);
+  --glow: rgba(255, 255, 255, 0.18);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  /* Same layering as dark: grey panels (sidebar, details, Settings), white
+     fields on them, buttons a step darker than the panel, firmer borders. */
+  --bg: #ffffff;
+  --bg-sidebar: #eef0f3;
+  --bg-panel: #eef0f3;
+  --bg-panel-nav: #e3e6ea;
+  --bg-bar: #f5f6f8;
+  --bg-hover: #e4e7eb;
+  --bg-active: #d9dde3;
+  --bg-nav-hover: #d9dde3;
+  --menu-hover: #eceef1;
+  --menu-hover-strong: #e4e7eb;
+  --menu-bar-hover: #e4e7eb;
+  --bg-field: #ffffff;
+  --bg-control: #eef0f3;
+  --bg-button: #e2e5e9;
+  --bg-card: #f8f9fa;
+  --border: #d9dde2;
+  --border-strong: #bcc2ca;
+  --border-alt: #bcc2ca;
+  --checkbox-border: #8f969f;
+  --text: #1f2328;
+  --text-strong: #000;
+  --text-2: #3d434a;
+  --text-muted: #5f6670;
+  --text-meta: #6b727c;
+  --text-faint: #8a9099;
+  --accent-color: #4a90d9;
+  --accent-hover: #3f7fc1;
+  --on-accent: #fff;
+  --selected-bg: #dceafa;
+  --chip-text: #2a6cb0;
+  --danger: #d1343a;
+  --danger-text: #c62f35;
+  --danger-bg: #fde8e9;
+  --danger-border: #f0b4b7;
+  --warn: #b26b00;
+  --ok: #1f7a3d;
+  --shadow: rgba(0, 0, 0, 0.15);
+  --overlay: rgba(0, 0, 0, 0.3);
+  --hover-tint: rgba(0, 0, 0, 0.06);
+  --glow-ring: rgba(0, 0, 0, 0.35);
+  --glow: rgba(0, 0, 0, 0.2);
+}
+html, body, #root { height: 100%; margin: 0; overflow: hidden; }
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  user-select: none;
+}
+input, textarea, select { user-select: text; }
+
+.app {
+  display: grid;
+  grid-template-columns: 220px 1fr 320px;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100vh;
+}
+/* Experimental: collapses the Today pane + detail panel column down to a thin
+   strip holding just the "â€¹" re-expand tab, so the calendar/task table can
+   use the freed width. Same idea on the other side for the sidebar ("â€º"). */
+.app.rail-collapsed { grid-template-columns: 220px 1fr 28px; }
+.app.sidebar-collapsed { grid-template-columns: 28px 1fr 320px; }
+.app.sidebar-collapsed.rail-collapsed { grid-template-columns: 28px 1fr 28px; }
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  min-height: 0;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0;
+}
+.sidebar-collapsed { padding: 0; }
+.sidebar-header {
+  padding: 0 14px 10px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.sidebar-list { flex: 1; overflow-y: auto; min-height: 0; }
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  white-space: nowrap;
+}
+.sidebar-item:hover { background: var(--bg-hover); }
+.sidebar-item.active { background: var(--bg-active); border-left-color: var(--accent, var(--accent-color)); }
+.sidebar-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.sidebar-item span.count { color: var(--text-faint); font-size: 11px; }
+.sidebar-add {
+  margin: 8px 14px 0;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px dashed var(--border-alt);
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.sidebar-add:hover { background: var(--bg-hover); color: var(--text-strong); }
+.sidebar-footer { padding: 8px 14px 0; border-top: 1px solid var(--border); margin-top: 8px; flex-shrink: 0; }
+.sidebar-footer button {
+  width: 100%;
+  padding: 6px 0;
+  background: transparent;
+  border: 1px solid var(--border-alt);
+  color: var(--text-2);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.sidebar-footer button:hover { background: var(--bg-hover); }
+
+/* ---------- Main column ---------- */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.toolbar h2 { margin: 0; font-size: 15px; font-weight: 600; flex: 0 0 auto; }
+.search-box {
+  flex: 1;
+  background: var(--bg-control);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: var(--text);
+}
+.search-box:focus { outline: none; border-color: var(--accent-color); }
+.toolbar button.primary {
+  background: var(--accent-color);
+  border: none;
+  color: var(--on-accent);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.toolbar button.primary:hover { background: var(--accent-hover); }
+.toolbar-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-bar);
+}
+.toolbar-filters-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+/* Filter rows stay on one line (useFitLevel shortens the labels as they
+   squeeze); past the shortest labels the row scrolls sideways. Items keep
+   their measured width instead of shrinking, so overflow can be detected. */
+.fit-toolbar { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.fit-toolbar > *, .fit-toolbar .toolbar-filters-right > * { flex-shrink: 0; }
+.fit-toolbar.fit-level-2 { gap: 6px; }
+.fit-toolbar.fit-level-2 .toolbar-filters-right { gap: 8px; }
+
+.due-filter-select {
+  background: var(--bg-control);
+  border: 1px solid var(--border-alt);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.hide-completed-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.hide-completed-toggle input { cursor: pointer; }
+.toolbar select {
+  background: var(--bg-control);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+
+.task-table { flex: 1; overflow-y: auto; min-height: 0; padding: 4px 0; }
+.task-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--bg-hover);
+}
+.task-row:hover { background: var(--bg-hover); }
+.task-row.selected { background: var(--selected-bg); }
+.task-row.subtask { padding-left: 40px; }
+.task-row .subtask-toggle {
+  width: 14px; flex-shrink: 0; margin-top: 1px; margin-right: 2px;
+  font-size: 10px; line-height: 16px; color: var(--text-meta); text-align: center;
+  cursor: pointer; user-select: none;
+}
+.task-row .subtask-toggle:hover { color: var(--text-2); }
+.task-row .subtask-toggle.spacer { cursor: default; visibility: hidden; }
+.task-row .checkbox {
+  width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--checkbox-border);
+  margin-top: 2px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.task-row .checkbox.done { background: var(--accent-color); border-color: var(--accent-color); }
+.task-row .checkbox.done::after { content: "âœ“"; font-size: 10px; color: var(--on-accent); }
+.task-row .priority-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+.task-row .title-col { flex: 1; min-width: 0; }
+.task-row .title { font-size: 13px; }
+.task-row.completed .title { text-decoration: line-through; color: var(--text-faint); }
+.task-row .meta { font-size: 11px; color: var(--text-meta); margin-top: 2px; display: flex; gap: 8px; flex-wrap: wrap; }
+.task-row .meta .overdue { color: var(--danger); }
+.empty-state { padding: 40px; text-align: center; color: var(--text-faint); }
+
+/* ---------- Category tag chips (detail panel) ---------- */
+.category-input-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  background: var(--bg-field);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 5px 7px;
+  min-height: 34px;
+}
+.category-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--selected-bg);
+  border: 1px solid var(--accent-color);
+  color: var(--chip-text);
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.category-tag button {
+  background: none;
+  border: none;
+  color: var(--chip-text);
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.7;
+}
+.category-tag button:hover { opacity: 1; }
+
+/* ---------- Reminders (detail panel) ---------- */
+.reminders-editor { margin-bottom: 10px; }
+.reminder-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+.reminder-empty { font-size: 11px; color: var(--text-faint); }
+.reminder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--selected-bg);
+  border: 1px solid var(--accent-color);
+  color: var(--chip-text);
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.reminder-chip button {
+  background: none;
+  border: none;
+  color: var(--chip-text);
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.7;
+}
+.reminder-chip button:hover { opacity: 1; }
+.reminder-add-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.reminder-add-row select { flex: 1; min-width: 100px; }
+.reminder-add-value { width: 52px; flex: none; }
+.category-add-input {
+  flex: 1;
+  min-width: 80px;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  color: var(--text) !important;
+  font-size: 12px;
+  padding: 0 !important;
+}
+
+/* ---------- Detail panel ---------- */
+.right-rail { background: var(--bg-panel); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+/* The "â€¹" tab shown in place of the whole panel while collapsed. Padding and
+   font-size deliberately match .view-tabs button exactly (both sit in a
+   zero-padding container of their own), so the border-bottom lines up in a
+   single straight line across the main column and this one. */
+.rail-toggle {
+  flex-shrink: 0; width: 100%; padding: 5px 8px; background: transparent; border: none;
+  border-bottom: 1px solid var(--border); color: var(--text-muted); cursor: pointer; font-size: 12px;
+  text-align: center;
+}
+.rail-toggle:hover { background: var(--bg-hover); color: var(--text); }
+.detail-panel { display: flex; flex-direction: column; flex: 1; padding: 16px; overflow-y: auto; min-height: 0; }
+
+/* ---------- Add-on menu bar (File / Edit / View / Account / Sync) ---------- */
+/* Renders only in the Thunderbird add-on (see isAddon in App.tsx), which has no
+   native application menu. Sits above the view tabs in .main. */
+.menu-bar {
+  display: flex;
+  align-items: stretch;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-bar);
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 20;
+}
+.menu-bar-item { position: relative; }
+.menu-bar-title {
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.menu-bar-title:hover,
+.menu-bar-title.active { background: var(--menu-bar-hover); color: var(--text-strong); }
+.menu-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 210px;
+  background: var(--bg-field);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 8px 24px var(--shadow);
+  z-index: 30;
+}
+.menu-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.menu-dropdown-item:hover { background: var(--menu-hover); }
+.menu-hint { color: var(--text-faint); font-size: 11px; }
+.menu-check { display: inline-block; width: 16px; color: var(--accent-color); }
+.menu-dropdown-item.disabled { color: var(--text-faint); cursor: default; }
+.menu-dropdown-item.disabled:hover { background: transparent; }
+.menu-dropdown-item.has-submenu { position: relative; }
+.menu-dropdown-item.has-submenu:hover,
+.menu-dropdown-item.has-submenu:has(.menu-submenu) { background: var(--menu-hover); }
+.menu-submenu { top: -5px; left: 100%; max-height: 60vh; overflow-y: auto; }
+.menu-separator { height: 1px; background: var(--border-strong); margin: 4px 6px; }
+
+/* ---------- View > Filters ---------- */
+.filters-modal h3 { font-size: 13px; color: var(--text-muted); margin: 16px 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+.filters-hint { font-size: 12px; color: var(--text-muted); margin: 0 0 4px; line-height: 1.5; }
+.filters-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 0; }
+.filters-show { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
+.filters-control { display: flex; align-items: center; }
+
+/* ---------- View tabs (Tasks / Calendar) ---------- */
+.view-tabs { display: flex; gap: 2px; padding: 0 16px 0; border-bottom: 1px solid var(--border); }
+.view-tabs button {
+  background: transparent; border: none; color: var(--text-muted); cursor: pointer;
+  padding: 5px 14px; font-size: 12px; border-radius: 6px 6px 0 0;
+}
+.view-tabs button:hover { background: var(--bg-hover); color: var(--text); }
+.view-tabs button.active { background: var(--bg-field); color: var(--text); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent-color); }
+
+/* ---------- Today pane ---------- */
+.today-pane {
+  border-bottom: 1px solid var(--border); padding: 12px 16px; max-height: 240px;
+  overflow-y: auto; flex: 0 0 auto;
+}
+.today-pane-collapsed { padding: 0; border-bottom: none; }
+.today-pane h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); }
+.today-pane-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.today-pane-header .due-filter-select { font-size: 10px; padding: 2px 6px; background: var(--bg-field); }
+.today-pane-title-row { display: flex; align-items: center; gap: 6px; }
+.today-pane-collapse-btn {
+  background: transparent; border: none; color: var(--text-muted); cursor: pointer;
+  font-size: 14px; line-height: 1; padding: 0 2px;
+}
+.today-pane-collapse-btn:hover { color: var(--text); }
+.today-pane-empty { color: var(--text-faint); font-size: 12px; margin: 0; }
+.today-pane-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.today-pane-list li { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 12px; }
+.today-pane-list li:hover .today-pane-title { text-decoration: underline; }
+.today-pane-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.today-pane-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-pane-label { color: var(--text-meta); font-size: 10px; text-transform: uppercase; flex-shrink: 0; }
+
+/* ---------- Calendar view ---------- */
+.calendar-view { display: flex; flex-direction: column; min-height: 0; flex: 1; padding: 0 16px 16px; }
+.calendar-view-toolbar { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+.calendar-view-grid {
+  flex: 1;
+  min-height: 0;
+  /* This is the library's mount root -- it has no built-in scroll, so a busy
+     day that grows its week row taller just silently overflows the fixed-
+     height panel with the rest of the month pushed out of view. Rather than
+     capping individual day cells (tried that -- it fought the library's own
+     row-height layout and produced worse glitches), scroll the whole grid
+     as a unit; row structure inside the library stays untouched. */
+  overflow-y: auto;
+  /* Match the app's existing dark palette instead of the library's default
+     dark theme colors -- ec-dark class (below) handles most of the rest. */
+  --ec-bg-color: var(--bg);
+  --ec-text-color: var(--text);
+  --ec-border-color: var(--border);
+  --ec-today-bg-color: var(--bg-field);
+  --ec-button-bg-color: var(--bg-field);
+  --ec-button-text-color: var(--text);
+  --ec-button-border-color: var(--border-strong);
+  --ec-button-active-bg-color: var(--accent-color);
+}
+.calendar-view-grid .task-bar { opacity: 0.85; }
+/* Keep the drag/resize edge handles above the event's own (sticky) title, so
+   hovering an edge always shows the resize cursor (the double arrow). Without
+   this the sticky title paints over the START-edge handle -- the top edge of a
+   timed block in week/day, and the LEFT edge of an all-day bar -- leaving that
+   edge showing the move/pointer cursor instead of the stretch cue. */
+.calendar-view-grid .ec-resizer { z-index: 5; }
+/* Overlapping timed items get split into narrow side-by-side columns
+   (slotEventOverlap:false), leaving each column's edges too thin to grab for a
+   resize -- and a short one too stubby. Pop the SELECTED item out to the full
+   column width and above its neighbours, so once you click a bar you can grab
+   its edge and stretch it. Clicking empty space deselects and returns it to the
+   shared column layout. (Library width/left are non-!important inline styles,
+   so these !important rules override them; scoped to the hour grid, where the
+   column split happens -- month/all-day bars are already full width.) */
+.calendar-view-grid .ec-time-grid .ec-body .ec-event.ec-selected {
+  inset-inline-start: 0 !important;
+  inline-size: calc(100% - var(--ec-event-col-gap)) !important;
+  z-index: 20 !important;
+}
+/* Left/right grips for stretching a TIMED event across days in week view -- a
+   custom gesture (the library only resizes timed events vertically). Thin
+   full-height strips on the owning segment's edges, ew-resize like the
+   month-view across-days stretch. Above the vertical resizers so a corner
+   prefers the horizontal (across-days) drag. */
+.calendar-view-grid .ec-hgrip {
+  position: absolute; inset-block: 0; inline-size: 8px;
+  cursor: ew-resize; z-index: 30;
+}
+.calendar-view-grid .ec-hgrip-end { inset-inline-end: -1px; }
+.calendar-view-grid .ec-hgrip-start { inset-inline-start: -1px; }
+/* Generated recurrence occurrences: read-only "ghost" bars, drawn distinctly
+   from individually-stored items -- dimmer, dashed outline, and a faint
+   diagonal hatch so a repeating series clearly reads as generated, not as a
+   real editable bar. Defined after .task-bar so its opacity wins for recurring
+   task bars; .ec-selected below still overrides both when one is selected. */
+.calendar-view-grid .ec-recurring {
+  opacity: 0.6;
+  border: 1px dashed rgba(255, 255, 255, 0.45) !important;
+  background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.10) 0 4px, transparent 4px 8px);
+}
+.calendar-view-grid .ec-recur-mark {
+  margin-right: 2px;
+  font-size: 0.85em;
+  opacity: 0.9;
+}
+.calendar-view-grid .ec-selected {
+  opacity: 1 !important;
+  filter: brightness(1.3) saturate(1.15);
+  box-shadow: 0 0 0 1px var(--glow-ring), 0 0 8px 2px var(--glow) !important;
+  font-weight: 600;
+}
+.detail-panel h3 { margin: 0 0 12px; font-size: 14px; }
+.detail-panel label { display: block; font-size: 11px; color: var(--text-muted); margin: 12px 0 4px; text-transform: uppercase; letter-spacing: .03em; }
+.detail-panel input[type="text"], .detail-panel textarea, .detail-panel select, .detail-panel input[type="date"], .detail-panel input[type="time"], .detail-panel input[type="datetime-local"] {
+  width: 100%;
+  background: var(--bg-field);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+.detail-panel textarea { resize: vertical; min-height: 60px; font-family: inherit; }
+/* Auto-growing notes fields: the engine sizes them to their content
+   (field-sizing), so they start at one line, grow as you type up to the
+   cap, then scroll. Still drag-resizable taller via the handle. */
+/* Auto-growing notes fields: one-line floor, JS grows height to fit typed
+   content (drag-resize comes back once auto-grow is confirmed). */
+/* Auto-growing notes field with a corner collapse/expand toggle. The WRAPPER
+   is the flex child now, so flex-shrink:0 lives there -- without it the
+   .detail-panel flex column squashes the field back to its min-height and
+   cancels the JS-set height. padding-right reserves room for the toggle. */
+.autogrow-wrap { position: relative; width: 100%; flex-shrink: 0; }
+.autogrow-textarea { min-height: calc(1.4em + 14px); line-height: 1.4; overflow-y: hidden; resize: none; padding-right: 22px; }
+.detail-panel textarea.autogrow-textarea { min-height: calc(1.4em + 14px); resize: none; padding-right: 22px; }
+.autogrow-toggle { position: absolute; right: 5px; bottom: 5px; width: 18px; height: 18px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; border-radius: 4px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.autogrow-toggle:hover { color: var(--text); background: var(--hover-tint); }
+.autogrow-toggle svg { display: block; }
+.detail-row { display: flex; gap: 10px; }
+.detail-row > div { flex: 1; }
+.detail-actions { margin-top: 16px; display: flex; gap: 8px; }
+.detail-actions button { flex: 1; padding: 7px 0; border-radius: 6px; cursor: pointer; font-size: 12px; border: 1px solid var(--border-strong); background: var(--bg-button); color: var(--text); }
+.detail-actions button.danger:hover { background: var(--danger-bg); border-color: var(--danger-border); }
+.detail-actions button.primary { background: var(--accent-color); border-color: var(--accent-color); color: var(--on-accent); font-weight: 600; }
+.detail-actions button.primary:hover { background: var(--accent-hover); }
+.detail-actions button.primary:disabled { background: var(--selected-bg); border-color: var(--border-strong); color: var(--text-faint); cursor: default; }
+.subtasks { margin-top: 14px; }
+.subtask-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+.subtask-item input[type="text"] { flex: 1; }
+.add-subtask { display: flex; gap: 6px; margin-top: 6px; }
+.add-subtask input { flex: 1; }
+.add-subtask button { background: var(--bg-button); border: 1px solid var(--border-strong); color: var(--text-2); border-radius: 6px; padding: 0 10px; cursor: pointer; }
+.no-selection { color: var(--text-faint); padding: 30px; text-align: center; }
+
+/* ---------- Event detail panel (read-only) ---------- */
+.event-readonly-note { font-size: 11px; color: var(--text-muted); background: var(--bg-field); border: 1px solid var(--border-strong); border-radius: 6px; padding: 8px 10px; margin: 0 0 4px; }
+.event-field { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); padding: 4px 0; }
+.event-notes { white-space: pre-wrap; line-height: 1.4; }
+
+/* ---------- Context menu ---------- */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--bg-field);
+  border: 1px solid var(--border-alt);
+  border-radius: 6px;
+  min-width: 160px;
+  box-shadow: 0 8px 24px var(--shadow);
+  padding: 4px 0;
+}
+.context-menu .item { padding: 7px 14px; font-size: 12px; cursor: pointer; }
+.context-menu .item:hover { background: var(--menu-hover-strong); }
+.context-menu .item.danger { color: var(--danger-text); }
+
+/* ---------- Settings overlay ---------- */
+.overlay { position: fixed; inset: 0; background: var(--overlay); display: flex; align-items: center; justify-content: center; z-index: 999; }
+.settings-modal { background: var(--bg-panel); border: 1px solid var(--border-strong); border-radius: 10px; width: 520px; max-height: 80vh; overflow-y: auto; padding: 20px; }
+.settings-modal h2 { margin-top: 0; }
+.account-card { background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+.account-card .row { display: flex; justify-content: space-between; align-items: center; }
+.account-card .status { font-size: 11px; color: var(--text-meta); }
+.account-card .status.error { color: var(--danger); }
+.account-card button { background: var(--bg-button); border: 1px solid var(--border-strong); color: var(--text); border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 12px; }
+.form-grid { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.form-grid input { background: var(--bg-field); border: 1px solid var(--border-strong); border-radius: 6px; padding: 7px 9px; color: var(--text); }
+.password-field { position: relative; display: flex; }
+.password-field input { flex: 1; padding-right: 34px; }
+.password-toggle {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: none; cursor: pointer; font-size: 14px;
+  padding: 4px 6px; line-height: 1; color: var(--text-muted);
+}
+.password-toggle:hover { color: var(--text); }
+.form-actions { display: flex; gap: 8px; margin-top: 4px; }
+.form-actions button { flex: 1; padding: 8px 0; border-radius: 6px; cursor: pointer; font-size: 12px; border: 1px solid var(--border-strong); background: var(--bg-button); color: var(--text); }
+.form-actions button.primary { background: var(--accent-color); border-color: var(--accent-color); color: var(--on-accent); font-weight: 600; }
+.form-actions button.primary:hover { background: var(--accent-hover); }
+.form-actions button:disabled { opacity: .5; cursor: default; }
+.calendar-pick { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; font-size: 12px; gap: 8px; }
+.calendar-pick select { background: var(--bg-field); border: 1px solid var(--border-strong); border-radius: 6px; padding: 5px 8px; color: var(--text); font-size: 12px; }
+.calendar-pick button { background: var(--bg-button); border: 1px solid var(--border-strong); color: var(--text-muted); border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 12px; }
+.calendar-pick button.primary { background: var(--accent-color); border-color: var(--accent-color); color: var(--on-accent); font-weight: 600; }
+.calendar-pick button.primary:hover { background: var(--accent-hover); }
+.calendar-pick button:disabled { opacity: .6; cursor: default; }
+.modal-close { position: absolute; top: 14px; right: 18px; cursor: pointer; color: var(--text-muted); background:none; border:none; font-size: 18px; }
+.settings-save-bar {
+  margin: 16px -20px 0;
+  padding: 14px 20px 0;
+  border-top: 1px solid var(--border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+/* Paned Settings: left nav + scrollable content pane. */
+.settings-modal-paned { width: 760px; max-width: 92vw; padding: 0; display: flex; overflow: hidden; }
+.settings-nav {
+  width: 190px; flex-shrink: 0; background: var(--bg-panel-nav); border-right: 1px solid var(--border-strong);
+  padding: 16px 10px; display: flex; flex-direction: column; gap: 2px; max-height: 80vh;
+}
+.settings-nav-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-meta); padding: 0 8px 8px; }
+.settings-nav-item {
+  text-align: left; background: none; border: none; color: var(--text-2);
+  padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.settings-nav-item:hover { background: var(--bg-nav-hover); }
+.settings-nav-item.active { background: var(--selected-bg); color: var(--text-strong); }
+.settings-nav-about { margin-top: auto; font-size: 11px; color: var(--text-meta); padding: 12px 8px 0; line-height: 1.5; }
+.settings-pane { flex: 1; min-width: 0; overflow-y: auto; max-height: 80vh; padding: 20px 22px; }
+.settings-pane h2 { margin-top: 0; }
+
+.settings-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-tools button { padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; border: 1px solid var(--border-strong); background: var(--bg-button); color: var(--text); }
+.settings-tools button:disabled { opacity: .5; cursor: default; }
+.settings-save-bar button { padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; border: 1px solid var(--border-strong); background: var(--bg-button); color: var(--text); }
+.settings-save-bar button.primary { background: var(--accent-color); border-color: var(--accent-color); color: var(--on-accent); font-weight: 600; }
+.settings-save-bar button.primary:hover { background: var(--accent-hover); }
+.settings-save-bar button:disabled { opacity: .5; cursor: default; }
+
+.about-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.about-row button.primary {
+  background: var(--accent-color); border: none; color: var(--on-accent);
+  padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px;
+}
+
+.about-modal { max-width: 460px; }
+.about-version { font-size: 13px; color: var(--text-muted); margin: 4px 0 12px; }
+.about-license { font-size: 12px; color: var(--text-2); line-height: 1.5; }
+.about-license p { margin: 0 0 10px; }
+.about-license a { color: var(--accent-color); }
+
+/* A contact from Thunderbird's own address books (add-on): a small tag after its name. */
+.contact-source-tag {
+  display: inline-block; margin-left: 8px; vertical-align: 1px;
+  font-size: 10px; font-weight: normal; line-height: 15px; padding: 0 6px; border-radius: 8px;
+  border: 1px solid var(--border-alt); color: var(--text-meta); text-transform: none; letter-spacing: 0;
+}
+
+/* View > More from Precision Crab */
+.more-apps-modal { max-width: 560px; }
+.more-apps { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.more-app { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg-card); }
+.more-app-text { flex: 1; min-width: 0; }
+.more-app-name { font-weight: 600; font-size: 13px; color: var(--text-strong); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.more-app-here { font-weight: normal; font-size: 10px; line-height: 16px; padding: 0 7px; border-radius: 10px; border: 1px solid var(--accent-color); background: var(--selected-bg); color: var(--chip-text); }
+.more-app-line { font-size: 12px; color: var(--text-2); line-height: 1.45; margin-top: 2px; }
+
+.date-time-pair { display: flex; flex-direction: column; gap: 6px; }
+.date-time-pair input[type="date"] { width: 100%; min-width: 0; }
+.date-time-pair input[type="time"] { width: 100%; }
+
+/* ---------- Smart filters & manual sort ---------- */
+.sidebar-section-label {
+  padding: 2px 14px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-faint);
+}
+/* Contacts sidebar: categories that fold away, counts of things to clean up,
+   and the OMEMO link under Chat (Thunderbird add-on only). */
+.sidebar-toggle { display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
+.sidebar-toggle:hover { color: var(--text); }
+.sidebar-toggle .chevron { width: 10px; font-size: 9px; text-align: center; }
+.sidebar-item span.count.has { color: var(--chip-text); font-weight: 600; }
+.sidebar-link { white-space: normal; align-items: flex-start; }
+.sidebar-link .name { flex: 1; min-width: 0; color: var(--chip-text); line-height: 1.35; }
+.sidebar-icon { width: 16px; text-align: center; color: var(--chip-text); flex-shrink: 0; font-size: 12px; }
+.smart-filter-delete {
+  background: transparent; border: none; color: var(--text-faint);
+  font-size: 14px; line-height: 1; cursor: pointer; padding: 0 2px;
+  visibility: hidden;
+}
+.sidebar-item.smart-filter:hover .smart-filter-delete { visibility: visible; }
+.smart-filter-delete:hover { color: var(--danger); }
+.save-view-btn {
+  background: transparent; border: 1px dashed var(--border-alt); color: var(--text-muted);
+  border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer;
+  flex: 0 0 auto; white-space: nowrap;
+}
+.save-view-btn:hover { background: var(--bg-hover); color: var(--text-strong); }
+.save-view-input {
+  background: var(--bg-control); border: 1px solid var(--accent-color); border-radius: 6px;
+  padding: 4px 8px; color: var(--text); font-size: 12px; width: 160px;
+}
+/* Calendar "List:" multi-select dropdown (ListPicker.tsx) */
+.list-picker { position: relative; }
+.list-picker > .due-filter-select { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list-picker-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 1000;
+  background: var(--bg-field); border: 1px solid var(--border-alt); border-radius: 6px;
+  box-shadow: 0 8px 24px var(--shadow); padding: 4px 0;
+  min-width: 200px; max-height: 60vh; overflow-y: auto;
+}
+.list-picker-item { display: flex; align-items: center; gap: 8px; padding: 5px 12px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+.list-picker-item:hover { background: var(--menu-hover-strong); }
+.list-picker-item.active { color: var(--text-strong); }
+.list-picker-check { width: 14px; height: 14px; margin: 0; flex: 0 0 auto; cursor: pointer; }
+.list-picker-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-row.drag-over { border-top: 2px solid var(--accent-color); }
+.task-row[draggable="true"] { cursor: grab; }
+
+/* ---------- Preferences ---------- */
+.prefs-grid { display: flex; flex-direction: column; gap: 8px; }
+.pref-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--text-2); cursor: pointer;
+}
+.pref-row input[type="time"], .pref-row select {
+  background: var(--bg-field); border: 1px solid var(--border-strong); border-radius: 6px;
+  padding: 3px 6px; color: var(--text); font-size: 12px;
+}
+.pref-indent { padding-left: 24px; color: var(--text-muted); }

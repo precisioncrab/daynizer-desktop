@@ -1,0 +1,363 @@
+# Daynizer
+
+A keyboard-and-mouse desktop app for **tasks, calendar, and contacts**, kept in sync with your
+own server over **CalDAV and CardDAV**. Daynizer reimplements the core of
+[Tasks.org](https://tasks.org) (lists, subtasks, due/start dates, priorities, recurrence, tags) and
+adds a full calendar and contacts manager on top — all two-way syncable with the same
+Tasks.org-compatible setup you already use on mobile (DAVx5 / Nextcloud / Synology / any
+CalDAV+CardDAV server). Built with Electron + React + TypeScript.
+
+> **⭐ New in v0.8.0 — a built-in sync server.** Don't have a CalDAV/CardDAV server? Daynizer can now
+> run its own — **on by default, but fully optional** (turn it off in **Settings → Sync Server** any
+> time and point Daynizer at your own server instead). See **Built-in sync server** below.
+
+> **Beta software (v0.8.0).** Daynizer is still in active development and hasn't reached a stable
+> 1.0. Expect rough edges, and keep a backup of anything important — while sync is two-way, don't
+> rely on this as the only copy of your data yet. Bug reports are welcome on the
+> [issue tracker](https://github.com/precisioncrab/daynizer-desktop/issues).
+
+## What Daynizer does
+
+- **Tasks** — lists, one level of subtasks, start/due dates, priorities, tags, and recurrence
+  (RRULE), fully compatible with Tasks.org VTODOs over CalDAV.
+- **Calendar** — a month/week/day calendar that shows tasks and events together; create, edit, and
+  delete events (including recurring events) and sync them two-way over CalDAV.
+- **Contacts** — a dedicated contacts manager with address books and color-coded labels,
+  synced two-way over CardDAV.
+- **One server, both protocols** — point Daynizer at your CalDAV/CardDAV server (Synology, Nextcloud,
+  Baïkal, Radicale, …) and it discovers and links your calendars, task lists, and address books.
+- **Reminders** — multiple reminders per task/event, fired as native desktop notifications and synced
+  as CalDAV VALARMs so your phone fires them too.
+- **Keyboard-first** — every action has a shortcut; no touch gestures anywhere.
+
+## Installation
+
+Grab the latest build for your platform from the
+[Releases page](https://github.com/precisioncrab/daynizer-desktop/releases/latest).
+
+### Windows (.exe)
+
+Download `Daynizer-Setup-x.y.z.exe` and run it. It installs per-user (no admin prompt) and
+**automatically replaces any previously installed version** — your settings and database are kept.
+The Windows app also **updates itself**: it checks this repo's releases on startup, downloads new
+versions in the background, and offers "Restart to update" in Settings, so you only download the
+installer once. To remove it: Windows Settings → Apps → Installed apps → Daynizer → Uninstall.
+
+### Debian / Ubuntu (.deb)
+
+```bash
+sudo apt install ./daynizer_x.y.z_amd64.deb
+```
+
+`apt` resolves the dependencies automatically (plain `dpkg -i` works too, followed by
+`sudo apt -f install` if it complains). Launch from your app menu, or run `daynizer`.
+Update by installing a newer .deb the same way. The package keeps its original name, so remove it
+with `sudo apt remove tasks-desktop`.
+
+### Flatpak (auto-updating)
+
+Daynizer is published as a proper Flatpak repository, so you install it once and then
+`flatpak update` (or GNOME Software / KDE Discover) keeps it current automatically:
+
+```bash
+# install once from the repository (pulls the runtimes it needs from Flathub)
+flatpak install --from https://precisioncrab.github.io/daynizer-desktop/daynizer-desktop.flatpakref
+
+# run it
+flatpak run com.precisioncrab.daynizer
+```
+
+After that it appears in your app menu like any other app. To update:
+
+```bash
+flatpak update
+```
+
+Remove it with `flatpak uninstall com.precisioncrab.daynizer`. (If you have a Flathub remote already, the
+required runtimes install automatically; if not, the `.flatpakref` points at Flathub so they're fetched
+on first install.)
+
+A standalone `.flatpak` bundle is also attached to each [GitHub release](https://github.com/precisioncrab/daynizer-desktop/releases/latest)
+for offline installs, but the repository above is the recommended path since it's the one that
+auto-updates.
+
+### macOS (.dmg)
+
+Two dmgs are published: `arm64` for Apple Silicon (M1 and later) and `x64` for Intel Macs — pick the
+one matching your machine (About This Mac shows which chip you have). Open it and drag **Daynizer**
+into **Applications**. The build is not code-signed, so the first launch is blocked by Gatekeeper —
+right-click (or Ctrl-click) the app in Applications and choose **Open**, then confirm. This is only
+needed once. Update by installing a newer .dmg over the old copy; remove by deleting the app from
+Applications.
+
+### Upgrading from Tasks Desktop (version 0.3.0 or earlier)
+
+Daynizer used to be called **Tasks Desktop**. Version 0.4.0 renamed the app and moved this
+repository, so an install of 0.3.0 or earlier (it shows up as "Tasks Desktop") can't find new
+versions and never updates. Install Daynizer once by hand as below; from then on it updates like
+any other install. Your tasks, lists, contacts and accounts carry over.
+
+**Windows.** Quit Tasks Desktop (right-click its tray icon, then **Quit**). Download and run the
+latest `Daynizer-Setup-x.y.z.exe`. Daynizer installs next to Tasks Desktop and opens your existing
+data. Once you've checked it, remove the old app: Windows Settings → Apps → Installed apps →
+Tasks Desktop → Uninstall. Your data stays: it lives in `%APPDATA%\tasks-desktop`, which Daynizer
+uses too, and uninstalling doesn't delete it.
+
+**Debian / Ubuntu (.deb).** Nothing special: installing the new `.deb` upgrades Tasks Desktop in
+place, since both use the package name `tasks-desktop`.
+
+**Flatpak.** The old app ID (`com.arlis.tasksdesktop`) and its repository address no longer exist,
+so install Daynizer next to it, copy your data across **before opening Daynizer**, then remove the
+old app. Quit Tasks Desktop first, then:
+
+```bash
+# 1. Install Daynizer (don't open it yet)
+flatpak install --from https://precisioncrab.github.io/daynizer-desktop/daynizer-desktop.flatpakref
+
+# 2. Copy your data into Daynizer. Prints "copied"; prints nothing if Daynizer already has data.
+test ! -e ~/.var/app/com.precisioncrab.daynizer/config/tasks-desktop && mkdir -p ~/.var/app/com.precisioncrab.daynizer/config && cp -a ~/.var/app/com.arlis.tasksdesktop/config/tasks-desktop ~/.var/app/com.precisioncrab.daynizer/config/ && echo copied
+
+# 3. Open Daynizer and check your data. Then remove the old app:
+flatpak uninstall com.arlis.tasksdesktop
+```
+
+If step 2 printed nothing, Daynizer was opened before the copy and made a fresh, empty data folder.
+Quit Daynizer, delete `~/.var/app/com.precisioncrab.daynizer/config/tasks-desktop`, and run step 2
+again. After step 3, if `flatpak remotes` still lists `tasksdesktop-origin` (the old, dead update
+source), remove it with `flatpak remote-delete tasksdesktop-origin`. `flatpak uninstall` keeps the
+old data in `~/.var/app/com.arlis.tasksdesktop` as a backup; delete that folder once you no longer
+need it.
+
+**macOS.** Quit Tasks Desktop, install Daynizer from the latest `.dmg` as above, then drag
+**Tasks Desktop** from Applications to the Trash. Your data stays: it lives in
+`~/Library/Application Support/tasks-desktop`, which Daynizer uses too.
+
+## Built-in sync server (no external server needed)
+
+**New in v0.8.0** — the first stable release to include this. Don't have a CalDAV/CardDAV server?
+Daynizer runs its own. It starts a bundled sync server in the background, wires *itself* up to it
+automatically, and gives you one address you can point your phone and other computers at — so your
+tasks, calendar, and contacts sync across your devices with no third-party account, no NAS, and no
+cloud.
+
+**It's optional.** You never have to use the built-in server — turn it off in **Settings → Sync Server**
+and point Daynizer at your own CalDAV/CardDAV server instead (Synology, Nextcloud, Baïkal, Radicale, …;
+see the next section). It's simply on out of the box so that sync works with zero setup for people who
+don't run their own server.
+
+**Nothing to set up.** On first run Daynizer creates a "Built-in server" account for itself with default
+Calendar and Contacts lists, and the server just runs — in the background, and in the tray when the window
+is closed (it can also start hidden at login). Open **Settings → Sync Server** to see the **address**,
+**username**, and **password** (all editable and copyable), a **QR code** for pairing a phone, and when a
+device last synced.
+
+**Add your phone in seconds:** open **Settings → Sync Server** and **scan the QR code** with
+[DAVx5](https://www.davx5.com/) on Android, then add **Tasks.org** (or OpenTasks) for the task lists. For
+other clients, point them at the address shown — the **same address serves both calendars and contacts**:
+
+- **iPhone / macOS:** Settings → add an **Advanced CalDAV account** (and a **CardDAV account**) using the
+  server address, username, and password.
+- **Thunderbird / another Daynizer:** paste the address and credentials into a new network calendar /
+  address book, or into another Daynizer's **Add account** form — or use the new **"Have a pairing
+  link?"** field there to fill in the whole form from a copied link in one paste.
+
+Both devices must be on the **same network**. The server uses port **5232** by default (changeable in the
+pane); if it's ever in use, Daynizer picks another and tells you. On Windows there's a one-click button to
+allow it through the firewall the first time. Step-by-step instructions for each app are in **Settings →
+Sync Server → How to connect**, and online at
+[precisioncrab.com/apps/daynizer/connect](https://precisioncrab.com/apps/daynizer/connect/).
+
+> **Secure by default.** The built-in server uses **HTTPS with a self-signed certificate**, so Tasks.org's
+> direct CalDAV — which refuses plain HTTP on modern Android — connects over `caldavs://`. Your client
+> trusts the certificate once, on first connection. It's meant for your **own devices on your own
+> network**; exposing it to the public internet is not recommended.
+
+The built-in server bundles [Radicale](https://github.com/Kozea/Radicale) (GPLv3) as a separate process —
+see [`server/THIRD-PARTY-LICENSES.md`](server/THIRD-PARTY-LICENSES.md) for the full list of bundled
+components and their licenses. **Not included in the Thunderbird add-on** — the add-on has no server
+component at all, regardless of platform.
+
+## Connecting a CalDAV / CardDAV server (Synology, Nextcloud, …)
+
+Prefer your own server (Synology, Nextcloud, Baïkal, Radicale, …)? Daynizer syncs **tasks & calendars
+over CalDAV** and **contacts over CardDAV**. Open **Settings**
+(the "CalDAV / CardDAV accounts…" button in the sidebar) → **Add account** and fill in:
+
+- **CalDAV URL** — the calendars/tasks endpoint (optional if you only want contacts).
+- **CardDAV URL** — the contacts endpoint (optional if you only want tasks/calendars). On some
+  servers this is a *different* address than CalDAV (notably Synology); on others (Nextcloud) it's
+  the same base URL. At least one of the two is required.
+- **Username** and **Password / app token**.
+
+Click **Test connection** — it reports how many calendars **and** address books it found, so you can
+confirm the URLs before saving. After saving, use the account's **Find calendars** to link lists, and
+the **Contacts (CardDAV)** section to **Find address books** and link them.
+
+> **Self-hosted server over HTTPS?** NAS boxes (Synology, etc.) usually use a **self-signed
+> certificate**, which the app rejects by default. If HTTPS gives "fetch failed" but HTTP works, tick
+> **Allow self-signed certificates** in Settings — only do this for servers you trust on your own network.
+
+### Synology — Calendar and Contacts URLs live in different places
+
+Synology serves CalDAV and CardDAV as **separate services at different addresses**, so enter both.
+
+- **CalDAV (Calendar):** open the **Synology Calendar** app → **Settings** (gear, top-right) → **CalDAV
+  Account**. The URL looks like:
+
+  ```
+  http://<nas-ip>:5000/caldav.php/          # or https://<nas-ip>:5001/caldav.php/ over HTTPS
+  ```
+
+- **CardDAV (Contacts):** the contacts service is separate and, by default, listens only on the loopback
+  address (port 5555). Give it a reachable HTTPS port first:
+  **Control Panel → System → Login Portal → Applications → Synology Contacts → set an HTTPS port**
+  (e.g. your DSM HTTPS port, 5001). Then the CardDAV base URL is:
+
+  ```
+  https://<nas-ip>:<https-port>/carddav/    # e.g. https://192.168.50.3:5001/carddav/
+  ```
+
+- DSM's HTTPS cert is self-signed, so enable **Allow self-signed certificates** (see the note above).
+
+### Nextcloud — one base URL for both
+
+Nextcloud auto-discovers calendars **and** contacts from a single DAV base, so put the **same URL** in
+both the CalDAV and CardDAV fields:
+
+```
+https://<your-nextcloud-host>/remote.php/dav/
+```
+
+(In-app you can also copy the exact addresses: **Calendar → Settings, bottom-left → "Copy primary CalDAV
+address"**; contacts live under `/remote.php/dav/addressbooks/users/<user>/`.)
+
+### Other servers
+
+Most CalDAV/CardDAV servers auto-discover from a base URL — paste that and the app finds the collections:
+
+- **Baïkal:** `https://<host>/dav.php/` (discovers both calendars and address books).
+- **Radicale:** `http://<host>:5232/` (or `http://<host>:5232/<user>/`). Want a dedicated always-on
+  Radicale server instead of running Daynizer itself somewhere (a Raspberry Pi, Proxmox, a NAS with
+  Docker)? [`server/standalone/`](server/standalone/) has a ready-to-run Docker Compose setup.
+- **Generic / DAVx5-compatible:** if a single base URL doesn't discover everything, enter the specific
+  collection URLs — `.../calendars/<user>/` for CalDAV and `.../addressbooks/<user>/` for CardDAV.
+
+Notes: usernames with spaces can break discovery on some servers — avoid them if possible. Synology
+doesn't support two-factor auth for third-party CalDAV/CardDAV clients; use your normal password.
+
+## Features
+
+**Tasks**
+- Lists sidebar (custom lists, "All Tasks", "Today & Overdue"); create and select lists.
+- Right-click a list to rename it, export it to `.ics`, **Unlink** it, or **Delete** it. *Unlink* makes
+  a linked list local-only: your tasks stay both on this computer and on the server, but that list
+  stops syncing. *Delete* removes the list and its tasks from Daynizer, and from the server too when
+  the list is linked (see the note under Known limitations about whole-list deletion on DAViCal /
+  Synology).
+- Title, notes, start date, due date, priority (None/High/Medium/Low), tags, and recurrence (RRULE,
+  with quick presets for daily/weekly/monthly/yearly plus a custom-RRULE field).
+- Subtasks (one level), shown nested under their parent and in the detail panel.
+- Search across title/notes/tags; right-click context menu (complete / duplicate / delete).
+
+**Calendar**
+- Month / week / day views showing tasks and events together, with a tasks/events/both toggle and
+  task display modes (due date, start date, or start→due range), plus list/category filters.
+- Double-click or right-click a day or time slot to create an item there. Drag an event's bar to
+  reschedule it, or **drag its top or bottom edge to resize it** (change the start or end time) in the
+  week and day views.
+- Calendar events: create / edit / delete, including recurring events (whole series) using the same
+  RRULE presets tasks use — all synced two-way over CalDAV.
+
+**Contacts**
+- Dedicated Contacts view with a list, detail panel, and a contacts-aware sidebar (address books
+  and labels with colors).
+- Two-way CardDAV sync: create, edit, and delete contacts alongside your tasks and calendars.
+- Birthdays & anniversaries, year-less birthdays, per-label colors and label filtering. Delete a label
+  to remove that category from every contact and sync the change.
+- Clean-up tools in the sidebar, the same as the Contacts Cleanup add-on for Thunderbird (Daynizer has
+  all of them, so you don't need both): Duplicates (check which cards are the same person, pick what
+  the merged card keeps), In several books (one contact in two address books with the same ID: link
+  the copies, keep one, or separate them), Phone numbers (one format), Missing names, Lists to labels,
+  and Chat addresses (JMP.chat addresses from phone numbers, chat addresses other apps can't read
+  fixed). Every change is listed under Changes and can be undone.
+- A contact's details Daynizer doesn't show (a chat address's service type, custom labels from Apple
+  Contacts, a second phone type) stay on the card when you edit it.
+- View > Contacts Sidebar… hides any part of the left pane you don't use.
+
+**Sync & reminders**
+- Two-way sync engine (`electron/caldav.ts` / `carddav.ts`): pulls new/changed remote items into the
+  local DB, pushes new/changed local items to the server, and propagates deletions.
+- CalDAV accounts screen: add a server (label, CalDAV URL, CardDAV URL, username, password/app-token),
+  test the connection, discover calendars and address books, and link local lists/books to remote ones.
+- Reminders: multiple reminders per task/event (at time, or minutes/hours/days before); native desktop
+  notifications that jump to the item when clicked, synced as CalDAV VALARMs so Android clients
+  (DAVx5 + Etar, Tasks.org mobile) fire them too.
+- Self-signed HTTPS support for self-hosted servers; a "Clean up duplicates" tool for lists / address
+  books / contacts left over from earlier connect-disconnect cycles.
+
+**Interface**
+- One-level undo (Ctrl/Cmd+Z, or Edit ▸ Undo) across tasks and events.
+- Settings organized into left-nav panes (Accounts, Calendars & Lists, Contacts, Sync, Notifications &
+  Startup); choose a default list for new tasks and a default calendar for new events.
+- Collapsible sidebar and right rail (with re-expand tabs) to give the calendar/list more room.
+- Keyboard shortcuts: Ctrl+N new task, Ctrl+Shift+N new list, Ctrl+F search, Ctrl+R sync, Delete to
+  remove the selected task — fully mouse/keyboard driven, no touch gestures.
+
+## Known limitations
+
+- Sync conflicts (the same item edited on two devices between syncs) keep the server version and
+  preserve the local edits as a "(conflicted copy)"; there's no merge UI yet.
+- Only one level of subtasks is modeled (no infinitely nested subtasks).
+- Recurring events show on every date they repeat, but they're edited and deleted as a whole series
+  only (no changes to a single occurrence yet).
+- On **DAViCal-based servers (including Synology Calendar)**, deleting a whole list removes it locally
+  but cannot remove the calendar collection from the server — DAViCal rejects `DELETE` on a collection
+  (`405`). Individual tasks/events still delete and sync normally; only whole-calendar deletion is
+  server-side manual (remove it in the server's own UI).
+
+## Contributing
+
+Bug reports and feature ideas are welcome as [issues](https://github.com/precisioncrab/daynizer-desktop/issues).
+Daynizer doesn't accept code contributions, so please describe a fix or an idea in words rather than
+sending a pull request, a patch or code. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Stack
+
+- Electron (main process) + Node's built-in `node:sqlite` for local storage (no native compiler required)
+- React + TypeScript (renderer), built with Vite
+- `tsdav` for CalDAV/CardDAV discovery and sync, `ical.js` for VTODO/VEVENT parsing and generation
+
+## Setup
+
+```bash
+cd daynizer-desktop
+npm install
+```
+
+No native build tools (Visual Studio Build Tools, Python, etc.) are required — storage uses Node's
+built-in `node:sqlite` module instead of a compiled native addon, so this installs cleanly on both
+Windows and Linux with just Node and npm.
+
+If `node:sqlite` isn't available in the Electron version that gets installed (it needs an Electron build
+on Node 22.5+), run `npm install electron@latest` to pick up a newer one. If the app still fails to start
+with an error mentioning `node:sqlite` or `ERR_UNKNOWN_BUILTIN_MODULE`, add `--experimental-sqlite` to the
+`electron .` command in the `dev:electron` / `start` scripts in `package.json`.
+
+## Running in development
+
+Open two terminals from the project folder:
+
+```bash
+# terminal 1 — Vite dev server for the renderer
+npm run dev
+
+# terminal 2 — compile + launch Electron, pointed at the dev server
+npm run dev:electron
+```
+
+## Production-style run / packaging
+
+```bash
+npm start        # build renderer + electron main, then launch
+npm run package  # build + bundle as DMG / NSIS installer / deb + flatpak via electron-builder
+```

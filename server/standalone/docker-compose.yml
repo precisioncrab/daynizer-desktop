@@ -1,0 +1,51 @@
+# Standalone Radicale (CalDAV + CardDAV), for a dedicated always-on box —
+# Raspberry Pi, a Proxmox VM/LXC, an old laptop, a NAS with Docker, etc.
+#
+# This is for people who want a real headless server instead of running
+# Daynizer itself somewhere. See ../../README.md's "Built-in sync server"
+# section for why: Daynizer is a desktop app that bundles an optional server
+# for zero-config convenience, not a server product — if you want a
+# dedicated box, run a real server on it instead.
+#
+# Radicale binds to 127.0.0.1 only; Caddy is the one thing reachable from
+# your LAN, and terminates TLS (self-signed, `tls internal`) so phones can
+# connect over https:// — this mirrors how Daynizer's own bundled server
+# works (self-signed cert, trust-on-first-connect), so the client setup is
+# familiar either way.
+#
+# See README.md in this folder for the full setup walkthrough.
+
+services:
+  radicale:
+    image: tomsquest/docker-radicale
+    container_name: daynizer-standalone-radicale
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5232:5232"
+    volumes:
+      - ./data:/data
+      - ./config:/config:ro
+    environment:
+      - RADICALE_CONFIG_AUTH_TYPE=htpasswd
+      - RADICALE_CONFIG_AUTH_HTPASSWD_FILENAME=/config/users
+      - RADICALE_CONFIG_AUTH_HTPASSWD_ENCRYPTION=bcrypt
+      - RADICALE_CONFIG_RIGHTS_TYPE=owner_only
+      - RADICALE_CONFIG_STORAGE_FILESYSTEM_FOLDER=/data/collections
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: daynizer-standalone-caddy
+    restart: unless-stopped
+    depends_on:
+      - radicale
+    ports:
+      - "5232:443"
+    volumes:
+      - ./Caddyfile:/etc/caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    command: caddy run --config /etc/caddyfile --adapter caddyfile
+
+volumes:
+  caddy_data:
+  caddy_config:

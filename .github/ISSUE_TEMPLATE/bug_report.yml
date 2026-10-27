@@ -1,0 +1,69 @@
+name: Bug report
+description: Something in Daynizer isn't working the way it should.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: false
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - Linux (.deb)
+        - Linux (Flatpak)
+        - Linux (AppImage)
+        - macOS
+        - Thunderbird add-on
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Daynizer version
+      description: Help → About, or the installer/package filename.
+      placeholder: "0.6.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: sync-server
+    attributes:
+      label: Sync server (if relevant)
+      options:
+        - Not applicable / local only
+        - Daynizer's built-in server
+        - Synology
+        - Nextcloud
+        - Radicale (standalone)
+        - Baïkal
+        - Other CalDAV/CardDAV server
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Anything from the app's sync log, browser/DevTools console, or a screenshot, if you have one.
+    validations:
+      required: false

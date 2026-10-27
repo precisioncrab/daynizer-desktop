@@ -1,0 +1,59 @@
+import { useEffect, useState } from "react";
+
+export default function AboutModal({ onClose }: { onClose: () => void }) {
+  const [version, setVersion] = useState<string>("");
+  const [serverFeature, setServerFeature] = useState(false);
+
+  useEffect(() => {
+    window.api.app?.version().then(setVersion).catch(() => {});
+    // window.api.server is always present from preload regardless of the
+    // compile-time SERVER_BUILTIN flag, so check the actual feature flag from
+    // its status rather than the object's mere existence.
+    window.api.server?.status().then((s) => setServerFeature(!!s.feature)).catch(() => {});
+  }, []);
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div
+        className="settings-modal about-modal"
+        style={{ position: "relative" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button className="modal-close" onClick={onClose}>×</button>
+        <h2>Daynizer</h2>
+        <div className="about-version">{version ? `Version ${version}` : "Version unknown"}</div>
+        <div className="about-license">
+          <p>Copyright © 2026 Precision Crab</p>
+          <p>
+            This program is free software: you can redistribute it and/or modify it
+            under the terms of the GNU General Public License as published by the
+            Free Software Foundation, either version 3 of the License, or (at your
+            option) any later version.
+          </p>
+          <p>
+            This program is distributed in the hope that it will be useful, but
+            WITHOUT ANY WARRANTY; without even the implied warranty of
+            MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+            General Public License for more details.
+          </p>
+          <p>
+            Full license text:{" "}
+            <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noreferrer">
+              gnu.org/licenses/gpl-3.0
+            </a>
+          </p>
+          {serverFeature && (
+            <p>
+              The built-in sync server bundles{" "}
+              <a href="https://github.com/Kozea/Radicale" target="_blank" rel="noreferrer">
+                Radicale
+              </a>{" "}
+              (GPLv3) and a few small permissively-licensed libraries — see{" "}
+              <code>server/THIRD-PARTY-LICENSES.md</code> in the source repository for details.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

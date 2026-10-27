@@ -1,0 +1,54 @@
+import type { Entitlement } from "../types";
+import { PRO_STORE_URL, openStore } from "./ProWall";
+
+/** Slim, always-visible, never-blocking status bar at the bottom of the main
+ *  column for the freemium tiers (THUNDERBIRD-ADDON-FREEMIUM-PLAN.md, "Upgrade
+ *  banner"): a trial countdown during the trial, a quiet upgrade note on the
+ *  free tier, nothing on Pro. No pop-ups, no remote assets. */
+export default function TrialBanner({
+  entitlement,
+  onEnterLicense
+}: {
+  entitlement: Entitlement;
+  onEnterLicense: () => void;
+}) {
+  if (entitlement.tier === "pro") return null;
+
+  const trial = entitlement.tier === "trial";
+  const days = entitlement.trialDaysLeft;
+  // Warm up the color only in the last few days of the trial.
+  const urgent = trial && days <= 3;
+
+  const text = trial
+    ? `Daynizer Pro trial: ${days} day${days === 1 ? "" : "s"} left with Calendar, Contacts and multiple accounts.`
+    : "Free version: tasks on one account. Calendar, Contacts and multiple accounts are part of Daynizer Pro.";
+
+  return (
+    <div
+      role="status"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 16px",
+        fontSize: 13.5,
+        color: urgent ? "var(--warn)" : "var(--text-muted)",
+        background: "var(--bg-bar)",
+        borderTop: "1px solid var(--border)",
+        // Pinned to the bottom of the main column even when the view above is short.
+        marginTop: "auto",
+        flexShrink: 0
+      }}
+    >
+      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{text}</span>
+      {PRO_STORE_URL && (
+        <button style={{ fontSize: 13, padding: "5px 14px" }} onClick={() => openStore(trial ? "banner-trial" : "banner-free")}>
+          {trial ? "Buy Pro" : "Upgrade"}
+        </button>
+      )}
+      <button style={{ fontSize: 13, padding: "5px 14px" }} onClick={onEnterLicense}>
+        Enter license
+      </button>
+    </div>
+  );
+}

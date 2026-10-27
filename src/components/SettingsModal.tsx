@@ -1,0 +1,1478 @@
+import React, { useEffect, useState } from "react";
+import QRCode from "qrcode";
+import { CaldavAccountPublic, DiscoveredCalendar, DiscoveredAddressBook, AddressBook, TaskList, ServerStatus, ServerInfo, Entitlement } from "../types";
+import { PRO_STORE_URL, openStore } from "./ProWall";
+import { dateTimeLabel } from "../dates";
+import { thunderbirdBooksAvailable, thunderbirdBooksShown, setThunderbirdBooksShown } from "../thunderbirdBooks";
+
+/** Renderer-side twin of db.ts's davUrlKey: normalize a CalDAV/CardDAV URL so
+ *  http<->https, trailing-slash, default-port and host-casing differences don't
+ *  make the same remote collection look "not connected" (which is what led the
+ *  dropdown to default to "create new list" and spawn duplicates). Kept in sync
+ *  with electron/db.ts. */
+function davUrlKey(url: string | null | undefined): string {
+  if (!url) return "";
+  let s = String(url).trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "").replace(/:(80|443)(\/|$)/, "$2");
+  const slash = s.indexOf("/");
+  const host = (slash === -1 ? s : s.slice(0, slash)).toLowerCase();
+  return host + (slash === -1 ? "" : s.slice(slash));
+}
+function sameDavUrl(a: string | null | undefined, b: string | null | undefined): boolean {
+  return davUrlKey(a) === davUrlKey(b);
+}
+/** Tag a disconnected collection so it reads as distinct from the synced one. */
+function toLocalName(name: string): string {
+  return /\(local\)\s*$/i.test(name) ? name : `${name} (local)`;
+}
+/** Electron wraps every IPC handler rejection as
+ *  "Error invoking remote method 'x:y': TypeError: <real message>". Strip that
+ *  scaffolding (and a leading error-class name) so the banner shows only the
+ *  human-readable reason we threw. */
+function cleanErr(err: any): string {
+  let m = String(err?.message ?? err ?? "Unknown error");
+  m = m.replace(/^Error invoking remote method '[^']*':\s*/i, "");
+  m = m.replace(/^(?:[A-Z]\w*Error):\s*/, "");
+  return m.trim() || "Unknown error";
+}
+/** "just now" / "3 min ago" / "2 h ago" / "4 d ago" for the last-device-sync line. */
+function relTime(epochMs: number): string {
+  const s = Math.max(0, Math.round((Date.now() - epochMs) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} h ago`;
+  return `${Math.round(h / 24)} d ago`;
+}
+
+type SettingsPane = "accounts" | "calendars" | "contacts" | "sync" | "server" | "notifications" | "license";
+
+interface Props {
+  lists: TaskList[];
+  addressBooks: AddressBook[];
+  onClose: () => void;
+  onListsChanged: () => void;
+  onSyncAccount: (accountId: string) => Promise<{ listId: string; pulled: number; pushed: number; errors: string[] }[]>;
+  onReviewDuplicates: () => void;
+  onImportVCard: () => void;
+  /** Add-on only: "Show Thunderbird's address books" was switched (read them again). */
+  onThunderbirdBooksChanged?: () => void;
+  /** Pane to open on mount (e.g. "server" for the first-run server setup cue). */
+  initialPane?: SettingsPane;
+  /** Add-on only: called after a license is activated or removed. */
+  onEntitlementChanged?: (e: Entitlement) => void;
+  /** Saved views, for the default Tasks/Calendar view pickers. */
+  savedViews: { id: string; name: string }[];
+  /** "" = All Tasks, "today" = Today & Overdue, else a saved view id. */
+  defaultTasksView: string;
+  onSetDefaultTasksView: (v: string) => void;
+  /** "" = whatever was showing last time, "all" = All lists, else a saved view id. */
+  defaultCalendarView: string;
+  onSetDefaultCalendarView: (v: string) => void;
+}
+
+export default function SettingsModal({
+  lists, addressBooks, onClose, onListsChanged, onSyncAccount, onReviewDuplicates, onImportVCard, onThunderbirdBooksChanged, initialPane, onEntitlementChanged,
+  savedViews, defaultTasksView, onSetDefaultTasksView, defaultCalendarView, onSetDefaultCalendarView
+}: Props) {
+  // Only the Thunderbird add-on's window.api has an entitlement (freemium) API.
+  const isAddon = !!window.api.entitlement;
+  const [accounts, setAccounts] = useState<CaldavAccountPublic[]>([]);
+  const [tbBooks, setTbBooks] = useState(thunderbirdBooksShown);
+  // Freemium tier (add-on only; null on desktop, where nothing is gated).
+  const [ent, setEnt] = useState<Entitlement | null>(null);
+  const [licenseKey, setLicenseKey] = useState("");
+  const [licenseMsg, setLicenseMsg] = useState<string | null>(null);
+  useEffect(() => { window.api.entitlement?.get().then(setEnt); }, []);
+  const proLocked = ent?.tier === "free";
+  // Free tier: one account. accountsAll() is oldest-first, so the first one
+  // keeps syncing and later ones pause (see background/entitlement.ts).
+  const accountCapped = proLocked && accounts.length >= 1;
+
+  async function activateLicense() {
+    if (!window.api.entitlement) return;
+    setBusy(true);
+    setLicenseMsg(null);
+    try {
+      // Called straight from the click: activate() requests the Gumroad host
+      // permission first, which needs the click's user gesture.
+      const e = await window.api.entitlement.activate(licenseKey);
+      setEnt(e);
+      onEntitlementChanged?.(e);
+      setLicenseKey("");
+      setLicenseMsg("License activated. Thank you for supporting Daynizer!");
+    } catch (err: any) {
+      setLicenseMsg(err?.message || String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeLicense() {
+    if (!window.api.entitlement) return;
+    if (!confirm("Remove the license from this install? This doesn't give the activation back; you can re-enter the same key later.")) return;
+    const e = await window.api.entitlement.deactivate();
+    setEnt(e);
+    onEntitlementChanged?.(e);
+    setLicenseMsg(null);
+  }
+  const [label, setLabel] = useState("");
+  const [serverUrl, setServerUrl] = useState("");
+  const [draftCarddavUrl, setDraftCarddavUrl] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [pairingInput, setPairingInput] = useState("");
+  const [testMsg, setTestMsg] = useState<string | null>(null);
+  const [calendarsByAccount, setCalendarsByAccount] = useState<Record<string, DiscoveredCalendar[]>>({});
+  const [carddavUrlByAccount, setCarddavUrlByAccount] = useState<Record<string, string>>({});
+  const [addressBooksByAccount, setAddressBooksByAccount] = useState<Record<string, DiscoveredAddressBook[]>>({});
+  const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  // Pending (unsaved) dropdown selections, keyed by calendar URL. Nothing here
+  // takes effect until the single "Save changes" button is clicked.
+  const [pendingByCal, setPendingByCal] = useState<Record<string, string>>({});
+  const [pendingByBook, setPendingByBook] = useState<Record<string, string>>({});
+  const [advancedLinking, setAdvancedLinking] = useState(() => localStorage.getItem("advancedListLinking") === "1");
+  const [version, setVersion] = useState<string>("");
+  const [update, setUpdate] = useState<{ state: string; detail?: any } | null>(null);
+  const [prefs, setPrefs] = useState<Record<string, string>>({});
+  type Pane = SettingsPane;
+  const [activePane, setActivePane] = useState<Pane>(initialPane ?? "accounts");
+
+  // ---- Built-in sync server (desktop only) ----
+  const [srv, setSrv] = useState<ServerInfo | null>(null);
+  const [srvUser, setSrvUser] = useState("");
+  const [srvPass, setSrvPass] = useState("");
+  const [srvPort, setSrvPort] = useState("");
+  const [showSrvPass, setShowSrvPass] = useState(false);
+  const [srvBusy, setSrvBusy] = useState(false);
+  const [srvMsg, setSrvMsg] = useState<string | null>(null);
+  const [srvQr, setSrvQr] = useState<string | null>(null); // pairing QR (data URL), or null
+
+  async function loadServer() {
+    if (!window.api.server) return;
+    try {
+      const info = await window.api.server.info();
+      setSrv(info);
+      setSrvUser(info.username);
+      setSrvPass(info.password);
+      setSrvPort(String(info.preferredPort));
+    } catch { /* server IPC unavailable */ }
+  }
+  // Load when the pane opens; keep status fresh from main-process events (tray).
+  useEffect(() => { if (activePane === "server") loadServer(); }, [activePane]);
+  // Also load once on mount, regardless of which pane is open -- window.api.server
+  // is always present (the preload bridge doesn't know the compile-time feature
+  // flag), so this is the only way to learn srv.feature early enough to decide
+  // whether the "Sync Server" tab should even be offered in the sidebar below.
+  useEffect(() => { loadServer(); }, []);
+  useEffect(() => {
+    if (!window.api.server) return;
+    return window.api.on("server:status", (s: ServerStatus) => {
+      setSrv((prev) => (prev ? { ...prev, ...s } : prev));
+    });
+  }, []);
+
+  /** Build the DAVx5 auto-config URI for phone pairing. The scheme follows the
+   *  server: `caldavs://` for HTTPS (the default now that the built-in server
+   *  serves TLS — C4), `caldav://` if it ever falls back to plain HTTP. DAVx5
+   *  discovers BOTH calendars and contacts from this one URL. Credentials are
+   *  embedded because a QR carries no "extras" — fine for a LAN-only account.
+   *  Returns null until there's a reachable (non-loopback) LAN address. */
+  function pairingUri(info: ServerInfo | null): string | null {
+    if (!info?.running || !info.baseUrl) return null;
+    let url: URL;
+    try { url = new URL(info.baseUrl); } catch { return null; }
+    const host = url.host;
+    if (host.startsWith("127.") || host.toLowerCase().startsWith("localhost")) return null;
+    const scheme = url.protocol === "https:" ? "caldavs" : "caldav";
+    const user = encodeURIComponent(info.username || "");
+    const pass = encodeURIComponent(info.password || "");
+    return `${scheme}://${user}:${pass}@${host}/`;
+  }
+
+  /** Inverse of pairingUri() — reads a caldav(s):// link (Daynizer's own, or one
+   *  generated for a standalone server) into the Add Account fields. Same base
+   *  URL is used for both CalDAV and CardDAV, matching how these links are built
+   *  (and how Radicale-style servers serve both from one address). Returns null
+   *  for anything that isn't a well-formed pairing link. */
+  function parsePairingLink(input: string): { serverUrl: string; carddavUrl: string; username: string; password: string } | null {
+    const trimmed = input.trim();
+    const isSecure = /^caldavs:\/\//i.test(trimmed);
+    if (!isSecure && !/^caldav:\/\//i.test(trimmed)) return null;
+    // Swap in a standard scheme before parsing -- custom schemes' userinfo
+    // handling is inconsistent across URL implementations, http(s): isn't.
+    let url: URL;
+    try { url = new URL(trimmed.replace(/^caldavs?:/i, isSecure ? "https:" : "http:")); } catch { return null; }
+    const username = decodeURIComponent(url.username || "");
+    const password = decodeURIComponent(url.password || "");
+    if (!username) return null;
+    url.username = "";
+    url.password = "";
+    const base = url.toString();
+    return { serverUrl: base, carddavUrl: base, username, password };
+  }
+
+  function fillFromPairingLink() {
+    const parsed = parsePairingLink(pairingInput);
+    if (!parsed) {
+      setTestMsg("Couldn't read that link — check it starts with caldav:// or caldavs:// and includes a username and password.");
+      return;
+    }
+    setServerUrl(parsed.serverUrl);
+    setDraftCarddavUrl(parsed.carddavUrl);
+    setUsername(parsed.username);
+    setPassword(parsed.password);
+    // Clear it immediately -- no reason for the plaintext credential to keep
+    // sitting in this field once it's been read into the form above.
+    setPairingInput("");
+    setTestMsg("Filled in from the pairing link below — check it looks right, then Test connection.");
+  }
+  // Regenerate the pairing QR whenever the reachable address or credentials change.
+  useEffect(() => {
+    const uri = pairingUri(srv);
+    if (!uri) { setSrvQr(null); return; }
+    let cancelled = false;
+    QRCode.toDataURL(uri, { width: 220, margin: 1, errorCorrectionLevel: "M", color: { dark: "#000000", light: "#ffffff" } })
+      .then((url) => { if (!cancelled) setSrvQr(url); })
+      .catch(() => { if (!cancelled) setSrvQr(null); });
+    return () => { cancelled = true; };
+  }, [srv?.running, srv?.baseUrl, srv?.username, srv?.password]);
+
+  async function srvToggle(on: boolean) {
+    if (!window.api.server) return;
+    setSrvBusy(true); setSrvMsg(null);
+    try {
+      await window.api.server.setEnabled(on);
+      await loadServer();
+      // Enabling the server auto-turns-on start-at-login the first time; re-read
+      // prefs so that checkbox reflects it.
+      window.api.settings?.all().then(setPrefs).catch(() => {});
+    }
+    catch (err: any) { setSrvMsg(cleanErr(err)); }
+    finally { setSrvBusy(false); }
+  }
+  async function srvApplyCreds() {
+    if (!window.api.server || !srv) return;
+    const usernameChanged = srvUser.trim() !== srv.username;
+    if (usernameChanged) {
+      const ok = window.confirm(
+        "Change the server username?\n\nThe server stores each user's calendars and contacts under their name, " +
+        "so any data already on the built-in server stays under the OLD username and the apps you've connected " +
+        "will see an empty account until you re-point them. The password can be changed safely on its own.\n\nContinue?"
+      );
+      if (!ok) return;
+    }
+    setSrvBusy(true); setSrvMsg(null);
+    try {
+      await window.api.server.setCredentials({ username: srvUser.trim(), password: srvPass });
+      await loadServer();
+      setSrvMsg("Saved. Update this username/password in any other apps you've connected.");
+    } catch (err: any) { setSrvMsg(cleanErr(err)); }
+    finally { setSrvBusy(false); }
+  }
+  async function srvApplyPort() {
+    if (!window.api.server) return;
+    setSrvBusy(true); setSrvMsg(null);
+    try {
+      await window.api.server.setPort(Number(srvPort));
+      await loadServer();
+      setSrvMsg("Port updated.");
+    } catch (err: any) { setSrvMsg(cleanErr(err)); }
+    finally { setSrvBusy(false); }
+  }
+  async function srvRegenerate() {
+    if (!window.api.server) return;
+    setSrvBusy(true); setSrvMsg(null);
+    try {
+      const info = await window.api.server.regeneratePassword();
+      setSrv(info); setSrvPass(info.password); setShowSrvPass(true);
+      setSrvMsg("New password generated. Update it in any connected apps.");
+    } catch (err: any) { setSrvMsg(cleanErr(err)); }
+    finally { setSrvBusy(false); }
+  }
+  function srvCopy(text: string, what: string) {
+    navigator.clipboard?.writeText(text).then(
+      () => setSrvMsg(`${what} copied.`),
+      () => setSrvMsg(`Couldn't copy ${what} — select and copy manually.`)
+    );
+  }
+  async function srvOpenFirewall() {
+    if (!window.api.server) return;
+    setSrvBusy(true); setSrvMsg(null);
+    try {
+      const r = await window.api.server.openFirewall();
+      setSrvMsg(r.message);
+      window.api.settings?.all().then(setPrefs).catch(() => {});
+    } catch (err: any) { setSrvMsg(cleanErr(err)); }
+    finally { setSrvBusy(false); }
+  }
+
+  useEffect(() => {
+    window.api.app?.version().then(setVersion).catch(() => {});
+    window.api.settings?.all().then(setPrefs).catch(() => {});
+    // An update downloaded before Settings opened (Windows): show the restart button.
+    window.api.app?.manualUpdate?.().then((u) => {
+      if (u?.kind === "windows") setUpdate((cur) => cur ?? { state: "downloaded", detail: u.version });
+    }).catch(() => {});
+    return window.api.on("update:status", (state: string, detail?: any) => setUpdate({ state, detail }));
+  }, []);
+
+  function setPref(key: string, value: string) {
+    setPrefs((prev) => ({ ...prev, [key]: value }));
+    // The add-on's set() resolves with the value it kept (e.g. "0" when the
+    // notifications permission prompt is declined); desktop resolves void.
+    Promise.resolve(window.api.settings?.set(key, value))
+      .then((kept: unknown) => {
+        if (typeof kept === "string" && kept !== value) setPrefs((prev) => ({ ...prev, [key]: kept }));
+      })
+      .catch(() => {});
+  }
+
+  useEffect(() => {
+    localStorage.setItem("advancedListLinking", advancedLinking ? "1" : "0");
+  }, [advancedLinking]);
+
+  async function refresh() {
+    setAccounts(await window.api.accounts.all());
+  }
+  useEffect(() => { refresh(); }, []);
+
+  // Auto-list calendars and address books for each account when Settings opens
+  // (and when the account set changes), so they show up without a manual
+  // "Find…" click -- just pick "Connected" and Save changes.
+  const accountIds = accounts.map((a) => a.id).join(",");
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const acc of accounts) {
+        try {
+          const cals = await window.api.accounts.discoverCalendars(acc.id);
+          if (!cancelled) setCalendarsByAccount((p) => ({ ...p, [acc.id]: cals }));
+        } catch { /* server unreachable / not configured -- ignore */ }
+        if (acc.carddav_url) {
+          try {
+            const found = (await window.api.addressbooks?.discover(acc.id)) ?? [];
+            if (!cancelled) setAddressBooksByAccount((p) => ({ ...p, [acc.id]: found }));
+          } catch { /* ignore */ }
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [accountIds]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function addAccount() {
+    if (accountCapped) {
+      setTestMsg("Adding more than one account is a Daynizer Pro feature. See the License tab.");
+      return;
+    }
+    // A CalDAV URL is no longer required: an account can be CardDAV-only (just a
+    // CardDAV URL + credentials). Require at least one of the two URLs.
+    if ((!serverUrl && !draftCarddavUrl) || !username || !password) {
+      setTestMsg("Enter a CalDAV URL or a CardDAV URL, plus username and password, before saving.");
+      return;
+    }
+    setBusy(true);
+    setTestMsg(null);
+    // Snapshot the URLs entered, since the fields are cleared before the slow
+    // (backgrounded) provisioning step runs.
+    const hadCalUrl = !!serverUrl;
+    const hadCardUrl = !!draftCarddavUrl;
+    let createdId = "";
+    try {
+      // Request host permission for whichever URL(s) were entered (CalDAV and
+      // CardDAV can live on different hosts) in ONE call -- a second
+      // permissions.request() after an await loses the click's user gesture.
+      if (!(await window.api.accounts.ensureHostPermission([serverUrl, draftCarddavUrl].filter(Boolean)))) {
+        setTestMsg("Permission to contact that server was denied.");
+        setBusy(false);
+        return;
+      }
+      const created = await window.api.accounts.create({ label: label || serverUrl || draftCarddavUrl, server_url: serverUrl, username, password });
+      createdId = created.id;
+      if (draftCarddavUrl) await window.api.accounts.update(created.id, { carddav_url: draftCarddavUrl });
+      setLabel(""); setServerUrl(""); setUsername(""); setPassword(""); setDraftCarddavUrl("");
+      await refresh();
+    } catch (err: any) {
+      setTestMsg(err?.message || String(err));
+      setBusy(false);
+      return;
+    }
+    // The account exists and the form is cleared, so release the form NOW: the
+    // default-collection provisioning and discovery below each hit the network
+    // (several round-trips on a fresh server) and previously held the Add
+    // Account form disabled until they finished. Run them in the background and
+    // update state as results arrive.
+    setBusy(false);
+    void (async () => {
+      // Auto-provision default collections on a server that has none yet (e.g. a
+      // fresh self-hosted CalDAV/CardDAV server). A no-op on servers that already
+      // have collections (Synology, Nextcloud, ...).
+      try {
+        const made = await window.api.accounts.bootstrapDefaults?.(createdId);
+        const parts = [made?.calendar && "calendar", made?.addressBook && "contacts book"].filter(Boolean);
+        if (parts.length) setTestMsg(`Created a default ${parts.join(" and ")} on the server.`);
+      } catch (err: any) {
+        // Non-fatal -- the account is still added; the user can create lists by hand.
+        setTestMsg(`Account added, but default collections could not be created: ${cleanErr(err)}`);
+      }
+      // Refresh App's account + list/book state so the new account and any
+      // bootstrapped collections appear immediately (without this, the sidebar's
+      // "+ New list -> On server" dropdown stayed stale until an app restart).
+      onListsChanged();
+      // Refresh this modal's calendar/book panes for the new account WITHOUT the
+      // busy flag, so the Add Account form stays responsive. Re-read the account
+      // first: bootstrap may have set carddav_url on a unified server (Radicale).
+      if (hadCalUrl) {
+        try {
+          const cals = await window.api.accounts.discoverCalendars(createdId);
+          setCalendarsByAccount((p) => ({ ...p, [createdId]: cals }));
+        } catch { /* ignore */ }
+      }
+      try {
+        const acc = (await window.api.accounts.all()).find((a) => a.id === createdId);
+        if ((hadCardUrl || acc?.carddav_url) && window.api.addressbooks) {
+          const books = (await window.api.addressbooks.discover(createdId)) ?? [];
+          setAddressBooksByAccount((p) => ({ ...p, [createdId]: books }));
+        }
+      } catch { /* ignore */ }
+    })();
+  }
+
+  async function testDraft() {
+    if ((!serverUrl && !draftCarddavUrl) || !username || !password) {
+      setTestMsg("Enter a CalDAV URL or a CardDAV URL, plus username and password, before testing.");
+      return;
+    }
+    setBusy(true);
+    setTestMsg(null);
+    try {
+      if (!(await window.api.accounts.ensureHostPermission([serverUrl, draftCarddavUrl].filter(Boolean)))) {
+        setTestMsg("Permission to contact that server was denied.");
+        return;
+      }
+      const res = await window.api.accounts.testConnection({ server_url: serverUrl, carddav_url: draftCarddavUrl || undefined, username, password });
+      setTestMsg(res.message);
+    } catch (err: any) {
+      setTestMsg(err?.message || String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function discover(accountId: string) {
+    setBusy(true);
+    try {
+      const account = accounts.find((a) => a.id === accountId);
+      if (account && !(await window.api.accounts.ensureHostPermission(account.server_url))) {
+        setTestMsg("Permission to contact that server was denied.");
+        return;
+      }
+      const cals = await window.api.accounts.discoverCalendars(accountId);
+      setCalendarsByAccount((prev) => ({ ...prev, [accountId]: cals }));
+    } catch (err: any) {
+      setTestMsg(err?.message || String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function discoverBooks(accountId: string) {
+    setBusy(true);
+    setTestMsg(null);
+    try {
+      const url = carddavUrlByAccount[accountId] ?? (accounts.find((a) => a.id === accountId)?.carddav_url || "");
+      // Persist the CardDAV URL first -- discovery reads it off the account.
+      await window.api.accounts.update(accountId, { carddav_url: url });
+      await refresh();
+      const books = (await window.api.addressbooks?.discover(accountId)) ?? [];
+      setAddressBooksByAccount((prev) => ({ ...prev, [accountId]: books }));
+      if (books.length === 0) setTestMsg("No address books found at that CardDAV URL.");
+    } catch (err: any) {
+      setTestMsg(err?.message || String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function linkBook(accountId: string, book: DiscoveredAddressBook) {
+    setBusy(true);
+    setTestMsg(null);
+    try {
+      const b = await window.api.addressbooks?.create(book.displayName);
+      if (b) await window.api.addressbooks?.link(b.id, accountId, book.url);
+      onListsChanged(); // reloads address books + contacts in App
+      const res = await onSyncAccount(accountId);
+      const errs = res.flatMap((r) => r.errors);
+      setTestMsg(errs.length ? `Linked with errors: ${errs[0]}` : `Linked "${book.displayName}" and synced.`);
+    } catch (err: any) {
+      setTestMsg(err?.message || String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function test(account: CaldavAccountPublic) {
+    setBusy(true);
+    try {
+      if (!(await window.api.accounts.ensureHostPermission(account.server_url))) {
+        setTestMsg("Permission to contact that server was denied.");
+        return;
+      }
+      const res = await window.api.accounts.testConnection(account);
+      setTestMsg(res.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Commits every pending calendar-link change across all accounts at once:
+   *  links, creates+links, or unlinks as needed, then runs one sync per affected
+   *  account so newly-linked lists show up right away. Nothing is written until
+   *  this is called — closing the modal beforehand discards pending choices. */
+  async function saveAllChanges() {
+    const entries = Object.entries(pendingByCal);
+    const bookEntries = Object.entries(pendingByBook);
+    if (entries.length === 0 && bookEntries.length === 0) return;
+    setBusy(true);
+    setTestMsg(null);
+    const accountsToSync = new Set<string>();
+    const errors: string[] = [];
+    try {
+      for (const [calUrl, selected] of entries) {
+        let accountId: string | undefined;
+        let cal: DiscoveredCalendar | undefined;
+        for (const [accId, cals] of Object.entries(calendarsByAccount)) {
+          const found = cals.find((c) => c.url === calUrl);
+          if (found) { accountId = accId; cal = found; break; }
+        }
+        if (!accountId || !cal) continue;
+        const linkedList = lists.find((l) => sameDavUrl(l.caldav_calendar_url, calUrl));
+        try {
+          if (selected === "__new__") {
+            // Idempotent: reuses an existing list for this calendar (matched by
+            // normalized URL) instead of creating a duplicate on reconnect.
+            await window.api.accounts.connectCalendar(accountId, calUrl, cal.displayName, cal.color ?? null);
+            accountsToSync.add(accountId);
+          } else if (selected === "") {
+            if (linkedList) {
+              // Disconnect: unlink so no future sync touches the server, then
+              // KEEP the list and its tasks but rename it "(local)" so it's
+              // clearly distinct from the synced copy. The remote calendar is
+              // untouched. (Was: delete the list entirely.)
+              await window.api.accounts.unlinkList(linkedList.id);
+              await window.api.lists.update(linkedList.id, { name: toLocalName(linkedList.name) });
+            }
+          } else {
+            await window.api.accounts.linkList(selected, accountId, calUrl);
+            accountsToSync.add(accountId);
+          }
+        } catch (err: any) {
+          errors.push(`${cal.displayName}: ${cleanErr(err)}`);
+        }
+      }
+      for (const [bookUrl, selected] of bookEntries) {
+        let accountId: string | undefined;
+        let book: DiscoveredAddressBook | undefined;
+        for (const [accId, books] of Object.entries(addressBooksByAccount)) {
+          const found = books.find((b) => b.url === bookUrl);
+          if (found) { accountId = accId; book = found; break; }
+        }
+        if (!accountId || !book) continue;
+        const linkedBook = addressBooks.find((ab) => sameDavUrl(ab.carddav_addressbook_url, bookUrl));
+        try {
+          if (selected === "__new__") {
+            // Idempotent connect -- reuses an existing linked book, never
+            // duplicates it (duplicate books are what triplicate contacts).
+            await window.api.addressbooks?.connect(accountId, bookUrl, book.displayName);
+            accountsToSync.add(accountId);
+          } else if (selected === "") {
+            if (linkedBook) {
+              // Keep the book + contacts, just unlink and mark "(local)".
+              await window.api.addressbooks?.unlink(linkedBook.id);
+              await window.api.addressbooks?.update(linkedBook.id, { name: toLocalName(linkedBook.name) });
+            }
+          }
+        } catch (err: any) {
+          errors.push(`${book.displayName}: ${cleanErr(err)}`);
+        }
+      }
+    } finally {
+      // The link/unlink/create calls above are already committed to the database
+      // at this point (each has its own try/catch, so one failure doesn't stop
+      // the rest). The pending selections have effectively been "saved" no
+      // matter what happens next, so clear them now -- otherwise a slow or
+      // failing sync below would leave the UI stuck showing "unsaved changes"
+      // with no way to clear it, even though the actual link already succeeded.
+      onListsChanged();
+      setPendingByCal({});
+      setPendingByBook({});
+    }
+
+    try {
+      for (const accId of accountsToSync) {
+        const res = await onSyncAccount(accId);
+        errors.push(...res.flatMap((r) => r.errors));
+      }
+    } catch (err: any) {
+      errors.push(err?.message || String(err));
+    }
+    setTestMsg(errors.length ? `Saved with errors: ${errors[0]}` : "Changes saved.");
+    setBusy(false);
+  }
+
+  /** Repairs duplicate *collections* left over from connect/disconnect cycles:
+   *  consolidates lists and address books that point at the same remote, and
+   *  removes exact-duplicate contact rows and group-card phantoms. Previews the
+   *  changes first and asks for confirmation. Never deletes tasks, and never
+   *  deletes contact data on the server (heuristic contact merging lives in the
+   *  manual "Merge duplicates" review instead). */
+  async function repairDuplicates() {
+    if (!window.api.maintenance) { setTestMsg("Repair not available in this build."); return; }
+    setBusy(true);
+    setTestMsg(null);
+    try {
+      const preview = await window.api.maintenance.dedupe(true); // dry run — rolls back
+      const total = preview.listsMerged + preview.listsRenamedLocal + preview.booksMerged + preview.booksRenamedLocal + preview.contactsRemoved;
+      if (total === 0) { setTestMsg("No duplicate lists or address books found."); return; }
+      const ok = window.confirm(
+        "Repair these duplicates?\n\n• " + preview.details.join("\n• ") +
+        "\n\nYour tasks and your contacts on the server are not deleted."
+      );
+      if (!ok) return;
+      const r = await window.api.maintenance.dedupe(false); // apply
+      onListsChanged();
+      await refresh();
+      setTestMsg(r.details.join(" "));
+    } catch (err: any) {
+      setTestMsg(err?.message || String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeAccount(id: string) {
+    await window.api.accounts.delete(id);
+    await refresh();
+    onListsChanged();
+  }
+
+  async function syncNow(accountId: string) {
+    setBusy(true);
+    setTestMsg(null);
+    try {
+      const account = accounts.find((a) => a.id === accountId);
+      if (account && !(await window.api.accounts.ensureHostPermission(account.server_url))) {
+        setTestMsg("Permission to contact that server was denied.");
+        return;
+      }
+      const results = await onSyncAccount(accountId);
+      await refresh();
+      const pulled = results.reduce((sum, r) => sum + r.pulled, 0);
+      const pushed = results.reduce((sum, r) => sum + r.pushed, 0);
+      const errors = results.flatMap((r) => r.errors);
+      if (!results.length) {
+        setTestMsg("No lists are linked to a calendar on this account yet.");
+      } else {
+        setTestMsg(errors.length ? `Sync had errors: ${errors[0]}` : `Synced — ${pulled} pulled, ${pushed} pushed.`);
+      }
+    } catch (err: any) {
+      setTestMsg(err?.message || String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const PANES: { id: Pane; label: string }[] = [
+    { id: "accounts", label: "Accounts" },
+    { id: "calendars", label: "Calendars & Lists" },
+    { id: "contacts", label: "Contacts" },
+    { id: "sync", label: "Sync" },
+    // Built-in sync server pane: desktop only (the add-on has no server) and only
+    // when the feature is compiled in. window.api.server is always present from
+    // preload (it doesn't know the compile-time flag), so gate on srv.feature —
+    // populated by the eager mount-time loadServer() above — not just its
+    // existence, or this pane would show up even when SERVER_BUILTIN is off.
+    ...(srv?.feature ? [{ id: "server" as Pane, label: "Sync Server" }] : []),
+    // Hidden when window.api.settings is missing. The add-on has no startup
+    // options (no tray, no login item), so its pane is just "Notifications".
+    ...(window.api.settings ? [{ id: "notifications" as Pane, label: isAddon ? "Notifications" : "Notifications & Startup" }] : []),
+    ...(window.api.entitlement ? [{ id: "license" as Pane, label: "License" }] : [])
+  ];
+  const pendingCount = Object.keys(pendingByCal).length + Object.keys(pendingByBook).length;
+  const linkedCalCount = (acc: CaldavAccountPublic) =>
+    (calendarsByAccount[acc.id] ?? []).filter((c) => lists.some((l) => sameDavUrl(l.caldav_calendar_url, c.url))).length;
+  const linkedBookCount = (acc: CaldavAccountPublic) =>
+    (addressBooksByAccount[acc.id] ?? []).filter((bk) => addressBooks.some((ab) => sameDavUrl(ab.carddav_addressbook_url, bk.url))).length;
+
+  /** Per-account calendar-link rows -- rendered in the Calendars & Lists pane. */
+  function renderCalendarRows(acc: CaldavAccountPublic) {
+    const cals = calendarsByAccount[acc.id];
+    if (!cals || cals.length === 0) return <div className="status">No calendars discovered yet — use "Find calendars" on the Accounts tab.</div>;
+    return cals.map((cal) => {
+      const linkedList = lists.find((l) => sameDavUrl(l.caldav_calendar_url, cal.url));
+      const current = linkedList?.id ?? "";
+      const isConnected = current !== "";
+      const pending = pendingByCal[cal.url];
+      const selected = pending ?? current;
+      const dirty = pending !== undefined;
+      return (
+        <div className="calendar-pick" key={cal.url}>
+          <span>{cal.displayName}</span>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {dirty && <span style={{ fontSize: 11, color: "var(--warn)" }}>Unsaved</span>}
+            <select
+              value={selected}
+              disabled={busy}
+              onChange={(e) => {
+                const val = e.target.value;
+                setPendingByCal((prev) => {
+                  const next = { ...prev };
+                  if (val === current) delete next[cal.url];
+                  else next[cal.url] = val;
+                  return next;
+                });
+              }}
+            >
+              {isConnected ? (
+                <>
+                  <option value={current} disabled>Connected</option>
+                  <option value="">Not linked</option>
+                </>
+              ) : (
+                <>
+                  <option value="">Not linked</option>
+                  <option value="__new__">Connected</option>
+                </>
+              )}
+              {advancedLinking &&
+                lists.filter((l) => l.id !== current).map((l) => (
+                  <option key={l.id} value={l.id}>Add to {l.name}</option>
+                ))}
+            </select>
+          </div>
+        </div>
+      );
+    });
+  }
+
+  /** Per-account CardDAV URL + address-book-link rows -- Contacts pane. */
+  function renderContactBlock(acc: CaldavAccountPublic) {
+    return (
+      <div style={{ display: "flex", gap: 6, flexDirection: "column" }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", width: "100%" }}>
+          <input
+            style={{ flex: 1, background: "var(--bg-field)", border: "1px solid var(--border-strong)", borderRadius: 6, color: "var(--text)", padding: "5px 8px", fontSize: 12 }}
+            placeholder="CardDAV URL (e.g. http://host:5000/carddav.php/…)"
+            value={carddavUrlByAccount[acc.id] ?? (acc.carddav_url || "")}
+            onChange={(e) => setCarddavUrlByAccount((prev) => ({ ...prev, [acc.id]: e.target.value }))}
+          />
+          <button onClick={() => discoverBooks(acc.id)} disabled={busy}>Find address books</button>
+        </div>
+        {addressBooksByAccount[acc.id]?.map((book) => {
+          const linkedBook = addressBooks.find((ab) => sameDavUrl(ab.carddav_addressbook_url, book.url));
+          const current = linkedBook?.id ?? "";
+          const isConnected = current !== "";
+          const pending = pendingByBook[book.url];
+          const selected = pending ?? current;
+          const dirty = pending !== undefined;
+          return (
+            <div className="calendar-pick" key={book.url} style={{ width: "100%" }}>
+              <span>{book.displayName}</span>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                {dirty && <span style={{ fontSize: 11, color: "var(--warn)" }}>Unsaved</span>}
+                <select
+                  value={selected}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setPendingByBook((prev) => {
+                      const next = { ...prev };
+                      if (val === current) delete next[book.url];
+                      else next[book.url] = val;
+                      return next;
+                    });
+                  }}
+                >
+                  {isConnected ? (
+                    <>
+                      <option value={current} disabled>Connected</option>
+                      <option value="">Not linked</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="">Not linked</option>
+                      <option value="__new__">Connected</option>
+                    </>
+                  )}
+                </select>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const saveBar = pendingCount > 0 ? (
+    <div className="settings-save-bar">
+      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+        {pendingCount} unsaved change{pendingCount === 1 ? "" : "s"}
+      </span>
+      <button className="primary" disabled={busy} onClick={saveAllChanges}>Save changes</button>
+    </div>
+  ) : null;
+
+  return (
+    <div className="overlay">
+      <div className="settings-modal settings-modal-paned" style={{ position: "relative" }}>
+        <button className="modal-close" onClick={onClose}>×</button>
+        <nav className="settings-nav">
+          <div className="settings-nav-title">Settings</div>
+          {PANES.map((p) => (
+            <button
+              key={p.id}
+              className={`settings-nav-item ${activePane === p.id ? "active" : ""}`}
+              onClick={() => setActivePane(p.id)}
+            >
+              {p.label}
+            </button>
+          ))}
+          <div className="settings-nav-about">
+            <div>Daynizer{version ? ` v${version}` : ""}</div>
+            <div style={{ marginTop: 4 }}>
+              {update?.state === "checking" && "Checking for updates…"}
+              {update?.state === "none" && "Up to date"}
+              {update?.state === "available" && `Downloading v${update.detail}…`}
+              {update?.state === "downloading" && `Downloading update… ${update.detail}%`}
+              {update?.state === "error" && `Update check failed: ${update.detail}`}
+              {update?.state === "downloaded" && (
+                <button className="primary" onClick={() => window.api.app?.installUpdate()}>
+                  Restart to update to v{update.detail}
+                </button>
+              )}
+            </div>
+          </div>
+        </nav>
+
+        <div className="settings-pane">
+          <h2>{PANES.find((p) => p.id === activePane)?.label}</h2>
+
+          {activePane === "accounts" && (
+            <>
+              <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                Connect a CalDAV server (Nextcloud, Tasks.org sync provider, DAVx5-compatible server, etc.).
+                One account's credentials are shared by its calendars and contacts.
+              </p>
+              {accounts.length === 0 && <div className="status">No accounts yet — add one below.</div>}
+              {accounts.map((acc, idx) => (
+                <div className="account-card" key={acc.id}>
+                  <div className="row">
+                    <strong>{acc.label}</strong>
+                    <div>
+                      <button onClick={() => test(acc)} disabled={busy}>Test</button>{" "}
+                      <button onClick={() => discover(acc.id)} disabled={busy}>Find calendars</button>{" "}
+                      <button onClick={() => syncNow(acc.id)} disabled={busy}>Sync now</button>{" "}
+                      <button onClick={() => removeAccount(acc.id)} disabled={busy}>Remove</button>
+                    </div>
+                  </div>
+                  <div className="status">{acc.server_url || acc.carddav_url} — {acc.username}</div>
+                  <div className="status">{linkedCalCount(acc)} calendar(s), {linkedBookCount(acc)} address book(s) linked</div>
+                  {proLocked && idx > 0 && (
+                    <div className="status error">Paused: more than one account is a Pro feature. Its data is kept.</div>
+                  )}
+                  {acc.last_sync_at && (
+                    <div className={`status ${acc.last_sync_status === "error" ? "error" : ""}`}>
+                      {`Last sync: ${dateTimeLabel(acc.last_sync_at)} (${acc.last_sync_status})`}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </>
+          )}
+
+          {activePane === "calendars" && (
+            <>
+              <div className="prefs-grid" style={{ marginBottom: 14 }}>
+                <label className="pref-row" title="Where a new task goes when you're not already viewing a specific list.">
+                  Default list for new tasks
+                  <select value={prefs.defaultTaskListId ?? ""} onChange={(e) => setPref("defaultTaskListId", e.target.value)}>
+                    <option value="">Auto (first synced list)</option>
+                    {lists.map((l) => (
+                      <option key={l.id} value={l.id}>{l.name}{l.caldav_calendar_url ? "" : " (local)"}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="pref-row" title="Where a new event goes when you're not filtered to a specific calendar.">
+                  Default calendar for new events
+                  <select value={prefs.defaultEventListId ?? ""} onChange={(e) => setPref("defaultEventListId", e.target.value)}>
+                    <option value="">Auto (first synced list)</option>
+                    {lists.map((l) => (
+                      <option key={l.id} value={l.id}>{l.name}{l.caldav_calendar_url ? "" : " (local)"}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="pref-row" title="What the Tasks tab shows when Daynizer opens. Save a view from the Tasks or Calendar tab to add it here.">
+                  Default Tasks view
+                  <select value={defaultTasksView} onChange={(e) => onSetDefaultTasksView(e.target.value)}>
+                    <option value="">All Tasks</option>
+                    <option value="today">Today &amp; Overdue</option>
+                    {savedViews.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  </select>
+                </label>
+                <label className="pref-row" title="What the Calendar tab shows when Daynizer opens. Save a view from the Tasks or Calendar tab to add it here.">
+                  Default Calendar view
+                  <select value={defaultCalendarView} onChange={(e) => onSetDefaultCalendarView(e.target.value)}>
+                    <option value="">Same as last time</option>
+                    <option value="all">All lists</option>
+                    {savedViews.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  </select>
+                </label>
+                <label className="pref-row" title="Overrides the automatic choice (based on your computer's region setting) for which day the calendar's week starts on.">
+                  First day of the week
+                  <select value={prefs.firstDayOfWeek ?? ""} onChange={(e) => setPref("firstDayOfWeek", e.target.value)}>
+                    <option value="">Automatic (based on your system)</option>
+                    <option value="0">Sunday</option>
+                    <option value="1">Monday</option>
+                    <option value="2">Tuesday</option>
+                    <option value="3">Wednesday</option>
+                    <option value="4">Thursday</option>
+                    <option value="5">Friday</option>
+                    <option value="6">Saturday</option>
+                  </select>
+                </label>
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+                <input type="checkbox" checked={advancedLinking} onChange={(e) => setAdvancedLinking(e.target.checked)} />
+                Additional list linking options (link a calendar to an existing list)
+              </label>
+              {accounts.length === 0 && <div className="status">Add an account first (Accounts tab).</div>}
+              {accounts.map((acc) => (
+                <div className="account-card" key={acc.id}>
+                  <div className="row"><strong>{acc.label}</strong></div>
+                  {renderCalendarRows(acc)}
+                </div>
+              ))}
+            </>
+          )}
+
+          {activePane === "contacts" && (
+            <>
+              {proLocked && (
+                <div className="status error" style={{ marginBottom: 10 }}>
+                  Contacts is a Daynizer Pro feature. Linked address books stay linked but don't sync
+                  until you activate a license (License tab).
+                </div>
+              )}
+              {accounts.length === 0 && <div className="status">Add an account first (Accounts tab).</div>}
+              {accounts.map((acc) => (
+                <div className="account-card" key={acc.id}>
+                  <div className="row"><strong>{acc.label}</strong></div>
+                  {renderContactBlock(acc)}
+                </div>
+              ))}
+            </>
+          )}
+
+          {(activePane === "calendars" || activePane === "contacts") && saveBar}
+
+          {activePane === "accounts" && (
+            <label
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", marginTop: 12 }}
+              title="Enable if your server uses a self-signed certificate (e.g. Synology DSM over HTTPS on your LAN). Turns off certificate verification for the app's sync connections — only use on servers you trust."
+            >
+              <input
+                type="checkbox"
+                checked={prefs.allowInsecureCerts === "1"}
+                onChange={(e) => setPref("allowInsecureCerts", e.target.checked ? "1" : "0")}
+              />
+              Allow self-signed certificates (self-hosted servers on your LAN)
+            </label>
+          )}
+
+          {activePane === "contacts" && (
+            <>
+              <h3 style={{ marginTop: 18 }}>Contacts &amp; maintenance</h3>
+              <div className="settings-tools">
+                <button
+                  disabled={busy}
+                  onClick={repairDuplicates}
+                  title="Consolidates duplicate task lists and address books left over from connect/disconnect cycles, and removes exact-duplicate contact rows. Shows a preview and asks before applying. Never deletes tasks or your contacts on the server."
+                >
+                  Repair duplicate lists &amp; books
+                </button>
+                <button onClick={onReviewDuplicates} title="Review possible duplicate contacts and merge them manually — this is where contacts are combined.">
+                  Merge duplicates…
+                </button>
+                <button onClick={onImportVCard} title="Import contacts from a .vcf file, optionally adding a label to all of them.">
+                  Import from vCard…
+                </button>
+              </div>
+              {thunderbirdBooksAvailable() && (
+                <>
+                  <h3 style={{ marginTop: 18 }}>Thunderbird's address books</h3>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                    <input
+                      type="checkbox"
+                      checked={tbBooks}
+                      onChange={(e) => { setThunderbirdBooksShown(e.target.checked); setTbBooks(e.target.checked); onThunderbirdBooksChanged?.(); }}
+                    />
+                    Show Thunderbird's address books in the Contacts tab
+                  </label>
+                  <div className="status" style={{ marginTop: 6 }}>
+                    They show under "Thunderbird address books" in the sidebar, marked Thunderbird. Read-only for now:
+                    a Thunderbird bug would store each saved contact letter by letter, so Daynizer doesn't change
+                    them. Daynizer's own address books sync with your server separately.
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {activePane === "accounts" && (
+          <>
+          <h3 style={{ marginTop: 18 }}>Add account</h3>
+          {accountCapped && (
+            <div className="status error" style={{ marginBottom: 10 }}>
+              The free version syncs one account. Adding more accounts is a Daynizer Pro feature (License tab).
+            </div>
+          )}
+          <details style={{ marginBottom: 12 }}>
+            <summary style={{ cursor: "pointer", fontSize: 13 }}>Have a pairing link? Paste it to fill in the form below</summary>
+            <div style={{ marginTop: 8 }}>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  placeholder="caldav://user:pass@host:port/"
+                  value={pairingInput}
+                  onChange={(e) => setPairingInput(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <button onClick={fillFromPairingLink} disabled={!pairingInput.trim()}>Fill in</button>
+              </div>
+              <p style={{ fontSize: 11, color: "var(--warn)", marginTop: 6, lineHeight: 1.5 }}>
+                ⚠️ This kind of link carries the password in <strong>plain text</strong>, not just a
+                reference to it — anyone who sees the link or a QR code made from it has the real
+                password. Treat it exactly like the password itself: don't paste it into chat, email,
+                or a notes app (those often sync to the cloud or get logged), and don't keep a
+                screenshot of it around. It's cleared from this field the moment you click Fill in.
+                If you're not sure a link was only ever seen by you, regenerate that account's password
+                afterward.
+              </p>
+            </div>
+          </details>
+          <div className="form-grid">
+          <input placeholder="Label (e.g. My Nextcloud)" value={label} onChange={(e) => setLabel(e.target.value)} />
+          <input placeholder="CalDAV URL — tasks & calendars (optional)" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
+          <input placeholder="CardDAV URL — contacts (optional)" value={draftCarddavUrl} onChange={(e) => setDraftCarddavUrl(e.target.value)} />
+          <input placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
+          <div className="password-field">
+            <input
+              placeholder="Password / app token"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button
+              type="button"
+              className="password-toggle"
+              onClick={() => setShowPassword((v) => !v)}
+              title={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? "🙈" : "👁"}
+            </button>
+          </div>
+          <div className="form-actions">
+            <button onClick={testDraft} disabled={busy}>Test connection</button>
+            <button className="primary" onClick={addAccount} disabled={busy || accountCapped}>Save account</button>
+          </div>
+          </div>
+          </>
+          )}
+          {testMsg && <p style={{ fontSize: 12, color: "var(--text-muted)" }}>{testMsg}</p>}
+
+          {activePane === "sync" && window.api.settings && (
+            <>
+              <h3 style={{ marginTop: 18 }}>Sync</h3>
+            <div className="prefs-grid">
+              <label className="pref-row" title="Syncs all CalDAV accounts in the background. Manual sync (Ctrl+R) always works too.">
+                Sync automatically every
+                <select
+                  value={prefs.syncIntervalMinutes ?? "60"}
+                  onChange={(e) => setPref("syncIntervalMinutes", e.target.value)}
+                >
+                  <option value="1">1 minute</option>
+                  <option value="5">5 minutes</option>
+                  <option value="10">10 minutes</option>
+                  <option value="30">30 minutes</option>
+                  <option value="60">60 minutes (Tasks.org default)</option>
+                  <option value="0">Off — manual only</option>
+                </select>
+              </label>
+              <label className="pref-row" title="Change or disable this if it conflicts with another app's hotkey. Applies immediately.">
+                "Sync Now" hotkey
+                <select
+                  value={prefs.syncHotkey ?? "CmdOrCtrl+R"}
+                  onChange={(e) => setPref("syncHotkey", e.target.value)}
+                >
+                  <option value="CmdOrCtrl+R">Ctrl+R</option>
+                  <option value="CmdOrCtrl+Shift+S">Ctrl+Shift+S</option>
+                  <option value="CmdOrCtrl+Alt+R">Ctrl+Alt+R</option>
+                  <option value="F9">F9</option>
+                  <option value="">No hotkey (menu only)</option>
+                </select>
+              </label>
+            </div>
+            </>
+          )}
+
+          {activePane === "server" && (
+            <>
+              <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                Daynizer can host its own CalDAV/CardDAV sync server, so your tasks, calendar and
+                contacts sync across devices with no third-party account. One address serves both
+                calendars and contacts — add it to Daynizer on another computer, or to apps like
+                DAVx5, Tasks.org, Apple Calendar or Thunderbird.
+              </p>
+
+              {srv && srv.available && !srv.configured && (
+                <div className="account-card" style={{ borderColor: "var(--accent-color)" }}>
+                  <strong>Your sync server is ready</strong>
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "6px 0" }}>
+                    We generated a username and password for you (below). Use them as they are, or
+                    change them now — then click "Got it". Daynizer will start with your computer and
+                    keep the server running quietly in the tray, so your other devices can always sync.
+                    You can change any of this here later.
+                  </p>
+                  <button
+                    className="primary"
+                    disabled={srvBusy}
+                    onClick={async () => {
+                      await window.api.server!.markConfigured();
+                      await loadServer();
+                      window.api.settings?.all().then(setPrefs).catch(() => {});
+                    }}
+                  >
+                    Got it
+                  </button>
+                </div>
+              )}
+
+              {srv && !srv.available && (
+                <div className="status error">The bundled server isn't available in this build.</div>
+              )}
+
+              <label className="pref-row" style={{ marginTop: 4 }} title="Runs the built-in server in the background. It keeps running while Daynizer is in the tray.">
+                <input
+                  type="checkbox"
+                  checked={!!srv?.enabled}
+                  disabled={srvBusy || !srv?.available}
+                  onChange={(e) => srvToggle(e.target.checked)}
+                />
+                Run the built-in sync server
+              </label>
+
+              {window.api.settings && (
+                <label className="pref-row pref-indent" title="Starts Daynizer automatically when you log in and boots straight to the tray (no window), so the server is always available for your other devices.">
+                  <input
+                    type="checkbox"
+                    checked={prefs.launchAtLogin === "1"}
+                    disabled={srvBusy || !srv?.enabled}
+                    onChange={(e) => { setPref("launchAtLogin", e.target.checked ? "1" : "0"); if (e.target.checked) setPref("launchHidden", "1"); }}
+                  />
+                  Start at login and run in the background (recommended)
+                </label>
+              )}
+
+              <div className="status">
+                Status:{" "}
+                {srv?.running
+                  ? `running on port ${srv.port}`
+                  : srv?.enabled
+                    ? (srv.error ? `not running (${srv.error})` : "starting…")
+                    : "off"}
+              </div>
+              {srv?.note && <div className="status" style={{ color: "var(--warn)" }}>{srv.note}</div>}
+              {srv?.running && srv.lastActivity && (
+                <div className="status">Last device sync: {relTime(srv.lastActivity)}</div>
+              )}
+
+              {srv?.running && (
+                <>
+                  <h3 style={{ marginTop: 18 }}>Connect other apps</h3>
+                  <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                    Use this one address in any CalDAV/CardDAV app — it finds both your calendars
+                    and your contacts. On the same computer, use the local address instead.
+                  </p>
+                  <div className="prefs-grid">
+                    <label className="pref-row">
+                      Address (other devices)
+                      <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <input readOnly value={srv.baseUrl ?? ""} style={{ width: 260 }} />
+                        <button onClick={() => srvCopy(srv.baseUrl ?? "", "Address")}>Copy</button>
+                      </span>
+                    </label>
+                    <label className="pref-row">
+                      Address (this computer)
+                      <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <input readOnly value={srv.localUrl ?? ""} style={{ width: 260 }} />
+                        <button onClick={() => srvCopy(srv.localUrl ?? "", "Local address")}>Copy</button>
+                      </span>
+                    </label>
+                  </div>
+                  {srv.platform === "win32" && (
+                    <div style={{ marginTop: 10 }}>
+                      {prefs.firewallRuleAdded === "1" ? (
+                        <div className="status">Windows Firewall: other devices allowed ✓</div>
+                      ) : (
+                        <>
+                          <button onClick={srvOpenFirewall} disabled={srvBusy}>Allow other devices through Windows Firewall</button>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                            A one-time Windows permission prompt so phones and other computers on your
+                            network can reach the server. Without it, Windows may block them.
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {srvQr ? (
+                    <div style={{ marginTop: 16 }}>
+                      <h4 style={{ margin: "0 0 6px" }}>Scan to set up your Android phone</h4>
+                      <div style={{ display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+                        <img
+                          src={srvQr}
+                          width={200}
+                          height={200}
+                          alt="QR code that configures DAVx5 with this sync server"
+                          style={{ background: "#fff", padding: 8, borderRadius: 8, flex: "0 0 auto" }}
+                        />
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 300, lineHeight: 1.6 }}>
+                          <strong>Install DAVx5 first</strong> — the scan opens straight into it. Then
+                          open a QR scanner (<strong>Binary Eye</strong>, free, is the reliable one),
+                          scan this, and tap the link: DAVx5 opens with the address, username and
+                          password already filled in. Finish, then tick the calendars, contacts and
+                          task lists to sync. Install <strong>Tasks.org</strong> for the task lists.
+                          <div style={{ marginTop: 8 }}>
+                            <button onClick={() => srvCopy(pairingUri(srv) ?? "", "Pairing link")}>Copy pairing link</button>
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 11, color: "var(--warn)" }}>
+                            ⚠️ The QR code and the copied link both carry your password in plain text —
+                            treat either one like the password itself. Don't screenshot the QR or paste
+                            the link somewhere that isn't going straight into DAVx5 (chat/notes apps
+                            often sync to the cloud). Regenerate the password below if you're ever
+                            unsure who's seen one.
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 11 }}>
+                            Make sure the phone is on the same Wi-Fi{srv.platform === "win32" ? " and you've allowed the firewall above" : ""}.
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 11 }}>
+                            On <strong>iPhone</strong> there's no scan setup — add the account by hand
+                            with the Apple Calendar / Contacts steps below.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : srv.baseUrl && new URL(srv.baseUrl).hostname.startsWith("127.") ? (
+                    <div className="status" style={{ marginTop: 12, color: "var(--warn)" }}>
+                      Connect this computer to Wi-Fi or your network to show a phone-pairing QR code.
+                    </div>
+                  ) : null}
+                </>
+              )}
+
+              <h3 style={{ marginTop: 18 }}>Credentials</h3>
+              <div className="prefs-grid">
+                <label className="pref-row">
+                  Username
+                  <input value={srvUser} onChange={(e) => setSrvUser(e.target.value)} disabled={srvBusy} style={{ width: 200 }} />
+                </label>
+                <label className="pref-row">
+                  Password
+                  <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      type={showSrvPass ? "text" : "password"}
+                      value={srvPass}
+                      onChange={(e) => setSrvPass(e.target.value)}
+                      disabled={srvBusy}
+                      style={{ width: 200 }}
+                    />
+                    <button type="button" onClick={() => setShowSrvPass((v) => !v)} title={showSrvPass ? "Hide password" : "Show password"}>
+                      {showSrvPass ? "🙈" : "👁"}
+                    </button>
+                    <button onClick={() => srvCopy(srvPass, "Password")}>Copy</button>
+                  </span>
+                </label>
+              </div>
+              <div className="settings-tools" style={{ marginTop: 8 }}>
+                <button className="primary" onClick={srvApplyCreds} disabled={srvBusy}>Save credentials</button>
+                <button onClick={srvRegenerate} disabled={srvBusy}>Regenerate password</button>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
+                Changing the password is safe. Changing the username starts a fresh account on the
+                server (existing data stays under the old name).
+              </div>
+
+              <h3 style={{ marginTop: 18 }}>Port</h3>
+              <label className="pref-row" style={{ maxWidth: 360 }}>
+                Server port
+                <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <input type="number" min={1024} max={65535} value={srvPort} onChange={(e) => setSrvPort(e.target.value)} disabled={srvBusy} style={{ width: 90 }} />
+                  <button onClick={srvApplyPort} disabled={srvBusy}>Apply</button>
+                </span>
+              </label>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
+                Default 5232 (the standard CalDAV/CardDAV port). Keeping it fixed means connected
+                apps don't need reconfiguring. If it's ever already in use, Daynizer temporarily
+                picks another and notes it above.
+              </div>
+
+              <h3 style={{ marginTop: 18 }}>How to connect</h3>
+              <details>
+                <summary style={{ cursor: "pointer", fontSize: 13, marginBottom: 4 }}>DAVx5 + Tasks.org (Android)</summary>
+                <ol style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7, marginTop: 4 }}>
+                  <li>Make sure the phone is on the same Wi-Fi as this computer.</li>
+                  <li>In DAVx5: <strong>+</strong> → "Login with URL and user name".</li>
+                  <li>Base URL: the <em>other devices</em> address above. Username / password: the ones above.</li>
+                  <li>Finish, then tick the calendars, contacts and task lists it finds.</li>
+                  <li>For tasks, install <strong>Tasks.org</strong> (or OpenTasks) so DAVx5 can sync them.</li>
+                </ol>
+              </details>
+              <details>
+                <summary style={{ cursor: "pointer", fontSize: 13, marginBottom: 4 }}>Apple Calendar / Contacts (macOS, iPhone)</summary>
+                <ol style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7, marginTop: 4 }}>
+                  <li>Settings → Calendar → Accounts → Add Account → Other → Add CalDAV account.</li>
+                  <li>Account type "Advanced"; Server: this computer's IP; Port: the port above; turn SSL off (LAN).</li>
+                  <li>Use the username and password above. Repeat under Contacts for a CardDAV account.</li>
+                </ol>
+              </details>
+              <details>
+                <summary style={{ cursor: "pointer", fontSize: 13, marginBottom: 4 }}>Thunderbird</summary>
+                <ol style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7, marginTop: 4 }}>
+                  <li>New Calendar → On the Network → paste the address above, enter the username/password.</li>
+                  <li>Address Book → New → CardDAV Address Book → same address and credentials.</li>
+                </ol>
+              </details>
+              <details>
+                <summary style={{ cursor: "pointer", fontSize: 13, marginBottom: 4 }}>Advanced: browse the server directly (troubleshooting)</summary>
+                <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7, marginTop: 4 }}>
+                  The built-in server has its own web page for looking at (and manually creating or
+                  deleting) calendars and address books — open the <em>this computer</em> address above
+                  in a regular browser tab (not a CalDAV app) and log in with the username/password
+                  above. Since the certificate is self-signed, the browser will warn about it first —
+                  that's expected; proceed anyway (usually "Advanced" → "Continue"). This is a fallback
+                  for troubleshooting; you don't need it for normal use.
+                </div>
+              </details>
+              <p style={{ fontSize: 12, marginTop: 10 }}>
+                <a href="https://precisioncrab.com/apps/daynizer/connect/" target="_blank" rel="noreferrer" style={{ color: "var(--accent-color)" }}>
+                  Full connection guide →
+                </a>
+              </p>
+
+              {srvMsg && <p style={{ fontSize: 12, color: "var(--text-muted)" }}>{srvMsg}</p>}
+            </>
+          )}
+
+          {activePane === "license" && ent && (
+            <>
+              <p style={{ fontSize: 13, lineHeight: 1.6 }}>
+                {ent.tier === "pro" && <>Daynizer Pro is active{ent.licenseEmail ? ` (licensed to ${ent.licenseEmail})` : ""}. Thank you!</>}
+                {ent.tier === "trial" && <>Free trial: {ent.trialDaysLeft} day{ent.trialDaysLeft === 1 ? "" : "s"} left with every Pro feature.</>}
+                {ent.tier === "free" && <>Free version. Your trial ended on {new Date(ent.trialEndsAt).toLocaleDateString()}.</>}
+              </p>
+              <p style={{ color: "var(--text-muted)", fontSize: 12, lineHeight: 1.6 }}>
+                Free: tasks on one account. Pro: the Calendar and Contacts tabs, and more than one account.
+                One-time purchase; a license works on up to 5 installs.
+              </p>
+              {!ent.licensed && (
+                <>
+                  <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                    <input
+                      style={{ flex: 1 }}
+                      placeholder="License key from your Gumroad receipt"
+                      value={licenseKey}
+                      onChange={(e) => setLicenseKey(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && licenseKey.trim() && !busy) activateLicense(); }}
+                    />
+                    <button className="primary" onClick={activateLicense} disabled={busy || !licenseKey.trim()}>Activate</button>
+                  </div>
+                  <p style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 6 }}>
+                    Your key is sent to Gumroad once to verify the purchase; Thunderbird will ask you to allow
+                    that. Nothing else is sent, then or later.
+                  </p>
+                  {PRO_STORE_URL && (
+                    <button style={{ marginTop: 6 }} onClick={() => openStore("settings")}>Buy Daynizer Pro</button>
+                  )}
+                </>
+              )}
+              {ent.licensed && (
+                <button style={{ marginTop: 10 }} onClick={removeLicense} disabled={busy}>Remove license from this install</button>
+              )}
+              {licenseMsg && <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>{licenseMsg}</p>}
+            </>
+          )}
+
+          {activePane === "notifications" && window.api.settings && (
+            <>
+              <h3 style={{ marginTop: 18 }}>{isAddon ? "Notifications" : <>Notifications &amp; startup</>}</h3>
+            <div className="prefs-grid">
+              <label className="pref-row">
+                <input
+                  type="checkbox"
+                  checked={prefs.notificationsEnabled === "1"}
+                  onChange={(e) => setPref("notificationsEnabled", e.target.checked ? "1" : "0")}
+                />
+                Remind me when tasks are due
+              </label>
+              <label className="pref-row pref-indent" title="Tasks with a due time are reminded at that time; tasks with only a date are reminded at this time of day">
+                Remind date-only tasks at
+                <input
+                  type="time"
+                  value={prefs.reminderTime || "18:00"}
+                  disabled={prefs.notificationsEnabled !== "1"}
+                  onChange={(e) => setPref("reminderTime", e.target.value || "18:00")}
+                />
+              </label>
+              {isAddon ? (
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "4px 0 0" }}>
+                  Reminders show as system notifications while Thunderbird is running. Ticking the box asks
+                  Thunderbird for permission to show notifications. If you also subscribe to the same
+                  calendars in Thunderbird's own calendar, it may show its own reminder for the same item.
+                </p>
+              ) : (
+              <>
+              <label className="pref-row" title="Closing the window keeps the app in the tray so reminders and sync keep working">
+                <input
+                  type="checkbox"
+                  checked={prefs.closeToTray === "1"}
+                  onChange={(e) => setPref("closeToTray", e.target.checked ? "1" : "0")}
+                />
+                Keep running in the tray when the window is closed
+              </label>
+              <label className="pref-row">
+                <input
+                  type="checkbox"
+                  checked={prefs.launchAtLogin === "1"}
+                  onChange={(e) => setPref("launchAtLogin", e.target.checked ? "1" : "0")}
+                />
+                Start Daynizer when the computer starts
+              </label>
+              </>
+              )}
+            </div>
+          </>
+        )}
+
+        </div>
+      </div>
+    </div>
+  );
+}
