@@ -23,7 +23,7 @@ import ContactsSidebarModal, { SidebarPart, loadSidebarHidden, storeSidebarHidde
 import MoreAppsModal from "./components/MoreAppsModal";
 import {
   ThunderbirdBook, readThunderbirdBooks, onThunderbirdChange, thunderbirdAddressBooks, thunderbirdContacts,
-  isThunderbirdId, THUNDERBIRD_READ_ONLY
+  isThunderbirdId, thunderbirdBookOf
 } from "./thunderbirdBooks";
 import ProWall from "./components/ProWall";
 import TrialBanner from "./components/TrialBanner";
@@ -568,8 +568,8 @@ export default function App() {
     // The Chat page draws its Chat list tab from this too.
     requestAnimationFrame(() => cleanup.ctx.render());
   }
-  // Add-on: Thunderbird's own address books (Settings > Contacts), read-only for now; read
-  // again whenever Thunderbird changes a contact or book.
+  // Add-on: Thunderbird's own address books (Settings > Contacts), editable since the
+  // add-on's Manifest V2 move (0.9.0); read again whenever Thunderbird changes a contact or book.
   const [tbBooks, setTbBooks] = useState<ThunderbirdBook[]>([]);
   const loadThunderbirdBooks = useCallback(async () => {
     try { setTbBooks(await readThunderbirdBooks()); } catch { setTbBooks([]); }
@@ -856,7 +856,8 @@ export default function App() {
     // addressBooks[0] alone resolved to the unsynced "Contacts" book and stranded
     // contacts where nothing could ever push them. Matches the import modal's logic.
     // (An explicit book filter still wins — creating into a local book you picked
-    // yourself is intent, not an accident. Thunderbird's books are read-only, so not those.)
+    // yourself is intent, not an accident. Never one of Thunderbird's books: new contacts go
+    // into Daynizer's, and the add-on's background refuses contacts:create there.)
     const picked = filterFirstBook(contactFilter);
     const book =
       picked && !isThunderbirdId(picked)
@@ -970,8 +971,19 @@ export default function App() {
     scheduleDirtySync();
   }
 
+  // A change Daynizer can't make says why in the Contacts tab's message bar (the clean-up
+  // tools' toast): in the add-on, Thunderbird refuses a change to the copy of a contact it
+  // doesn't let add-ons reach, or to a contact in a read-only book (background/thunderbird.ts).
+  const contactError = (err: unknown) => cleanup.ctx.toast(err instanceof Error ? err.message : String(err), { error: true });
+
   async function updateContact(id: string, patch: Partial<Contact>) {
-    await window.api.contacts?.update(id, patch);
+    try {
+      await window.api.contacts?.update(id, patch);
+    } catch (err) {
+      contactError(err);
+      await loadContacts();
+      return;
+    }
     // Copies linked under Clean up > In several books follow the edit.
     await cleanup.followLinked(id);
     await loadContacts();
@@ -979,7 +991,14 @@ export default function App() {
   }
 
   async function deleteContact(id: string) {
-    await window.api.contacts?.delete(id);
+    // Daynizer's own deletes can come back from the server's copy; Thunderbird's are gone for good.
+    if (isThunderbirdId(id) && !window.confirm("Delete this contact from Thunderbird's address book?\n\nDaynizer can't undo this. Thunderbird syncs the delete like any other.")) return;
+    try {
+      await window.api.contacts?.delete(id);
+    } catch (err) {
+      contactError(err);
+      return;
+    }
     if (selectedContactId === id) selectContact(null);
     await loadContacts();
     scheduleDirtySync();
@@ -1644,8 +1663,9 @@ export default function App() {
         ) : selectedContactId ? (
           <ContactDetailPanel
             contact={shownContacts.find((c) => c.id === selectedContactId) || null}
-            addressBooks={isThunderbirdId(selectedContactId) ? tbAddressBooks : addressBooks}
-            readOnlyNote={isThunderbirdId(selectedContactId) ? THUNDERBIRD_READ_ONLY : undefined}
+            // A Thunderbird contact stays in its own book (Daynizer can't move it between them).
+            addressBooks={isThunderbirdId(selectedContactId) ? tbAddressBooks.filter((b) => b.id === thunderbirdBookOf(selectedContactId)) : addressBooks}
+            thunderbird={isThunderbirdId(selectedContactId)}
             existingLabels={existingLabels}
             onUpdate={updateContact}
             onDelete={deleteContact}

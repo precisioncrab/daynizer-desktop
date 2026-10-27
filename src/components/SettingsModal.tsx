@@ -1028,9 +1028,9 @@ export default function SettingsModal({
                     Show Thunderbird's address books in the Contacts tab
                   </label>
                   <div className="status" style={{ marginTop: 6 }}>
-                    They show under "Thunderbird address books" in the sidebar, marked Thunderbird. Read-only for now:
-                    a Thunderbird bug would store each saved contact letter by letter, so Daynizer doesn't change
-                    them. Daynizer's own address books sync with your server separately.
+                    They show under "Thunderbird address books" in the sidebar, marked Thunderbird. Changes you
+                    make to them in Daynizer are saved in Thunderbird, which syncs them as it always does.
+                    Daynizer's own address books sync with your server separately.
                   </div>
                 </>
               )}

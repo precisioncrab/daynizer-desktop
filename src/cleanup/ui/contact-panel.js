@@ -31,7 +31,6 @@ import { jmpAddress, normalizeGateway, DEFAULT_GATEWAY } from "../core/chat.js";
 import { phoneNumber } from "../core/phone.js";
 import { chatLists, chatAccounts, accountLabel, changeChatList } from "./omemo-state.js";
 import { LINKS, openLink } from "../lib/links.js";
-import { THUNDERBIRD_READ_ONLY } from "../../thunderbirdBooks";
 
 const gatewayOf = (ctx) => normalizeGateway(ctx.state.settings.gateway) ?? DEFAULT_GATEWAY;
 // The address in a chat address box, however it's written (xmpp:, Google's x-apple:, bare).
@@ -200,7 +199,7 @@ export function contactPanel(ctx, card, { before = null } = {}) {
     const button = document.getElementById("cp-save");
     if (button) {
       const dirty = isDirty(ctx, d, card);
-      button.disabled = !dirty || Boolean(ctx.state.busy) || Boolean(card?.shadowed) || Boolean(card?.tb);
+      button.disabled = !dirty || Boolean(ctx.state.busy) || Boolean(card?.shadowed);
       button.textContent = dirty ? "Save" : "Saved";
     }
   };
@@ -268,8 +267,6 @@ export function contactPanel(ctx, card, { before = null } = {}) {
           ctx.select(`copies:${card.uid}`);
         } }, "Sort out the copies"))
       : null,
-    // Daynizer: a contact in Thunderbird's own address books is read-only for now.
-    card?.tb ? h("div", { class: "notice warn" }, THUNDERBIRD_READ_ONLY) : null,
     card && !card.shadowed ? linkedNotice(ctx, card, d) : null,
     card && d.touched && d.base !== card.vCard
       ? h("div", { class: "notice warn" }, "This contact changed (by a sync, or in its other editor) while you were editing it. Saving writes your changes over it. ",
@@ -407,9 +404,9 @@ export function contactPanel(ctx, card, { before = null } = {}) {
     } }),
 
     h("div", { class: "detail-actions" },
-      h("button", { class: "primary", id: "cp-save", disabled: !dirty || Boolean(ctx.state.busy) || Boolean(card?.shadowed) || Boolean(card?.tb), onClick: () => save(ctx, card, d) }, dirty ? "Save" : "Saved"),
+      h("button", { class: "primary", id: "cp-save", disabled: !dirty || Boolean(ctx.state.busy) || Boolean(card?.shadowed), onClick: () => save(ctx, card, d) }, dirty ? "Save" : "Saved"),
       card
-        ? h("button", { class: "danger", disabled: Boolean(ctx.state.busy) || Boolean(card.shadowed) || Boolean(card.tb), onClick: () => remove(ctx, card) }, "Delete")
+        ? h("button", { class: "danger", disabled: Boolean(ctx.state.busy) || Boolean(card.shadowed), onClick: () => remove(ctx, card) }, "Delete")
         : h("button", { onClick: () => {
           ctx.state.newContact = null;
           ctx.render();

@@ -8,8 +8,8 @@ interface Props {
   existingLabels?: string[];
   onUpdate: (id: string, patch: Partial<Contact>) => void;
   onDelete: (id: string) => void;
-  /** Shown instead of Save and Delete, with every field locked (a contact in Thunderbird's address books). */
-  readOnlyNote?: string;
+  /** A contact in Thunderbird's own address books (add-on): tagged in the heading. */
+  thunderbird?: boolean;
 }
 
 function parseArr<T>(s: string | undefined): T[] {
@@ -49,7 +49,7 @@ const rmBtnStyle: CSSProperties = {
   background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 14, padding: "0 4px"
 };
 
-export default function ContactDetailPanel({ contact, addressBooks, existingLabels = [], onUpdate, onDelete, readOnlyNote }: Props) {
+export default function ContactDetailPanel({ contact, addressBooks, existingLabels = [], onUpdate, onDelete, thunderbird }: Props) {
   const [bookId, setBookId] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -155,9 +155,7 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
 
   return (
     <div className="detail-panel">
-      <h3>Contact details{readOnlyNote && <span className="contact-source-tag">Thunderbird</span>}</h3>
-      {readOnlyNote && <div className="status" style={{ marginBottom: 10 }}>{readOnlyNote}</div>}
-      <fieldset disabled={!!readOnlyNote} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+      <h3>Contact details{thunderbird && <span className="contact-source-tag">Thunderbird</span>}</h3>
 
       {/* Up top and always shown, so a new contact's destination book is visible
           and changeable before its first save. ⇄ marks server-synced books. */}
@@ -270,15 +268,10 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
         placeholder="Add notes…"
         onChange={(e) => { setNotes(e.target.value); mark(); }}
       />
-
-      </fieldset>
-
-      {!readOnlyNote && (
-        <div className="detail-actions">
-          <button className="primary" onClick={handleSave} disabled={!dirty}>{dirty ? "Save" : "Saved"}</button>
-          <button className="danger" onClick={() => onDelete(contact.id)}>Delete</button>
-        </div>
-      )}
+      <div className="detail-actions">
+        <button className="primary" onClick={handleSave} disabled={!dirty}>{dirty ? "Save" : "Saved"}</button>
+        <button className="danger" onClick={() => onDelete(contact.id)}>Delete</button>
+      </div>
       {contact.carddav_uid && <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-faint)" }}>Synced via CardDAV</div>}
     </div>
   );

@@ -104,7 +104,7 @@ export default function ContactsView({ contacts, filter, labelColors, selectedCo
                 <div className="title-col">
                   <div className="title">
                     {c.fn || "Unnamed"}
-                    {isThunderbirdId(c.id) && <span className="contact-source-tag" title="In Thunderbird's address book (read-only in Daynizer for now)">Thunderbird</span>}
+                    {isThunderbirdId(c.id) && <span className="contact-source-tag" title="In Thunderbird's address book">Thunderbird</span>}
                   </div>
                   {sub && <div className="meta">{sub}</div>}
                   {labels.length > 0 && (

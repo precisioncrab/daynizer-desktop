@@ -8,9 +8,11 @@
  * treat one contact ID as one contact, so each can be sorted out:
  *   Leave as is, Link the copies, Keep one copy (the others' address
  *   books become labels on it), or Separate them.
- * Daynizer: every copy can be changed directly (no "copies" change from
+ * Daynizer: its own copies can be changed directly (no "copies" change from
  * Contacts Cleanup's history.js); a copy that gets a new contact ID is made
- * again in its address book without one, and the old one removed.
+ * again in its address book without one, and the old one removed. Copies in
+ * Thunderbird's own books (add-on) go through the "copies" change, as in
+ * Contacts Cleanup: Thunderbird lets add-ons reach one copy at a time.
  * For one contact (select it, right-hand panel), or for every contact in
  * the same address books at once (the box above the list). "Leave as is"
  * starts selected, so nothing happens until another choice is made.
@@ -103,11 +105,36 @@ function copyChanges(group, want, { newIds = false, keepId = null } = {}) {
   return { changes, created };
 }
 
+/** Thunderbird's copies: Thunderbird reaches one at a time, so they're sorted by Contacts Cleanup's "copies" change. */
+const inThunderbird = (group) => group.cards.some((c) => c.tb);
+
+/** Contacts Cleanup's wording, for copies in Thunderbird's books (the copy Thunderbird reaches gets the new ID). */
+function explainThunderbird(ctx, group, choice, books, first) {
+  const lines = [];
+  if (choice.action === "link") {
+    lines.push(`Each copy gets its own contact ID. Thunderbird lets add-ons reach the copy in ${first} first, so that copy is made again in ${first} with a new ID (same details, same mailing lists) and the old one is removed.`);
+    lines.push(`Then the copies in ${names(books)} each get every detail of both (where they differ, the copy in ${bookName(ctx, choice.keeperBook)} wins), and they're linked: an edit you make in Daynizer to one is made to the others. Edits in Thunderbird's own Address Book aren't followed; the editor offers to copy them over.`);
+  } else if (choice.action.startsWith("keep:")) {
+    const book = choice.action.slice(5);
+    const others = bookIds(group).filter((id) => id !== book).map((id) => bookName(ctx, id));
+    const labels = keepLabels(ctx, group, choice, book);
+    lines.push(`The copy in ${bookName(ctx, book)} stays and gets the other copies' details${labels.length ? `, with the label${labels.length > 1 ? "s" : ""} ${names([...new Set(labels)])}` : ""}.`);
+    lines.push(`The copies in ${names(others)} are deleted, and leave their mailing lists there.`);
+  } else {
+    lines.push(`Each copy gets its own contact ID and keeps its own details. From then on they're two contacts, edited apart. The copy in ${first} is made again with a new ID (same details, same mailing lists).`);
+  }
+  lines.push("Undo (the message after, or Changes) puts the details and mailing lists back. The copies keep separate IDs: Thunderbird doesn't let add-ons give two contacts one ID again.");
+  return lines;
+}
+
 /** What a choice does, in words, for the question before applying. */
 function explain(ctx, groups, choice) {
   const group = groups[0];
   const books = bookIds(group).map((id) => bookName(ctx, id));
   const first = bookName(ctx, reachable(group).parentId);
+  if (inThunderbird(group)) {
+    return explainThunderbird(ctx, group, choice, books, first);
+  }
   const lines = [];
   if (choice.action === "link") {
     const kept = bookName(ctx, choice.keeperBook);
@@ -143,11 +170,18 @@ async function applyChoice(ctx, groups, choice) {
   const what = choice.action === "link" ? "linked the copies" : choice.action === "separate" ? "separated the copies" : `kept the copy in ${bookName(ctx, choice.action.slice(5))}`;
   const newIds = choice.action === "link" || choice.action === "separate";
   const changes = [];
-  // Per contact: the copy that keeps its ID, and the changes that make the others again (for the links).
+  // Per contact: the copy that keeps its ID, and the changes that make the others again (for the links);
+  // or, for Thunderbird's copies, the "copies" change, whose result is the copies' ids.
   const made = [];
   for (const g of groups) {
+    const want = planFor(ctx, g, choice).want;
+    if (inThunderbird(g)) {
+      made.push({ copies: changes.length });
+      changes.push({ type: "copies", uid: g.uid, books: bookIds(g), want, label: g.name });
+      continue;
+    }
     const keeper = choice.action === "link" ? (g.cards.find((c) => c.parentId === choice.keeperBook) ?? reachable(g)) : reachable(g);
-    const plan = copyChanges(g, planFor(ctx, g, choice).want, { newIds, keepId: keeper.id });
+    const plan = copyChanges(g, want, { newIds, keepId: keeper.id });
     made.push({ keepId: keeper.id, created: plan.created.map((i) => i + changes.length) });
     changes.push(...plan.changes);
   }
@@ -155,8 +189,10 @@ async function applyChoice(ctx, groups, choice) {
     onDone: async (results) => {
       if (choice.action === "link") {
         let links = ctx.state.links;
-        for (const { keepId, created } of made) {
-          const ids = [keepId, ...created.map((i) => results[i]).filter(Boolean)];
+        for (const { keepId, created, copies } of made) {
+          const ids = copies !== undefined
+            ? (Array.isArray(results[copies]) ? results[copies] : [])
+            : [keepId, ...created.map((i) => results[i]).filter(Boolean)];
           if (ids.length > 1) {
             links = addLink(links, ids);
           }

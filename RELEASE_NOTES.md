@@ -1,3 +1,17 @@
+Daynizer v0.9.0 (in progress, not released)
+
+Changes since v0.8.10. Daynizer remains beta, pre-1.0, keep a backup of anything important.
+
+- **Thunderbird add-on: Thunderbird's own address books in the Contacts tab.** Their contacts show
+  beside Daynizer's (Settings > Contacts can hide them), and the contact editor and every clean-up
+  tool can change them; Thunderbird syncs them as it always does. A contact in two of Thunderbird's books with one
+  contact ID can only be changed in the copy Thunderbird lets add-ons reach; the other copy is marked,
+  and Clean up > In several books sorts such contacts out (mailing lists kept). Every change can be
+  undone from Changes.
+- **The desktop app is unchanged from v0.8.10** apart from wording.
+
+---
+
 Daynizer v0.8.10
 
 Changes since v0.8.9. Daynizer remains beta, pre-1.0, keep a backup of anything important.

@@ -9,7 +9,8 @@ copied to the other.
 
 **Copied with Daynizer changes** (search for "Daynizer" in them):
 - `ui/contact-panel.js`: neutral wording; the OMEMO hint only in the add-on, its "get OMEMO" link only
-  where `ctx.host.omemoPromo`; read-only for Thunderbird's contacts (`card.tb`).
+  where `ctx.host.omemoPromo`. (Until the add-on's Manifest V2 move, 0.9.0, it also locked Thunderbird's
+  contacts, `card.tb`; that's gone, so Save and Delete match Contacts Cleanup again.)
 - `ui/views/copies.js`: plain update/create/delete changes (Daynizer reaches every copy), no mailing
   lists, Daynizer's and Thunderbird's books compared each among themselves, wording.
 - `ui/views/labels.js`: no mailing lists (moving a book is create + delete), wording.
@@ -18,7 +19,7 @@ copied to the other.
 - `ui/views/history.js`, `names.js`, `phones.js`: one help sentence each.
 
 **Daynizer's own:** `controller.js` (in place of `ui/tab.js`: no sidebar, menus or theme, drawn into
-the Contacts tab; leaves changes to Thunderbird's read-only contacts out of Apply), `lib/addressbook.js` (Daynizer's contacts as whole vCards over `window.api.contacts`),
+the Contacts tab; like `ui/tab.js`'s `recompute`, proposes nothing for a `shadowed` copy), `lib/addressbook.js` (Daynizer's contacts as whole vCards over `window.api.contacts`; Thunderbird's own, add-on only, through the same calls, with the `shadowed` copies marked as Contacts Cleanup's `markShadowed` does and Thunderbird's photos read and put back),
 `lib/links.js`, `lib/store.js` (IndexedDB in place of `storage.local`), `cleanup.css` (generated from
 `ui/tab.css`, scoped under `.cleanup`).
 

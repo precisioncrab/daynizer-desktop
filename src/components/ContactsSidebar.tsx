@@ -59,7 +59,7 @@ interface Props {
   /** Parts hidden under View > Contacts Sidebar… (the clean-up items come already filtered in `nav`). */
   hideBooks: boolean;
   hideLabels: boolean;
-  /** Add-on: Thunderbird's own address books, in their own section (read-only for now). */
+  /** Add-on: Thunderbird's own address books, in their own section. */
   thunderbirdBooks: AddressBook[];
 }
 
@@ -274,7 +274,7 @@ export default function ContactsSidebar({
               key={b.id}
               className={`sidebar-item ${picked("book", b.id) ? "active" : ""}`}
               onClick={(e) => choose(e, "book", b.id)}
-              title="Thunderbird's own address book: shown here, read-only for now. Daynizer's address books (above) sync with your server separately."
+              title="Thunderbird's own address book: changes made here are saved in Thunderbird, which syncs it as usual. Daynizer's address books (above) sync with your server separately."
             >
               <span className="sidebar-dot" style={{ background: "transparent", border: "1px solid var(--text-faint)" }} />
               <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{b.name}</span>

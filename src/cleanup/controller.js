@@ -43,7 +43,6 @@ import names from "./ui/views/names.js";
 import chat from "./ui/views/chat.js";
 import changesView from "./ui/views/history.js";
 import { refreshOmemo } from "./ui/omemo-state.js";
-import { isThunderbirdId, THUNDERBIRD_READ_ONLY } from "../thunderbirdBooks";
 
 export const VIEWS = { duplicates, copies, phones, names, labels: labelsView, chat, history: changesView };
 
@@ -153,7 +152,9 @@ export function createCleanup(options) {
   function recompute() {
     const s = state.settings;
     const country = countryById(s.country);
-    const cards = state.cards;
+    // A copy of Thunderbird's that add-ons can't change (one UID in two of its books,
+    // src/cleanup/lib/addressbook.js) is never proposed for a change, as in Contacts Cleanup.
+    const cards = state.cards.filter((c) => !c.shadowed);
     // Daynizer's contacts and Thunderbird's are compared each among themselves: a book both sync
     // holds the same contacts twice, which isn't a duplicate to merge.
     const across = { acrossBooks: s.duplicatesAcrossBooks };
@@ -179,7 +180,7 @@ export function createCleanup(options) {
       state.loadError = e?.message ?? String(e);
     }
     state.allCards = state.books
-      .flatMap((book) => book.contacts.map((node) => ({ ...readCard(node, book.name), uid: node.uid, tb: Boolean(node.tb) })))
+      .flatMap((book) => book.contacts.map((node) => ({ ...readCard(node, book.name), uid: node.uid, tb: Boolean(node.tb), shadowed: node.shadowed ?? null })))
       .sort((a, b) => label(a).localeCompare(label(b)));
     const excluded = excludedBooks();
     state.cards = state.allCards.filter((c) => !excluded.has(c.parentId));
@@ -318,21 +319,8 @@ export function createCleanup(options) {
     if (!changes.length || state.busy) {
       return null;
     }
-    // Thunderbird's own contacts are read-only in Daynizer for now (src/thunderbirdBooks.ts).
-    // Edits to them are left out; a set that makes or deletes cards (a merge, a move) isn't
-    // done at all when it touches one, so it never happens by halves.
-    const touchesThunderbird = (c) => isThunderbirdId(c.id) || isThunderbirdId(c.parentId);
-    const left = changes.filter(touchesThunderbird).length;
-    let note = "";
-    if (left) {
-      const whole = changes.some((c) => c.type !== "update");
-      changes = whole ? [] : changes.filter((c) => !touchesThunderbird(c));
-      if (!changes.length) {
-        toast(THUNDERBIRD_READ_ONLY, { error: true });
-        return null;
-      }
-      note = ` ${plural(left, "change to a contact in Thunderbird's address books was", "changes to contacts in Thunderbird's address books were")} left out: ${THUNDERBIRD_READ_ONLY}`;
-    }
+    // Changes to Thunderbird's own contacts ("tb:" ids) go through the same api since the
+    // add-on's Manifest V2 move (0.9.0); the add-on's background writes them to Thunderbird.
     changes = withLinkedCopies(changes);
     applying = true;
     state.busy = { done: 0, total: changes.length };
@@ -376,8 +364,7 @@ export function createCleanup(options) {
     if (error) {
       toast(`Stopped: ${error}${changed ? ` ${plural(entry.cards.length, "card was", "cards were")} changed before that.` : ""}`, { error: true, entry: changed ? entry : null });
     } else {
-      // With Thunderbird's contacts left out, the page's title counts more than was changed.
-      toast(`${note ? `${title.split(":")[0]}: ${plural(entry.cards.length, "card", "cards")} changed.` : `${title}.`}${note}`, { entry });
+      toast(`${title}.`, { entry });
     }
     return changed ? entry : null;
   }

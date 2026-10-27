@@ -57,7 +57,7 @@ export default function ContactsRail({ contacts, onSelectContact, collapsed, onT
   const now = new Date();
   // One line per person and date: the same contact in several address books
   // (Thunderbird's and Daynizer's) shows once. A copy with the year wins (for
-  // "turns N"), then Daynizer's own copy over Thunderbird's read-only one.
+  // "turns N"), then Daynizer's own copy over Thunderbird's.
   const byKey = new Map<string, Upcoming>();
   const better = (a: Upcoming, b: Upcoming) =>
     (a.turning != null) !== (b.turning != null) ? a.turning != null : isThunderbirdId(b.contactId) && !isThunderbirdId(a.contactId);
