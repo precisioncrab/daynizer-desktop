@@ -1,6 +1,6 @@
 {
   "name": "tasks-desktop",
-  "version": "0.8.10",
+  "version": "0.9.0",
   "description": "A non-touch, mouse/keyboard-first desktop app with Tasks.org-compatible features and CalDAV sync.",
   "license": "GPL-3.0-or-later",
   "author": "Precision Crab <remindful_boogeyman454@simplelogin.com>",

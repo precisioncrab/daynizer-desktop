@@ -1,4 +1,4 @@
-Daynizer v0.9.0 (in progress, not released)
+Daynizer v0.9.0
 
 Changes since v0.8.10. Daynizer remains beta, pre-1.0, keep a backup of anything important.
 
