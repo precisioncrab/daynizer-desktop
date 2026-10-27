@@ -37,6 +37,16 @@ Daynizer's) stays in `state.books`/`allCards` marked `hidden`; `excludedBooks()`
 labels doesn't list it, so a copy in it still counts for In several books and moves. In several books' top box follows
 the selected contact in both (Contacts Cleanup 0.1.24, `234b29b`).
 
+**Changed in both on 2026-10-27 (Contacts Cleanup 0.1.25, `e85475e`):** new `ui/context-menu.js` (copied
+unchanged; Daynizer's `styles.css` `.context-menu` gained its separator, disabled and color-dot rules) and
+`core/copies.js` `renameLabel`. Lists to labels: right-click a mailing list for Rename…, Make a label…, Delete
+mailing list… (`listMenu`), through `ctx.askName` and `ctx.renameList` (both tabs) and `api.renameList` (both
+`lib/addressbook.js`). Hiding: Contacts Cleanup keeps `settings.hiddenBooks`/`hiddenLabels` and marks hidden books
+`hidden` in `narrowCards()`; Daynizer keeps them in `src/contactsHidden.ts` and `lib/addressbook.js` marks its own and
+Thunderbird's hidden books `hidden`, so `excludedBooks()` and Lists to labels' `writable` leave them out in both.
+The sidebars themselves (Contacts Cleanup's `ui/tab.js`, Daynizer's React `ContactsSidebar.tsx`) each got the same
+right-click menus: address books Rename, color, Hide, Delete; labels Rename, color, Hide, Delete.
+
 **Changed in both on 2026-10-26 (not yet in a Contacts Cleanup build):** the "include" checkboxes on
 address books are gone; the clean-up tools work on the address books selected in the sidebar (click one,
 Ctrl+click for several, none = all). The pages ask `ctx.excludedBooks()` instead of reading

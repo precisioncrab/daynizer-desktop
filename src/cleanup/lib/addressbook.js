@@ -32,9 +32,10 @@
 
 import {
   readThunderbirdBooks, sameAsDaynizer, shownThunderbirdBooks, readThunderbirdCard, readThunderbirdByUid, thunderbirdShadowed,
-  thunderbirdPhoto, setThunderbirdPhoto, thunderbirdBookExists, deleteThunderbirdBook,
+  thunderbirdPhoto, setThunderbirdPhoto, thunderbirdBookExists, deleteThunderbirdBook, renameThunderbirdList,
   thunderbirdListsOf, addToThunderbirdList, readThunderbirdList, createThunderbirdList, deleteThunderbirdList, isThunderbirdId,
 } from "../../thunderbirdBooks";
+import { hiddenContactBooks } from "../../contactsHidden";
 
 const contacts = () => window.api.contacts;
 
@@ -59,6 +60,8 @@ export async function loadBooks() {
   // contact in two books, and moving or sorting the shown copy has to go through the "copies"
   // change). The controller leaves it out of every page.
   const shownIds = new Set(shownThunderbirdBooks(allTbBooks).map((b) => b.id));
+  // Books hidden from the Contacts tab (right-click > Hide, or View > Contacts Sidebar…) are left out the same way.
+  const userHidden = hiddenContactBooks();
   const tbBooks = allTbBooks;
   return [
     ...books.map((book) => ({
@@ -68,6 +71,7 @@ export async function loadBooks() {
       remote: false,
       synced: Boolean(book.carddav_addressbook_url),
       thunderbird: false,
+      hidden: userHidden.has(book.id),
       contacts: cards.filter((c) => c.address_book_id === book.id).map(nodeOf),
       lists: [],
     })),
@@ -76,7 +80,7 @@ export async function loadBooks() {
       name: `${book.name} (Thunderbird)`,
       // Lists to labels names the label after the book, without " (Thunderbird)".
       labelName: book.name,
-      hidden: !shownIds.has(book.id),
+      hidden: !shownIds.has(book.id) || userHidden.has(book.id),
       readOnly: book.readOnly,
       remote: false,
       synced: false,
@@ -144,6 +148,9 @@ export const api = {
   },
   async deleteList(id) {
     return deleteThunderbirdList(id);
+  },
+  async renameList(id, name) {
+    return renameThunderbirdList(id, name);
   },
   // Undo checks a book is still there; only Thunderbird's books are deleted from the clean-up pages.
   async bookExists(id) {

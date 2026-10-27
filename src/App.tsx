@@ -14,7 +14,7 @@ import ContactsView from "./components/ContactsView";
 import ImportVCardModal from "./components/ImportVCardModal";
 import ContactsSidebar, { CleanupItem } from "./components/ContactsSidebar";
 import ContactDetailPanel from "./components/ContactDetailPanel";
-import { ContactFilter, LabelColors, contactCategories, contactLabels, dropFromFilter, filterBooks, filterFirstBook } from "./contactUtils";
+import { ContactFilter, LabelColors, contactCategories, contactLabels, dropFromFilter, filterBooks, filterFirstBook, filterHas, toggleInFilter } from "./contactUtils";
 import { createCleanup, VIEWS as CLEANUP_VIEWS } from "./cleanup/controller.js";
 import { omemoTier } from "./cleanup/lib/omemo.js";
 import { LINKS as CLEANUP_LINKS, openLink } from "./cleanup/lib/links.js";
@@ -23,8 +23,9 @@ import ContactsSidebarModal, { SidebarPart, loadSidebarHidden, storeSidebarHidde
 import MoreAppsModal from "./components/MoreAppsModal";
 import {
   ThunderbirdBook, readThunderbirdBooks, sameAsDaynizer, shownThunderbirdBooks, setThunderbirdSameShown, thunderbirdShadowed, onThunderbirdChange, thunderbirdAddressBooks, thunderbirdContacts,
-  isThunderbirdId, thunderbirdBookOf
+  isThunderbirdId, thunderbirdBookOf, renameThunderbirdBook
 } from "./thunderbirdBooks";
+import { HiddenItems, loadHiddenItems, storeHiddenItems, withHidden, loadThunderbirdBookColors, storeThunderbirdBookColors } from "./contactsHidden";
 import ProWall from "./components/ProWall";
 import TrialBanner from "./components/TrialBanner";
 import { Task, TaskList, CaldavAccountPublic, CalendarEvent, Contact, AddressBook, EventOverride, Entitlement, ManualUpdate } from "./types";
@@ -166,6 +167,8 @@ export default function App() {
   // Parts of the Contacts tab's left pane hidden under View > Contacts Sidebar….
   const [sidebarHidden, setSidebarHidden] = useState<SidebarPart[]>(loadSidebarHidden);
   const [showSidebarParts, setShowSidebarParts] = useState(false);
+  // Address books (with their contacts) and labels hidden one at a time (src/contactsHidden.ts).
+  const [hiddenItems, setHiddenItems] = useState<HiddenItems>(loadHiddenItems);
   const [showMoreApps, setShowMoreApps] = useState(false);
   // The specific occurrence (RECURRENCE-ID) the user opened, set when a
   // recurring event is clicked on the calendar; null when selected another way.
@@ -618,12 +621,47 @@ export default function App() {
     loadThunderbirdBooks();
     return onThunderbirdChange(loadThunderbirdBooks);
   }, [loadThunderbirdBooks]);
-  const tbAddressBooks = useMemo(() => thunderbirdAddressBooks(tbBooks), [tbBooks]);
+  // Thunderbird doesn't keep a color for its books; Daynizer remembers one on this computer.
+  const [tbColors, setTbColors] = useState<Record<string, string>>(loadThunderbirdBookColors);
+  const setThunderbirdBookColor = useCallback((id: string, color: string) => {
+    setTbColors((was) => {
+      const next = { ...was, [id]: color };
+      storeThunderbirdBookColors(next);
+      return next;
+    });
+  }, []);
+  const renameThunderbirdBookAsked = useCallback(async (id: string, name: string) => {
+    try {
+      await renameThunderbirdBook(id, name);
+    } catch (err: any) {
+      setSyncMsg(`Thunderbird didn't rename the address book: ${err?.message || err}`);
+      setTimeout(() => setSyncMsg(null), 8000);
+    }
+    await loadThunderbirdBooks();
+  }, [loadThunderbirdBooks]);
+  const tbAddressBooks = useMemo(
+    () => thunderbirdAddressBooks(tbBooks).map((b) => (tbColors[b.id] ? { ...b, color: tbColors[b.id] } : b)),
+    [tbBooks, tbColors]
+  );
   const tbBookNames = useMemo(() => Object.fromEntries(tbBooks.map((b) => [b.id, b.name])), [tbBooks]);
   const daynizerBookNames = useMemo(() => Object.fromEntries(addressBooks.map((b) => [b.id, b.name])), [addressBooks]);
   // Daynizer's contacts and Thunderbird's, for the list, the sidebar counts and labels, and birthdays.
   const shownContacts = useMemo(() => (tbBooks.length ? [...contacts, ...thunderbirdContacts(tbBooks)] : contacts), [contacts, tbBooks]);
-  useEffect(() => { cleanup.contactsChanged(); }, [contacts, addressBooks, tbBooks, cleanup]);
+  // The Contacts tab's list, counts and labels leave out the books hidden one at a time (birthdays don't).
+  const hiddenBookSet = useMemo(() => new Set(hiddenItems.books), [hiddenItems]);
+  const listedContacts = useMemo(
+    () => (hiddenBookSet.size ? shownContacts.filter((c) => !hiddenBookSet.has(c.address_book_id)) : shownContacts),
+    [shownContacts, hiddenBookSet]
+  );
+  const setItemHidden = useCallback((kind: "books" | "labels", id: string, hidden: boolean) => {
+    setHiddenItems((was) => {
+      const next = withHidden(was, kind, id, hidden);
+      storeHiddenItems(next);
+      return next;
+    });
+    if (hidden) setContactFilter((f) => dropFromFilter(f, kind === "books" ? "book" : "label", id));
+  }, []);
+  useEffect(() => { cleanup.contactsChanged(); }, [contacts, addressBooks, tbBooks, hiddenItems, cleanup]);
 
   // Live ref for the menu's New Task (Ctrl+N): the listener below is registered
   // once, so calling createTaskInScope directly would use the first render's
@@ -992,7 +1030,8 @@ export default function App() {
    *  (group_labels) is not removed here — that would need editing the group
    *  card itself; this handles the category-based labels created in-app. */
   async function deleteLabel(label: string) {
-    const affected = contacts.filter(
+    // Thunderbird's shown contacts too (add-on); the background saves those in Thunderbird.
+    const affected = listedContacts.filter(
       (c) => !c.deleted && contactCategories(c).some((x) => x.toLowerCase() === label.toLowerCase())
     );
     if (!window.confirm(
@@ -1007,7 +1046,38 @@ export default function App() {
     setContactFilter((f) => dropFromFilter(f, "label", label));
     if (labelColors[label]) await setLabelColor(label, null);
     await loadContacts();
+    if (affected.some((c) => isThunderbirdId(c.id))) await loadThunderbirdBooks();
     scheduleDirtySync();
+  }
+
+  /** Rename a label on every listed contact that carries it (own CATEGORIES), keeping its color. */
+  async function renameLabel(label: string, name: string) {
+    const key = label.toLowerCase();
+    const affected = listedContacts.filter((c) => !c.deleted && contactCategories(c).some((x) => x.toLowerCase() === key));
+    const failed: string[] = [];
+    for (const c of affected) {
+      const kept = contactCategories(c).filter((x) => x.toLowerCase() !== key);
+      const next = kept.some((x) => x.toLowerCase() === name.toLowerCase()) ? kept : [...kept, name];
+      try {
+        await window.api.contacts?.update(c.id, { categories: next.join(", ") });
+      } catch (err: any) {
+        failed.push(`${c.fn || c.id}: ${err?.message || err}`);
+      }
+    }
+    if (labelColors[label]) {
+      const colors = { ...labelColors, [name]: labelColors[label] };
+      delete colors[label];
+      setLabelColors(colors);
+      await window.api.settings?.set("contactLabelColors", JSON.stringify(colors));
+    }
+    setContactFilter((f) => (filterHas(f, "label", label) ? toggleInFilter(toggleInFilter(f, "label", label), "label", name) : f));
+    await loadContacts();
+    if (affected.some((c) => isThunderbirdId(c.id))) await loadThunderbirdBooks();
+    scheduleDirtySync();
+    if (failed.length) {
+      setSyncMsg(`Renamed the label on ${affected.length - failed.length} of ${affected.length} contacts. ${failed[0]}`);
+      setTimeout(() => setSyncMsg(null), 10000);
+    }
   }
 
   // A change Daynizer can't make says why in the Contacts tab's message bar (the clean-up
@@ -1437,8 +1507,8 @@ export default function App() {
     <div className={`app ${railCollapsed ? "rail-collapsed" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       {mainView === "contacts" && !proLocked ? (
         <ContactsSidebar
-          addressBooks={addressBooks}
-          contacts={shownContacts}
+          addressBooks={addressBooks.filter((b) => !hiddenBookSet.has(b.id))}
+          contacts={listedContacts}
           accounts={accounts.map((a) => ({ id: a.id, label: a.label }))}
           filter={contactFilter}
           onSelect={(f, keepPage) => { setContactFilter(f); if (!keepPage) setContactsMode("list"); }}
@@ -1449,6 +1519,15 @@ export default function App() {
           labelColors={labelColors}
           onSetLabelColor={setLabelColor}
           onDeleteLabel={deleteLabel}
+          onRenameLabel={renameLabel}
+          hiddenLabels={hiddenItems.labels}
+          hiddenBookCount={addressBooks.filter((b) => hiddenBookSet.has(b.id)).length}
+          hiddenThunderbirdBookCount={tbAddressBooks.filter((b) => hiddenBookSet.has(b.id)).length}
+          onHide={(kind, id) => setItemHidden(kind, id, true)}
+          onShowHidden={() => setShowSidebarParts(true)}
+          thunderbirdBookColors={tbColors}
+          onSetThunderbirdBookColor={setThunderbirdBookColor}
+          onRenameThunderbirdBook={renameThunderbirdBookAsked}
           onDisconnectBook={disconnectBook}
           onDeleteBook={deleteBook}
           onSync={() => runSync()}
@@ -1465,7 +1544,7 @@ export default function App() {
             omemoLink: sidebarHidden.includes("chat") || sidebarHidden.includes("chat.omemo") ? null : omemoLink
           }}
           hideBooks={sidebarHidden.includes("books")}
-          thunderbirdBooks={sidebarHidden.includes("tbbooks") ? [] : tbAddressBooks}
+          thunderbirdBooks={sidebarHidden.includes("tbbooks") ? [] : tbAddressBooks.filter((b) => !hiddenBookSet.has(b.id))}
           sameThunderbirdBooks={sidebarHidden.includes("tbbooks") ? [] : sameThunderbirdBooks}
           onShowSameThunderbirdBook={showSameThunderbirdBook}
           dismissedSameNotes={dismissedSameNotes}
@@ -1578,7 +1657,7 @@ export default function App() {
             <div ref={cleanupMainRef} className="cleanup cleanup-main" />
           ) : (
           <ContactsView
-            contacts={shownContacts}
+            contacts={listedContacts}
             filter={contactFilter}
             labelColors={labelColors}
             selectedContactId={selectedContactId}
@@ -1800,6 +1879,11 @@ export default function App() {
           chatList={IS_ADDON && omemoTier(cleanup.omemoStatus()) !== "none"}
           omemoLink={omemoLink?.text ?? null}
           thunderbird={tbBooks.length > 0}
+          books={addressBooks.map((b) => ({ id: b.id, name: b.name, count: shownContacts.filter((c) => c.address_book_id === b.id && !c.deleted).length }))}
+          thunderbirdBooks={tbAddressBooks.map((b) => ({ id: b.id, name: b.name, count: shownContacts.filter((c) => c.address_book_id === b.id).length }))}
+          labels={[...new Set([...listedContacts.filter((c) => !c.deleted).flatMap(contactLabels), ...hiddenItems.labels])].sort((a, b) => a.localeCompare(b))}
+          hiddenItems={hiddenItems}
+          onSetItemShown={(kind, id, shown) => setItemHidden(kind, id, !shown)}
           onClose={() => setShowSidebarParts(false)}
         />
       )}

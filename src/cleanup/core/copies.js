@@ -115,6 +115,27 @@ export function addLabels(vCard, labels) {
 }
 
 /**
+ * The vCard with the label `from` (any case) renamed to `to`, or taken off
+ * when `to` is empty. Unchanged when it doesn't have the label.
+ */
+export function renameLabel(vCard, from, to) {
+  const have = labelsOf(vCard);
+  const key = String(from).trim().toLowerCase();
+  if (!have.some((l) => l.toLowerCase() === key)) {
+    return vCard;
+  }
+  const kept = have.filter((l) => l.toLowerCase() !== key);
+  const next = String(to ?? "").trim();
+  const labels = next && !kept.some((l) => l.toLowerCase() === next.toLowerCase()) ? [...kept, next] : kept;
+  const vcard = parseVCard(vCard);
+  getAll(vcard, "CATEGORIES").forEach((p) => removeProp(vcard, p));
+  if (labels.length) {
+    insertProp(vcard, makeProp("CATEGORIES", labels.map(escapeText).join(",")), "NOTE");
+  }
+  return serializeVCard(vcard);
+}
+
+/**
  * What each copy becomes, by address book id, for history's "copies"
  * change: { want, label, linked } (linked: whether the copies are linked
  * afterwards). `action` is "link", "keep" or "separate"; `keeper` the card

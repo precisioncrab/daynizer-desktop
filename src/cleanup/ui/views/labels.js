@@ -24,12 +24,14 @@
 
 import { h, plural } from "../dom.js";
 import { toolbar, row, emptyState } from "../parts.js";
+import { openContextMenu } from "../context-menu.js";
 import { label as cardLabel } from "../../core/card.js";
 import { addLabels, combinedVCard } from "../../core/copies.js";
 import { withoutUid } from "../../core/history.js";
 import { comparable } from "../../core/vcard.js";
 
-// Daynizer: a hidden Thunderbird book (the same contacts as one of Daynizer's) isn't offered.
+// Daynizer: a hidden book (a Thunderbird book with the same contacts as one of Daynizer's, or one
+// hidden from the Contacts tab) isn't offered.
 const writable = (ctx) => ctx.state.books.filter((b) => !b.readOnly && !b.remote && !b.hidden);
 const bookName = (ctx, id) => ctx.state.books.find((b) => b.id === id)?.name ?? "";
 
@@ -227,7 +229,22 @@ async function listToLabel(ctx, book, list) {
   }
 }
 
-/** Right-click on a mailing list: delete it (its contacts stay; Undo makes it again with its members). */
+/** Right-click on a mailing list: rename it, or delete it. */
+function listMenu(ctx, e, book, list) {
+  openContextMenu(e, [
+    { label: "Rename…", disabled: Boolean(ctx.state.busy), onClick: async () => {
+      const name = await ctx.askName({ title: `Rename the list ${list.name}`, value: list.name });
+      if (name) {
+        await ctx.renameList(list, name);
+      }
+    } },
+    { label: "Make a label…", disabled: Boolean(ctx.state.busy) || !list.members.length, onClick: () => listToLabel(ctx, book, list) },
+    { separator: true },
+    { label: "Delete mailing list…", danger: true, disabled: Boolean(ctx.state.busy), onClick: () => deleteList(ctx, book, list) },
+  ]);
+}
+
+/** Deletes a mailing list after asking (its contacts stay; Undo makes it again with its members). */
 async function deleteList(ctx, book, list) {
   const go = await ctx.confirm({
     title: `Delete the mailing list ${list.name}?`,
@@ -257,7 +274,7 @@ export default {
     return [
       toolbar(ctx, { title: anyLists ? "Address books and mailing lists to labels" : "Address books to labels", search: false }),
       h("div", { class: "toolbar-filters" }, h("span", {}, anyLists
-        ? "A label stays with a contact wherever it goes, and syncs with it (CardDAV, Google; phones show labels as groups). An address book or mailing list only holds contacts of its own book. Right-click a mailing list to delete it."
+        ? "A label stays with a contact wherever it goes, and syncs with it (CardDAV, Google; phones show labels as groups). An address book or mailing list only holds contacts of its own book. Right-click a mailing list to rename or delete it."
         : "A label stays with a contact wherever it goes, and syncs with it (CardDAV; phones show labels as groups). An address book only holds its own contacts.")),
       h("div", { class: "list", "data-scroll": "labels" },
         rows.length
@@ -268,7 +285,7 @@ export default {
               ? [h("span", {}, `mailing list in ${book.name}`), h("span", {}, plural(list.members.length, "member", "members"))]
               : [h("span", {}, "address book"), h("span", {}, plural(book.contacts.length, "contact", "contacts")), book.lists?.length ? h("span", {}, plural(book.lists.length, "mailing list", "mailing lists")) : null],
             actions: [h("button", { disabled: Boolean(ctx.state.busy) || (list ? !list.members.length : !book.contacts.length), onClick: () => (list ? listToLabel(ctx, book, list) : bookToLabel(ctx, book)) }, "Make a label…")],
-            onContextMenu: list && !ctx.state.busy ? () => deleteList(ctx, book, list) : null,
+            onContextMenu: list ? (e) => listMenu(ctx, e, book, list) : null,
           }))
           : emptyState("No address books to change.", "")),
     ];

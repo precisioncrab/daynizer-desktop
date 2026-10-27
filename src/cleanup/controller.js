@@ -144,6 +144,8 @@ export function createCleanup(options) {
     deleteBook,
     saveLinks,
     leaveCopies,
+    renameList,
+    askName: (o) => askName(o),
     confirm: (o) => confirmDialog(o),
     toast: (text, o) => toast(text, o),
   };
@@ -483,6 +485,39 @@ export function createCleanup(options) {
     toastTimer = setTimeout(() => {
       el.hidden = true;
     }, error ? 20000 : 12000);
+  }
+
+  /** A dialog asking for a name; the new name, or null (cancelled, empty or unchanged). */
+  async function askName({ title, text, value, ok = "Rename" }) {
+    let name = value;
+    const input = h("input", { type: "text", style: { width: "100%" }, value, onInput: (e) => {
+      name = e.target.value;
+    }, onKeydown: (e) => {
+      if (e.key === "Enter") {
+        overlayLayer().querySelector(".cleanup-modal-root .dialog-actions .primary")?.click();
+      }
+    } });
+    const answer = confirmDialog({ title, body: [text ? h("p", {}, text) : null, input], ok });
+    input.focus();
+    input.select();
+    const go = await answer;
+    const next = name.trim();
+    return go && next && next !== value ? next : null;
+  }
+
+  /** Renames one of Thunderbird's mailing lists ({ id, name }); true when it's done. */
+  async function renameList(list, name) {
+    try {
+      await api.renameList(list.id, name);
+    } catch (e) {
+      console.error("[cleanup] renaming a mailing list", e);
+      toast(`Thunderbird didn't rename the list ${list.name}, and nothing was changed: ${e?.message ?? e}`, { error: true });
+      return false;
+    }
+    await reload().catch(() => {});
+    options.onChanged();
+    toast(`Renamed the list ${list.name} to ${name}.`);
+    return true;
   }
 
   function confirmDialog({ title, body, ok = "OK", cancel = "Cancel", danger = false }) {

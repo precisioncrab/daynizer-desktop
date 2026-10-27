@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import type { HiddenItems } from "../contactsHidden";
 
 /** A part of the Contacts tab's left pane that can be hidden (View > Contacts Sidebar…). */
 export type SidebarPart =
@@ -29,14 +30,23 @@ interface Props {
   omemoLink: string | null;
   /** Thunderbird's address books are an option only in the add-on, with them switched on in Settings. */
   thunderbird: boolean;
+  /** Each address book and label, to hide one at a time (src/contactsHidden.ts). */
+  books: { id: string; name: string; count: number }[];
+  thunderbirdBooks: { id: string; name: string; count: number }[];
+  labels: string[];
+  hiddenItems: HiddenItems;
+  onSetItemShown: (kind: "books" | "labels", id: string, shown: boolean) => void;
   onClose: () => void;
 }
 
 /** View > Contacts Sidebar…: tick a part to show it in the Contacts tab's left
  *  pane, untick to hide it. Hiding only takes it off the pane: no contact,
  *  setting or server changes, and ticking it again brings it back as it was.
- *  The contact list itself always shows. */
-export default function ContactsSidebarModal({ hidden, onSetShown, chatList, omemoLink, thunderbird, onClose }: Props) {
+ *  The contact list itself always shows. Below that, each address book and
+ *  label: an unticked address book is hidden with its contacts. */
+export default function ContactsSidebarModal({
+  hidden, onSetShown, chatList, omemoLink, thunderbird, books, thunderbirdBooks, labels, hiddenItems, onSetItemShown, onClose
+}: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
@@ -58,6 +68,16 @@ export default function ContactsSidebarModal({ hidden, onSetShown, chatList, ome
     </div>
   );
 
+  const item = (kind: "books" | "labels", id: string, name: string, count?: number) => (
+    <div className="filters-row" key={`${kind}:${id}`}>
+      <label className="filters-show">
+        <input type="checkbox" checked={!hiddenItems[kind].includes(id)} onChange={(e) => onSetItemShown(kind, id, e.target.checked)} />
+        {name}
+        {count !== undefined && <span style={{ color: "var(--text-faint)", fontSize: 12 }}>({count})</span>}
+      </label>
+    </div>
+  );
+
   return (
     <div className="overlay" onClick={onClose}>
       <div className="settings-modal filters-modal" style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
@@ -73,6 +93,19 @@ export default function ContactsSidebarModal({ hidden, onSetShown, chatList, ome
           {row("books", thunderbird ? "Daynizer address books" : "Address books")}
           {thunderbird && row("tbbooks", "Thunderbird address books")}
           {row("labels", "Labels")}
+        </section>
+        <section>
+          <h3>Address books and labels, one at a time</h3>
+          <p className="filters-hint">
+            An unticked address book is hidden with its contacts: they leave the contact list, the labels and the clean-up
+            pages (birthdays still show). An unticked label only comes off the pane. Right-click one in the pane to hide it too.
+          </p>
+          {books.length > 0 && <h4 style={{ margin: "8px 0 2px", fontSize: 12, color: "var(--text-muted)" }}>{thunderbird ? "Daynizer address books" : "Address books"}</h4>}
+          {books.map((b) => item("books", b.id, b.name, b.count))}
+          {thunderbirdBooks.length > 0 && <h4 style={{ margin: "8px 0 2px", fontSize: 12, color: "var(--text-muted)" }}>Thunderbird address books</h4>}
+          {thunderbirdBooks.map((b) => item("books", b.id, b.name, b.count))}
+          {labels.length > 0 && <h4 style={{ margin: "8px 0 2px", fontSize: 12, color: "var(--text-muted)" }}>Labels</h4>}
+          {labels.map((l) => item("labels", l, l))}
         </section>
         <section>
           <h3>Clean up</h3>

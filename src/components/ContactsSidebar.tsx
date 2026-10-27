@@ -69,12 +69,26 @@ interface Props {
   onDismissSameNote?: (id: string) => void;
   /** Add-on: right-click > Delete on one of Thunderbird's books (asks first). */
   onDeleteThunderbirdBook?: (id: string) => void;
+  /** Add-on: right-click > Rename and the color dots on one of Thunderbird's books (colors kept on this computer). */
+  onRenameThunderbirdBook?: (id: string, name: string) => void;
+  thunderbirdBookColors?: Record<string, string>;
+  onSetThunderbirdBookColor?: (id: string, color: string) => void;
+  onRenameLabel: (label: string, name: string) => void;
+  /** Books and labels hidden one at a time (src/contactsHidden.ts): the books come already left out. */
+  hiddenLabels: string[];
+  hiddenBookCount: number;
+  hiddenThunderbirdBookCount: number;
+  onHide: (kind: "books" | "labels", id: string) => void;
+  /** "2 hidden": View > Contacts Sidebar…, where they're ticked to show again. */
+  onShowHidden: () => void;
 }
 
 export default function ContactsSidebar({
   addressBooks, contacts, accounts, filter, onSelect, onCreateBook, onCreateServerBook, onSetBookColor, onRenameBook, labelColors, onSetLabelColor, onDeleteLabel,
   onDisconnectBook, onDeleteBook, onSync, syncing, onOpenSettings, collapsed, onToggleCollapsed, nav, hideBooks, hideLabels, thunderbirdBooks,
-  sameThunderbirdBooks = [], onShowSameThunderbirdBook, dismissedSameNotes = [], onDismissSameNote, onDeleteThunderbirdBook
+  sameThunderbirdBooks = [], onShowSameThunderbirdBook, dismissedSameNotes = [], onDismissSameNote, onDeleteThunderbirdBook,
+  onRenameThunderbirdBook, thunderbirdBookColors = {}, onSetThunderbirdBookColor, onRenameLabel,
+  hiddenLabels, hiddenBookCount, hiddenThunderbirdBookCount, onHide, onShowHidden
 }: Props) {
   const [folded, setFolded] = useState(readFolded);
   function toggleFold(id: string) {
@@ -115,17 +129,54 @@ export default function ContactsSidebar({
   const [bookTarget, setBookTarget] = useState("local"); // "local" or accountId
   const [labelMenu, setLabelMenu] = useState<{ x: number; y: number; label: string } | null>(null);
   const [bookMenu, setBookMenu] = useState<{ x: number; y: number; book: AddressBook } | null>(null);
-  const [tbBookMenu, setTbBookMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  const [tbBookMenu, setTbBookMenu] = useState<{ x: number; y: number; id: string; name: string } | null>(null);
+  // Inline rename of a label (on every listed contact that has it).
+  const [editingLabel, setEditingLabel] = useState<string | null>(null);
   // Inline rename of an address book, mirroring the Calendar/List sidebar.
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const renameCancelRef = useRef(false);
-  function submitRename(b: AddressBook) {
+  function submitRename(b: AddressBook, thunderbird = false) {
     if (renameCancelRef.current) { renameCancelRef.current = false; setEditingBookId(null); setEditName(""); return; }
     const n = editName.trim();
-    if (n && n !== b.name) onRenameBook(b.id, n);
+    if (n && n !== b.name) (thunderbird ? onRenameThunderbirdBook?.(b.id, n) : onRenameBook(b.id, n));
     setEditingBookId(null); setEditName("");
   }
+  function submitLabelRename(label: string) {
+    if (renameCancelRef.current) { renameCancelRef.current = false; setEditingLabel(null); setEditName(""); return; }
+    const n = editName.trim();
+    if (n && n !== label) onRenameLabel(label, n);
+    setEditingLabel(null); setEditName("");
+  }
+  /** The inline name field of a book or label being renamed (Enter saves, Escape cancels). */
+  const renameField = (key: string, color: string, onSubmit: () => void, onCancel: () => void) => (
+    <div key={key} className="sidebar-item" style={{ "--accent": color } as any}>
+      <span className="sidebar-dot" style={{ background: color }} />
+      <input
+        autoFocus
+        style={{ flex: 1, minWidth: 0, background: "var(--bg-field)", border: "1px solid var(--border-strong)", borderRadius: 6, color: "var(--text-strong)", padding: "2px 6px" }}
+        value={editName}
+        onChange={(e) => setEditName(e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSubmit();
+          if (e.key === "Escape") { renameCancelRef.current = true; onCancel(); }
+        }}
+        onBlur={onSubmit}
+      />
+    </div>
+  );
+  /** "2 hidden" under a category: opens View > Contacts Sidebar…. */
+  const hiddenNote = (n: number) => n > 0 && (
+    <div
+      className="sidebar-hidden-note"
+      role="button"
+      tabIndex={0}
+      title="Show them again (View > Contacts Sidebar…)"
+      onClick={onShowHidden}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onShowHidden(); } }}
+    >{n} hidden</div>
+  );
 
   /** Open the "new address book" form, defaulting its destination to the first
    *  account so new books sync by default -- "Local only" stays a deliberate
@@ -159,11 +210,12 @@ export default function ContactsSidebar({
   };
   const live = contacts.filter((c) => !c.deleted);
   const bookCount = (id: string) => live.filter((c) => c.address_book_id === id).length;
-  const labels = (() => {
+  const allLabels = (() => {
     const set = new Set<string>();
     for (const c of live) for (const l of contactLabels(c)) set.add(l);
     return [...set].sort((a, b) => a.localeCompare(b));
   })();
+  const labels = allLabels.filter((l) => !hiddenLabels.includes(l));
 
   async function submitNewBook() {
     const trimmed = name.trim();
@@ -197,21 +249,7 @@ export default function ContactsSidebar({
         {!folded.has("books") && (<>
         {addressBooks.map((b) => (
           editingBookId === b.id ? (
-            <div key={b.id} className="sidebar-item" style={{ "--accent": b.color } as any}>
-              <span className="sidebar-dot" style={{ background: b.color }} />
-              <input
-                autoFocus
-                style={{ flex: 1, minWidth: 0, background: "var(--bg-field)", border: "1px solid var(--border-strong)", borderRadius: 6, color: "var(--text-strong)", padding: "2px 6px" }}
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") submitRename(b);
-                  if (e.key === "Escape") { renameCancelRef.current = true; setEditingBookId(null); setEditName(""); }
-                }}
-                onBlur={() => submitRename(b)}
-              />
-            </div>
+            renameField(b.id, b.color, () => submitRename(b), () => { setEditingBookId(null); setEditName(""); })
           ) : (
             <div
               key={b.id}
@@ -219,7 +257,7 @@ export default function ContactsSidebar({
               style={{ "--accent": b.color } as any}
               onClick={(e) => choose(e, "book", b.id)}
               onContextMenu={(e) => { e.preventDefault(); setBookMenu({ x: e.clientX, y: e.clientY, book: b }); }}
-              title={b.carddav_addressbook_url ? "Right-click to rename, disconnect or delete" : "Right-click to rename or delete"}
+              title={b.carddav_addressbook_url ? "Right-click to rename, color, hide, disconnect or delete" : "Right-click to rename, color, hide or delete"}
             >
               <span className="sidebar-dot" style={{ background: b.color }} />
               <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -229,6 +267,7 @@ export default function ContactsSidebar({
             </div>
           )
         ))}
+        {hiddenNote(hiddenBookCount)}
         {adding ? (
           <div style={{ padding: "6px 14px" }}>
             <input
@@ -276,7 +315,7 @@ export default function ContactsSidebar({
         </>)}
         </>)}
 
-        {(thunderbirdBooks.length > 0 || sameThunderbirdBooks.length > 0) && (<>
+        {(thunderbirdBooks.length > 0 || sameThunderbirdBooks.length > 0 || hiddenThunderbirdBookCount > 0) && (<>
           <div style={{ height: 8 }} />
           {heading("tbbooks", "Thunderbird address books")}
           {!folded.has("tbbooks") && sameThunderbirdBooks.filter((b) => !dismissedSameNotes.includes(b.id)).map((b) => (
@@ -294,37 +333,48 @@ export default function ContactsSidebar({
               >×</button>
             </div>
           ))}
-          {!folded.has("tbbooks") && thunderbirdBooks.map((b) => (
-            <div
-              key={b.id}
-              className={`sidebar-item ${picked("book", b.id) ? "active" : ""}`}
-              onClick={(e) => choose(e, "book", b.id)}
-              onContextMenu={(e) => { e.preventDefault(); if (onDeleteThunderbirdBook) setTbBookMenu({ x: e.clientX, y: e.clientY, id: b.id }); }}
-              title="Thunderbird's own address book: changes made here are saved in Thunderbird, which syncs it as usual. Daynizer's address books (above) sync with your server separately. Right-click to delete it."
-            >
-              <span className="sidebar-dot" style={{ background: "transparent", border: "1px solid var(--text-faint)" }} />
-              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{b.name}</span>
-              {bookCount(b.id) > 0 && <span className="count">{bookCount(b.id)}</span>}
-            </div>
-          ))}
+          {!folded.has("tbbooks") && thunderbirdBooks.map((b) => {
+            const color = thunderbirdBookColors[b.id];
+            return editingBookId === b.id ? (
+              renameField(b.id, color ?? "transparent", () => submitRename(b, true), () => { setEditingBookId(null); setEditName(""); })
+            ) : (
+              <div
+                key={b.id}
+                className={`sidebar-item ${picked("book", b.id) ? "active" : ""}`}
+                onClick={(e) => choose(e, "book", b.id)}
+                onContextMenu={(e) => { e.preventDefault(); setTbBookMenu({ x: e.clientX, y: e.clientY, id: b.id, name: b.name }); }}
+                title="Thunderbird's own address book: changes made here are saved in Thunderbird, which syncs it as usual. Daynizer's address books (above) sync with your server separately. Right-click to rename, color, hide or delete it."
+              >
+                <span className="sidebar-dot" style={color ? { background: color } : { background: "transparent", border: "1px solid var(--text-faint)" }} />
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{b.name}</span>
+                {bookCount(b.id) > 0 && <span className="count">{bookCount(b.id)}</span>}
+              </div>
+            );
+          })}
+          {!folded.has("tbbooks") && hiddenNote(hiddenThunderbirdBookCount)}
         </>)}
 
-        {!hideLabels && labels.length > 0 && (
+        {!hideLabels && allLabels.length > 0 && (
           <>
             <div style={{ height: 8 }} />
             {heading("labels", "Labels")}
             {!folded.has("labels") && labels.map((l) => (
+              editingLabel === l ? (
+                renameField(`label:${l}`, labelColors[l] || "#6f7378", () => submitLabelRename(l), () => { setEditingLabel(null); setEditName(""); })
+              ) : (
               <div
                 key={l}
                 className={`sidebar-item ${picked("label", l) ? "active" : ""}`}
                 onClick={(e) => choose(e, "label", l)}
                 onContextMenu={(e) => { e.preventDefault(); setLabelMenu({ x: e.clientX, y: e.clientY, label: l }); }}
-                title="Ctrl+click to show more than one. Right-click to set a color."
+                title="Ctrl+click to show more than one. Right-click to rename, color, hide or delete it."
               >
                 <span className="sidebar-dot" style={{ background: labelColors[l] || "#6f7378" }} />
                 <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{l}</span>
               </div>
+              )
             ))}
+            {!folded.has("labels") && hiddenNote(allLabels.length - labels.length)}
           </>
         )}
 
@@ -371,8 +421,10 @@ export default function ContactsSidebar({
           y={labelMenu.y}
           onClose={() => setLabelMenu(null)}
           items={[
+            { label: "Rename", onClick: () => { setEditingLabel(labelMenu.label); setEditName(labelMenu.label); } },
             ...PALETTE.map((p) => ({ label: `● ${p.name}`, onClick: () => onSetLabelColor(labelMenu.label, p.color) })),
             { label: "No color", onClick: () => onSetLabelColor(labelMenu.label, null) },
+            { label: "Hide", onClick: () => onHide("labels", labelMenu.label) },
             { label: "Delete label", danger: true, onClick: () => onDeleteLabel(labelMenu.label) }
           ]}
         />
@@ -386,6 +438,7 @@ export default function ContactsSidebar({
           items={[
             { label: "Rename", onClick: () => { setEditingBookId(bookMenu.book.id); setEditName(bookMenu.book.name); } },
             ...PALETTE.map((p) => ({ label: `● ${p.name}`, onClick: () => onSetBookColor(bookMenu.book.id, p.color) })),
+            { label: "Hide (and its contacts)", onClick: () => onHide("books", bookMenu.book.id) },
             ...(bookMenu.book.carddav_addressbook_url
               ? [{ label: "Disconnect from CardDAV", onClick: () => onDisconnectBook(bookMenu.book) }]
               : []),
@@ -398,7 +451,12 @@ export default function ContactsSidebar({
           x={tbBookMenu.x}
           y={tbBookMenu.y}
           onClose={() => setTbBookMenu(null)}
-          items={[{ label: "Delete address book…", danger: true, onClick: () => onDeleteThunderbirdBook?.(tbBookMenu.id) }]}
+          items={[
+            ...(onRenameThunderbirdBook ? [{ label: "Rename", onClick: () => { setEditingBookId(tbBookMenu.id); setEditName(tbBookMenu.name); } }] : []),
+            ...(onSetThunderbirdBookColor ? PALETTE.map((p) => ({ label: `● ${p.name}`, onClick: () => onSetThunderbirdBookColor(tbBookMenu.id, p.color) })) : []),
+            { label: "Hide (and its contacts)", onClick: () => onHide("books", tbBookMenu.id) },
+            ...(onDeleteThunderbirdBook ? [{ label: "Delete address book…", danger: true, onClick: () => onDeleteThunderbirdBook(tbBookMenu.id) }] : [])
+          ]}
         />
       )}
     </div>

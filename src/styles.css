@@ -612,6 +612,9 @@ input, textarea, select { user-select: text; }
 .event-field { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); padding: 4px 0; }
 .event-notes { white-space: pre-wrap; line-height: 1.4; }
 
+.sidebar-hidden-note { padding: 2px 14px 6px 31px; font-size: 11px; color: var(--text-faint); cursor: pointer; }
+.sidebar-hidden-note:hover { color: var(--text-muted); text-decoration: underline; }
+
 /* ---------- Context menu ---------- */
 .context-menu {
   position: fixed;
@@ -626,6 +629,14 @@ input, textarea, select { user-select: text; }
 .context-menu .item { padding: 7px 14px; font-size: 12px; cursor: pointer; }
 .context-menu .item:hover { background: var(--menu-hover-strong); }
 .context-menu .item.danger { color: var(--danger-text); }
+.context-menu .item.disabled { color: var(--text-faint); cursor: default; }
+.context-menu .item.disabled:hover { background: transparent; }
+.context-menu .separator { height: 1px; margin: 4px 0; background: var(--border-alt); }
+.context-menu .colors { display: flex; gap: 6px; padding: 6px 14px; }
+.context-menu .swatch { width: 16px; height: 16px; padding: 0; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
+.context-menu .swatch.on { border-color: var(--text-strong); }
+.context-menu .swatch.none { background: transparent; border: 1px dashed var(--text-faint); }
+.context-menu .swatch.none.on { border: 2px solid var(--text-strong); }
 
 /* ---------- Settings overlay ---------- */
 .overlay { position: fixed; inset: 0; background: var(--overlay); display: flex; align-items: center; justify-content: center; z-index: 999; }

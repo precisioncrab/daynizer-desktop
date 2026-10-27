@@ -296,6 +296,21 @@ export async function thunderbirdBookExists(id: string): Promise<boolean> {
   }
 }
 
+/** Renames a Thunderbird book ("tb:<book>"). */
+export async function renameThunderbirdBook(id: string, name: string): Promise<void> {
+  const api = addressBooks();
+  if (!api?.update || !isThunderbirdId(id)) throw new Error("Only Thunderbird's address books can be renamed here.");
+  await api.update(id.slice(TB_PREFIX.length), { name });
+}
+
+/** Renames a Thunderbird mailing list (its nickname and description stay). */
+export async function renameThunderbirdList(id: string, name: string): Promise<void> {
+  const lists = mailingListsApi();
+  if (!lists) throw new Error("Only Thunderbird's address books have mailing lists.");
+  const node = await lists.get(id);
+  await lists.update(id, { name, nickName: node.nickName ?? "", description: node.description ?? "" });
+}
+
 /** Deletes a Thunderbird book ("tb:<book>") with its contacts and mailing lists; can't be undone. */
 export async function deleteThunderbirdBook(id: string): Promise<void> {
   const api = addressBooks();
