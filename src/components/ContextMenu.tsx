@@ -1,10 +1,21 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-interface Item {
+interface ActionItem {
   label: string;
   onClick: () => void;
   danger?: boolean;
 }
+
+/** A row of color dots in the real colors (as in Contacts Cleanup's menu); `current` is ringed.
+ *  With `onNone`, a dashed dot at the end is "No color". */
+interface ColorsItem {
+  colors: { name: string; color: string }[];
+  current?: string | null;
+  onPick: (color: string) => void;
+  onNone?: () => void;
+}
+
+type Item = ActionItem | ColorsItem;
 
 interface Props {
   x: number;
@@ -48,7 +59,30 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
 
   return (
     <div className="context-menu" style={{ left: pos.x, top: pos.y }} ref={ref}>
-      {items.map((item) => (
+      {items.map((item) => ("colors" in item ? (
+        <div key="colors" className="colors">
+          {item.colors.map((c) => (
+            <button
+              key={c.color}
+              type="button"
+              className={`swatch${item.current?.toLowerCase() === c.color.toLowerCase() ? " on" : ""}`}
+              title={c.name}
+              aria-label={c.name}
+              style={{ background: c.color }}
+              onClick={() => { item.onPick(c.color); onClose(); }}
+            />
+          ))}
+          {item.onNone && (
+            <button
+              type="button"
+              className={`swatch none${item.current ? "" : " on"}`}
+              title="No color"
+              aria-label="No color"
+              onClick={() => { item.onNone!(); onClose(); }}
+            />
+          )}
+        </div>
+      ) : (
         <div
           key={item.label}
           className={`item ${item.danger ? "danger" : ""}`}
@@ -56,7 +90,7 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
         >
           {item.label}
         </div>
-      ))}
+      )))}
     </div>
   );
 }

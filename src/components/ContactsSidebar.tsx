@@ -3,16 +3,7 @@ import { Contact, AddressBook } from "../types";
 import ContextMenu from "./ContextMenu";
 import { ContactFilter, LabelColors, contactLabels, filterHas, toggleInFilter } from "../contactUtils";
 
-const PALETTE: { name: string; color: string }[] = [
-  { name: "Blue", color: "#4a90d9" },
-  { name: "Red", color: "#e5484d" },
-  { name: "Amber", color: "#e8a23d" },
-  { name: "Green", color: "#3fb950" },
-  { name: "Purple", color: "#a371f7" },
-  { name: "Pink", color: "#db61a2" },
-  { name: "Gray", color: "#6f7378" }
-];
-const randomSwatch = () => PALETTE[Math.floor(Math.random() * PALETTE.length)].color;
+import { PALETTE, randomSwatch } from "../palette";
 
 /** One clean-up page in the sidebar (Contacts Cleanup's pages, src/cleanup/). */
 export interface CleanupItem { id: string; title: string; dot: string; count: number | null }
@@ -422,8 +413,7 @@ export default function ContactsSidebar({
           onClose={() => setLabelMenu(null)}
           items={[
             { label: "Rename", onClick: () => { setEditingLabel(labelMenu.label); setEditName(labelMenu.label); } },
-            ...PALETTE.map((p) => ({ label: `● ${p.name}`, onClick: () => onSetLabelColor(labelMenu.label, p.color) })),
-            { label: "No color", onClick: () => onSetLabelColor(labelMenu.label, null) },
+            { colors: PALETTE, current: labelColors[labelMenu.label] ?? null, onPick: (color: string) => onSetLabelColor(labelMenu.label, color), onNone: () => onSetLabelColor(labelMenu.label, null) },
             { label: "Hide", onClick: () => onHide("labels", labelMenu.label) },
             { label: "Delete label", danger: true, onClick: () => onDeleteLabel(labelMenu.label) }
           ]}
@@ -437,7 +427,7 @@ export default function ContactsSidebar({
           onClose={() => setBookMenu(null)}
           items={[
             { label: "Rename", onClick: () => { setEditingBookId(bookMenu.book.id); setEditName(bookMenu.book.name); } },
-            ...PALETTE.map((p) => ({ label: `● ${p.name}`, onClick: () => onSetBookColor(bookMenu.book.id, p.color) })),
+            { colors: PALETTE, current: bookMenu.book.color, onPick: (color: string) => onSetBookColor(bookMenu.book.id, color) },
             { label: "Hide (and its contacts)", onClick: () => onHide("books", bookMenu.book.id) },
             ...(bookMenu.book.carddav_addressbook_url
               ? [{ label: "Disconnect from CardDAV", onClick: () => onDisconnectBook(bookMenu.book) }]
@@ -453,7 +443,7 @@ export default function ContactsSidebar({
           onClose={() => setTbBookMenu(null)}
           items={[
             ...(onRenameThunderbirdBook ? [{ label: "Rename", onClick: () => { setEditingBookId(tbBookMenu.id); setEditName(tbBookMenu.name); } }] : []),
-            ...(onSetThunderbirdBookColor ? PALETTE.map((p) => ({ label: `● ${p.name}`, onClick: () => onSetThunderbirdBookColor(tbBookMenu.id, p.color) })) : []),
+            ...(onSetThunderbirdBookColor ? [{ colors: PALETTE, current: thunderbirdBookColors[tbBookMenu.id] ?? null, onPick: (color: string) => onSetThunderbirdBookColor(tbBookMenu.id, color) }] : []),
             { label: "Hide (and its contacts)", onClick: () => onHide("books", tbBookMenu.id) },
             ...(onDeleteThunderbirdBook ? [{ label: "Delete address book…", danger: true, onClick: () => onDeleteThunderbirdBook(tbBookMenu.id) }] : [])
           ]}

@@ -3,18 +3,7 @@ import { TaskList, Task } from "../types";
 import ContextMenu from "./ContextMenu";
 import { TaskScope, CalendarLists } from "../views";
 
-/** Swatches for list/calendar colors — used for the create-form picker and the
- *  right-click "Change colour" menu. Kept in step with the DB rotation palette. */
-const PALETTE: { name: string; color: string }[] = [
-  { name: "Blue", color: "#4a90d9" },
-  { name: "Red", color: "#e5484d" },
-  { name: "Amber", color: "#e8a23d" },
-  { name: "Green", color: "#3fb950" },
-  { name: "Purple", color: "#a371f7" },
-  { name: "Pink", color: "#db61a2" },
-  { name: "Gray", color: "#6f7378" }
-];
-const randomSwatch = () => PALETTE[Math.floor(Math.random() * PALETTE.length)].color;
+import { PALETTE, randomSwatch } from "../palette";
 
 export interface SidebarSmartFilter {
   id: string;
@@ -321,10 +310,7 @@ export default function Sidebar({
               label: "Rename",
               onClick: () => { setEditingListId(listMenu.list.id); setEditName(listMenu.list.name); }
             },
-            ...PALETTE.map((p) => ({
-              label: `● ${p.name}`,
-              onClick: () => onSetListColor(listMenu.list.id, p.color)
-            })),
+            { colors: PALETTE, current: listMenu.list.color, onPick: (color: string) => onSetListColor(listMenu.list.id, color) },
             {
               label: "Export to .ics…",
               onClick: () => onExportList(listMenu.list.id)
