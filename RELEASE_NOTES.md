@@ -214,8 +214,7 @@ Daynizer v0.8.1
 
 Changes since v0.8.0. Daynizer remains beta, pre-1.0 — keep a backup of anything important.
 
-- **Locale-aware calendar and dates** (community contribution, PR #4 by DrStrangeloovee). The
-  calendar week now starts on the correct day for your region instead of always Sunday, and fixes
+- **Locale-aware calendar and dates.** The calendar week now starts on the correct day for your region instead of always Sunday, and fixes
   a real bug: a date-only task due "today" could show as due *yesterday* and get marked overdue,
   in any timezone west of UTC.
 - **Manual override for the week-start day** — Settings → Calendars & Lists → "First day of the
