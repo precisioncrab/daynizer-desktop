@@ -1,7 +1,7 @@
 import { useState, useRef, type MouseEvent } from "react";
 import { Contact, AddressBook } from "../types";
 import ContextMenu from "./ContextMenu";
-import { ContactFilter, LabelColors, contactLabels, filterHas, toggleInFilter } from "../contactUtils";
+import { ContactFilter, FilterKind, LabelColors, contactLabels, filterHas, toggleInFilter } from "../contactUtils";
 
 import { PALETTE, randomSwatch } from "../palette";
 
@@ -72,6 +72,15 @@ interface Props {
   onHide: (kind: "books" | "labels", id: string) => void;
   /** "2 hidden": View > Contacts Sidebar…, where they're ticked to show again. */
   onShowHidden: () => void;
+  /** Add-on: Thunderbird's mailing lists, shown under their address book as in Thunderbird's Address Book. */
+  thunderbirdLists?: { id: string; parentId: string; name: string; count: number }[];
+  onNewThunderbirdList?: (bookId: string) => void;
+  onWriteToList?: (id: string, field: "to" | "bcc") => void;
+  onRenameThunderbirdList?: (id: string, name: string) => void;
+  onThunderbirdListToLabel?: (id: string) => void;
+  onDeleteThunderbirdList?: (id: string) => void;
+  /** Add-on: a new message in Thunderbird to everyone with the label (To or Bcc). */
+  onWriteToLabel?: (label: string, field: "to" | "bcc") => void;
 }
 
 export default function ContactsSidebar({
@@ -79,7 +88,8 @@ export default function ContactsSidebar({
   onDisconnectBook, onDeleteBook, onSync, syncing, onOpenSettings, collapsed, onToggleCollapsed, nav, hideBooks, hideLabels, thunderbirdBooks,
   sameThunderbirdBooks = [], onShowSameThunderbirdBook, dismissedSameNotes = [], onDismissSameNote, onDeleteThunderbirdBook,
   onRenameThunderbirdBook, thunderbirdBookColors = {}, onSetThunderbirdBookColor, onRenameLabel,
-  hiddenLabels, hiddenBookCount, hiddenThunderbirdBookCount, onHide, onShowHidden
+  hiddenLabels, hiddenBookCount, hiddenThunderbirdBookCount, onHide, onShowHidden,
+  thunderbirdLists = [], onNewThunderbirdList, onWriteToList, onRenameThunderbirdList, onThunderbirdListToLabel, onDeleteThunderbirdList, onWriteToLabel
 }: Props) {
   const [folded, setFolded] = useState(readFolded);
   function toggleFold(id: string) {
@@ -121,12 +131,19 @@ export default function ContactsSidebar({
   const [labelMenu, setLabelMenu] = useState<{ x: number; y: number; label: string } | null>(null);
   const [bookMenu, setBookMenu] = useState<{ x: number; y: number; book: AddressBook } | null>(null);
   const [tbBookMenu, setTbBookMenu] = useState<{ x: number; y: number; id: string; name: string } | null>(null);
+  const [tbListMenu, setTbListMenu] = useState<{ x: number; y: number; id: string; name: string; count: number } | null>(null);
   // Inline rename of a label (on every listed contact that has it).
   const [editingLabel, setEditingLabel] = useState<string | null>(null);
   // Inline rename of an address book, mirroring the Calendar/List sidebar.
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const renameCancelRef = useRef(false);
+  function submitListRename(id: string, was: string) {
+    if (renameCancelRef.current) { renameCancelRef.current = false; setEditingBookId(null); setEditName(""); return; }
+    const n = editName.trim();
+    if (n && n !== was) onRenameThunderbirdList?.(id, n);
+    setEditingBookId(null); setEditName("");
+  }
   function submitRename(b: AddressBook, thunderbird = false) {
     if (renameCancelRef.current) { renameCancelRef.current = false; setEditingBookId(null); setEditName(""); return; }
     const n = editName.trim();
@@ -190,10 +207,10 @@ export default function ContactsSidebar({
   // A filter is active only while the contact list shows (not a clean-up page).
   const active = (f: ContactFilter) => nav.view === null && JSON.stringify(f) === JSON.stringify(filter);
   // Selected books stay highlighted on the clean-up pages, which work on them; labels only filter the list.
-  const picked = (kind: "book" | "label", value: string) => (nav.view === null || kind === "book") && filterHas(filter, kind, value);
+  const picked = (kind: FilterKind, value: string) => (nav.view === null || kind === "book") && filterHas(filter, kind, value);
   // Click shows one book or label; Ctrl/Cmd+click adds it to what's shown or takes it out (as Tasks' lists do).
   // On a clean-up page Ctrl+click on a book changes which books the page looks at, and stays on it.
-  const choose = (e: MouseEvent, kind: "book" | "label", value: string) => {
+  const choose = (e: MouseEvent, kind: FilterKind, value: string) => {
     if (!(e.ctrlKey || e.metaKey)) return onSelect({ kind, value } as ContactFilter);
     const onPage = nav.view !== null;
     if (onPage && kind === "book") return onSelect(toggleInFilter(filter, kind, value), true);
@@ -341,7 +358,24 @@ export default function ContactsSidebar({
                 {bookCount(b.id) > 0 && <span className="count">{bookCount(b.id)}</span>}
               </div>
             );
-          })}
+          }).flatMap((row, i) => [row, ...thunderbirdLists.filter((l) => l.parentId === thunderbirdBooks[i].id).map((l) => (
+            // Its mailing lists, indented under it (a Thunderbird list holds contacts of its own book).
+            editingBookId === l.id ? (
+              renameField(l.id, "transparent", () => submitListRename(l.id, l.name), () => { setEditingBookId(null); setEditName(""); })
+            ) : (
+              <div
+                key={`list:${l.id}`}
+                className={`sidebar-item sidebar-sub ${picked("list", l.id) ? "active" : ""}`}
+                onClick={(e) => choose(e, "list", l.id)}
+                onContextMenu={(e) => { e.preventDefault(); setTbListMenu({ x: e.clientX, y: e.clientY, id: l.id, name: l.name, count: l.count }); }}
+                title="Thunderbird mailing list. Click to show its members, Ctrl+click to add it or take it out. Right-click to write to it, rename it, make it a label or delete it."
+              >
+                <span className="sidebar-icon" aria-hidden="true">☰</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</span>
+                {l.count > 0 && <span className="count">{l.count}</span>}
+              </div>
+            )
+          ))])}
           {!folded.has("tbbooks") && hiddenNote(hiddenThunderbirdBookCount)}
         </>)}
 
@@ -412,6 +446,10 @@ export default function ContactsSidebar({
           y={labelMenu.y}
           onClose={() => setLabelMenu(null)}
           items={[
+            ...(onWriteToLabel ? [
+              { label: "New message to everyone with this label", onClick: () => onWriteToLabel(labelMenu.label, "to") },
+              { label: "New message to everyone with this label (Bcc)", onClick: () => onWriteToLabel(labelMenu.label, "bcc") }
+            ] : []),
             { label: "Rename", onClick: () => { setEditingLabel(labelMenu.label); setEditName(labelMenu.label); } },
             { colors: PALETTE, current: labelColors[labelMenu.label] ?? null, onPick: (color: string) => onSetLabelColor(labelMenu.label, color), onNone: () => onSetLabelColor(labelMenu.label, null) },
             { label: "Hide", onClick: () => onHide("labels", labelMenu.label) },
@@ -442,10 +480,27 @@ export default function ContactsSidebar({
           y={tbBookMenu.y}
           onClose={() => setTbBookMenu(null)}
           items={[
+            ...(onNewThunderbirdList ? [{ label: "New mailing list…", onClick: () => onNewThunderbirdList(tbBookMenu.id) }] : []),
             ...(onRenameThunderbirdBook ? [{ label: "Rename", onClick: () => { setEditingBookId(tbBookMenu.id); setEditName(tbBookMenu.name); } }] : []),
             ...(onSetThunderbirdBookColor ? [{ colors: PALETTE, current: thunderbirdBookColors[tbBookMenu.id] ?? null, onPick: (color: string) => onSetThunderbirdBookColor(tbBookMenu.id, color) }] : []),
             { label: "Hide (and its contacts)", onClick: () => onHide("books", tbBookMenu.id) },
             ...(onDeleteThunderbirdBook ? [{ label: "Delete address book…", danger: true, onClick: () => onDeleteThunderbirdBook(tbBookMenu.id) }] : [])
+          ]}
+        />
+      )}
+      {tbListMenu && (
+        <ContextMenu
+          x={tbListMenu.x}
+          y={tbListMenu.y}
+          onClose={() => setTbListMenu(null)}
+          items={[
+            ...(onWriteToList && tbListMenu.count > 0 ? [
+              { label: "New message to this list", onClick: () => onWriteToList(tbListMenu.id, "to") },
+              { label: "New Bcc message to this list", onClick: () => onWriteToList(tbListMenu.id, "bcc") }
+            ] : []),
+            ...(onRenameThunderbirdList ? [{ label: "Rename", onClick: () => { setEditingBookId(tbListMenu.id); setEditName(tbListMenu.name); } }] : []),
+            ...(onThunderbirdListToLabel && tbListMenu.count > 0 ? [{ label: "Make a label…", onClick: () => onThunderbirdListToLabel(tbListMenu.id) }] : []),
+            ...(onDeleteThunderbirdList ? [{ label: "Delete mailing list…", danger: true, onClick: () => onDeleteThunderbirdList(tbListMenu.id) }] : [])
           ]}
         />
       )}

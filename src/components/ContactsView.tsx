@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Contact } from "../types";
-import { ContactFilter, LabelColors, matchesFilter, contactLabels, initials, avatarColor } from "../contactUtils";
+import { ContactFilter, LabelColors, ListMembers, matchesFilter, contactLabels, initials, avatarColor } from "../contactUtils";
 import { isThunderbirdId } from "../thunderbirdBooks";
 
 interface Props {
   contacts: Contact[];
   filter: ContactFilter;
+  /** Add-on: Thunderbird's mailing lists' members, for a list picked in the sidebar. */
+  listMembers?: ListMembers;
   labelColors: LabelColors;
   selectedContactId: string | null;
   onSelect: (id: string) => void;
@@ -19,6 +21,8 @@ interface Props {
   daynizerBookNames?: Record<string, string>;
   /** Add-on: Thunderbird copies add-ons can't change, card id -> the other book that has the same contact ID. */
   locked?: Map<string, string>;
+  /** Right-click on a contact (its labels and mailing lists). */
+  onContactMenu?: (e: React.MouseEvent, c: Contact) => void;
 }
 
 /** First value out of a JSON-text typed-value column ([{type,value}, ...]). */
@@ -53,11 +57,11 @@ function ContactAvatar({ contact }: { contact: Contact }) {
   );
 }
 
-export default function ContactsView({ contacts, filter, labelColors, selectedContactId, onSelect, onCreate, onImport, onFindDuplicates, duplicateCount, thunderbirdBookNames = {}, daynizerBookNames, locked }: Props) {
+export default function ContactsView({ contacts, filter, labelColors, selectedContactId, onSelect, onCreate, onImport, onFindDuplicates, duplicateCount, thunderbirdBookNames = {}, daynizerBookNames, locked, listMembers, onContactMenu }: Props) {
   const [search, setSearch] = useState("");
 
   const visible = useMemo(() => {
-    let base = contacts.filter((c) => !c.deleted && matchesFilter(c, filter));
+    let base = contacts.filter((c) => !c.deleted && matchesFilter(c, filter, listMembers));
     const q = search.trim().toLowerCase();
     if (q) {
       base = base.filter((c) =>
@@ -73,7 +77,7 @@ export default function ContactsView({ contacts, filter, labelColors, selectedCo
       );
     }
     return [...base].sort((a, b) => (a.fn || "").localeCompare(b.fn || ""));
-  }, [contacts, filter, search]);
+  }, [contacts, filter, search, listMembers]);
 
   return (
     <>
@@ -95,7 +99,11 @@ export default function ContactsView({ contacts, filter, labelColors, selectedCo
       </div>
       <div className="task-table">
         {visible.length === 0 ? (
-          <div className="empty-state">No contacts here yet.</div>
+          <div className="empty-state">
+            {filter.kind === "multi" && (filter.lists ?? []).length && !search.trim()
+              ? "No one on these mailing lists yet. Click one list on its own to put contacts on it."
+              : "No contacts here yet."}
+          </div>
         ) : (
           visible.map((c) => {
             const sub = c.org || firstValue(c.emails) || firstValue(c.phones);
@@ -105,6 +113,7 @@ export default function ContactsView({ contacts, filter, labelColors, selectedCo
                 key={c.id}
                 className={`task-row ${c.id === selectedContactId ? "selected" : ""}`}
                 onClick={() => onSelect(c.id)}
+                onContextMenu={onContactMenu ? (e) => { e.preventDefault(); onContactMenu(e, c); } : undefined}
               >
                 <ContactAvatar contact={c} />
                 <div className="title-col">

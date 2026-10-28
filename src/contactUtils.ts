@@ -27,51 +27,66 @@ export type ContactFilter =
   | { kind: "all" }
   | { kind: "book"; value: string }
   | { kind: "label"; value: string }
-  /** Ctrl/Cmd+click in the sidebar: several books and labels, a contact in any of them shows. */
-  | { kind: "multi"; books: string[]; labels: string[] };
+  /** One of Thunderbird's mailing lists (add-on): its members. */
+  | { kind: "list"; value: string }
+  /** Ctrl/Cmd+click in the sidebar: several books, labels and mailing lists, a contact in any of them shows. */
+  | { kind: "multi"; books: string[]; labels: string[]; lists?: string[] };
 
-export function matchesFilter(c: Contact, f: ContactFilter): boolean {
+/** What the sidebar can pick: an address book, a label or (add-on) one of Thunderbird's mailing lists. */
+export type FilterKind = "book" | "label" | "list";
+
+/** Mailing list id -> the contact ids on it (Thunderbird's, "tb:<book>»<UID>"). */
+export type ListMembers = Map<string, Set<string>>;
+
+export function matchesFilter(c: Contact, f: ContactFilter, listMembers?: ListMembers): boolean {
+  const onList = (id: string) => Boolean(listMembers?.get(id)?.has(c.id));
   switch (f.kind) {
     case "all": return true;
     case "book": return c.address_book_id === f.value;
     case "label": return contactLabels(c).includes(f.value);
-    case "multi": return f.books.includes(c.address_book_id) || contactLabels(c).some((l) => f.labels.includes(l));
+    case "list": return onList(f.value);
+    case "multi": return f.books.includes(c.address_book_id) || contactLabels(c).some((l) => f.labels.includes(l)) || (f.lists ?? []).some(onList);
     default: return true;
   }
 }
 
-/** One book or label, or several, as the simplest filter that says so (none = all contacts). */
-function filterOf(books: string[], labels: string[]): ContactFilter {
-  if (books.length + labels.length === 0) return { kind: "all" };
-  if (books.length === 1 && labels.length === 0) return { kind: "book", value: books[0] };
-  if (labels.length === 1 && books.length === 0) return { kind: "label", value: labels[0] };
-  return { kind: "multi", books, labels };
+/** One book, label or list, or several, as the simplest filter that says so (none = all contacts). */
+function filterOf(books: string[], labels: string[], lists: string[]): ContactFilter {
+  const n = books.length + labels.length + lists.length;
+  if (n === 0) return { kind: "all" };
+  if (n === 1 && books.length) return { kind: "book", value: books[0] };
+  if (n === 1 && labels.length) return { kind: "label", value: labels[0] };
+  if (n === 1) return { kind: "list", value: lists[0] };
+  return { kind: "multi", books, labels, lists };
 }
 
-function filterParts(f: ContactFilter): { books: string[]; labels: string[] } {
-  if (f.kind === "book") return { books: [f.value], labels: [] };
-  if (f.kind === "label") return { books: [], labels: [f.value] };
-  if (f.kind === "multi") return { books: [...f.books], labels: [...f.labels] };
-  return { books: [], labels: [] };
+function filterParts(f: ContactFilter): { books: string[]; labels: string[]; lists: string[] } {
+  if (f.kind === "book") return { books: [f.value], labels: [], lists: [] };
+  if (f.kind === "label") return { books: [], labels: [f.value], lists: [] };
+  if (f.kind === "list") return { books: [], labels: [], lists: [f.value] };
+  if (f.kind === "multi") return { books: [...f.books], labels: [...f.labels], lists: [...(f.lists ?? [])] };
+  return { books: [], labels: [], lists: [] };
 }
 
-/** Whether a book or label is part of the filter (highlighted in the sidebar). */
-export function filterHas(f: ContactFilter, kind: "book" | "label", value: string): boolean {
+const partOf = (parts: ReturnType<typeof filterParts>, kind: FilterKind) =>
+  kind === "book" ? parts.books : kind === "label" ? parts.labels : parts.lists;
+
+/** Whether a book, label or list is part of the filter (highlighted in the sidebar). */
+export function filterHas(f: ContactFilter, kind: FilterKind, value: string): boolean {
+  return partOf(filterParts(f), kind).includes(value);
+}
+
+/** Ctrl/Cmd+click: adds the book, label or list to the filter, or takes it out. */
+export function toggleInFilter(f: ContactFilter, kind: FilterKind, value: string): ContactFilter {
   const parts = filterParts(f);
-  return (kind === "book" ? parts.books : parts.labels).includes(value);
-}
-
-/** Ctrl/Cmd+click: adds the book or label to the filter, or takes it out. */
-export function toggleInFilter(f: ContactFilter, kind: "book" | "label", value: string): ContactFilter {
-  const { books, labels } = filterParts(f);
-  const list = kind === "book" ? books : labels;
+  const list = partOf(parts, kind);
   const at = list.indexOf(value);
   if (at >= 0) list.splice(at, 1); else list.push(value);
-  return filterOf(books, labels);
+  return filterOf(parts.books, parts.labels, parts.lists);
 }
 
-/** The filter without a book or label that's gone (deleted). */
-export function dropFromFilter(f: ContactFilter, kind: "book" | "label", value: string): ContactFilter {
+/** The filter without a book, label or list that's gone (deleted). */
+export function dropFromFilter(f: ContactFilter, kind: FilterKind, value: string): ContactFilter {
   return filterHas(f, kind, value) ? toggleInFilter(f, kind, value) : f;
 }
 

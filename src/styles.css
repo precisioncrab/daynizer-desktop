@@ -637,6 +637,19 @@ input, textarea, select { user-select: text; }
 .context-menu .swatch.on { border-color: var(--text-strong); }
 .context-menu .swatch.none { background: transparent; border: 1px dashed var(--text-faint); }
 .context-menu .swatch.none.on { border: 2px solid var(--text-strong); }
+.context-menu .item .tick { display: inline-block; width: 16px; }
+.context-menu .item.has-sub { position: relative; display: flex; align-items: center; gap: 12px; }
+.context-menu .item.has-sub > span:first-child { flex: 1; }
+.context-menu .sub-arrow { color: var(--text-faint); font-size: 10px; }
+.context-menu .context-menu.sub { position: absolute; left: 100%; top: -4px; max-height: 70vh; overflow-y: auto; cursor: default; }
+.context-menu .context-menu.sub.left { left: auto; right: 100%; }
+/* A Thunderbird mailing list's page: its ticks wait for Apply. */
+.list-page-filters { display: flex; align-items: center; gap: 14px; padding: 6px 16px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
+.list-page-filters label { display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+.list-page-filters .hint { flex: 1; min-width: 0; line-height: 1.4; }
+.list-page-bar { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-top: 1px solid var(--border); font-size: 13px; }
+.list-page-bar span { flex: 1; }
+.task-row.muted .title { color: var(--text-faint); }
 
 /* ---------- Settings overlay ---------- */
 .overlay { position: fixed; inset: 0; background: var(--overlay); display: flex; align-items: center; justify-content: center; z-index: 999; }
@@ -768,6 +781,9 @@ input, textarea, select { user-select: text; }
 .sidebar-link { white-space: normal; align-items: flex-start; }
 .sidebar-link .name { flex: 1; min-width: 0; color: var(--chip-text); line-height: 1.35; }
 .sidebar-icon { width: 16px; text-align: center; color: var(--chip-text); flex-shrink: 0; font-size: 12px; }
+/* A Thunderbird mailing list, under its address book (add-on). */
+.sidebar-item.sidebar-sub { padding-top: 5px; padding-bottom: 5px; padding-left: 30px; font-size: 12px; }
+.sidebar-item.sidebar-sub .sidebar-icon { font-size: 11px; color: var(--text-faint); }
 .smart-filter-delete {
   background: transparent; border: none; color: var(--text-faint);
   font-size: 14px; line-height: 1; cursor: pointer; padding: 0 2px;

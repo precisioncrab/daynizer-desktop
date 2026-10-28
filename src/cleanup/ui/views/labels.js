@@ -176,7 +176,7 @@ async function bookToLabel(ctx, book) {
   }
 }
 
-async function listToLabel(ctx, book, list) {
+export async function listToLabel(ctx, book, list) {
   const others = writable(ctx).filter((b) => b.id !== book.id);
   // after: "keep" (members stay, the list too), "delete" (members stay, the list goes) or "move" (into `target`; the list goes).
   const pick = { label: list.name, after: "keep", target: others[0]?.id ?? null };
@@ -229,9 +229,13 @@ async function listToLabel(ctx, book, list) {
   }
 }
 
-/** Right-click on a mailing list: rename it, or delete it. */
-function listMenu(ctx, e, book, list) {
+/** Right-click on a mailing list (here or in the sidebar): write to it, rename it, make it a label, or delete it. */
+export function listMenu(ctx, e, book, list) {
   openContextMenu(e, [
+    // Thunderbird puts the list in the message and sends to its members.
+    { label: "New message to this list", disabled: !list.members.length, onClick: () => ctx.writeTo({ to: [{ id: list.id, type: "mailingList" }] }) },
+    { label: "New Bcc message to this list", disabled: !list.members.length, onClick: () => ctx.writeTo({ bcc: [{ id: list.id, type: "mailingList" }] }) },
+    { separator: true },
     { label: "Rename…", disabled: Boolean(ctx.state.busy), onClick: async () => {
       const name = await ctx.askName({ title: `Rename the list ${list.name}`, value: list.name });
       if (name) {
@@ -245,7 +249,7 @@ function listMenu(ctx, e, book, list) {
 }
 
 /** Deletes a mailing list after asking (its contacts stay; Undo makes it again with its members). */
-async function deleteList(ctx, book, list) {
+export async function deleteList(ctx, book, list) {
   const go = await ctx.confirm({
     title: `Delete the mailing list ${list.name}?`,
     body: [h("p", {}, `Only the list goes: its ${plural(list.members.length, "member stays", "members stay")} in ${book.name}. Undo (the message after, or Changes) makes it again with its members.`)],
@@ -274,7 +278,7 @@ export default {
     return [
       toolbar(ctx, { title: anyLists ? "Address books and mailing lists to labels" : "Address books to labels", search: false }),
       h("div", { class: "toolbar-filters" }, h("span", {}, anyLists
-        ? "A label stays with a contact wherever it goes, and syncs with it (CardDAV, Google; phones show labels as groups). An address book or mailing list only holds contacts of its own book. Right-click a mailing list to rename or delete it."
+        ? "A label stays with a contact wherever it goes, and syncs with it (CardDAV, Google; phones show labels as groups). An address book or mailing list only holds contacts of its own book. Right-click a mailing list (here or in the sidebar, under its address book) to write to it, rename it or delete it."
         : "A label stays with a contact wherever it goes, and syncs with it (CardDAV; phones show labels as groups). An address book only holds its own contacts.")),
       h("div", { class: "list", "data-scroll": "labels" },
         rows.length

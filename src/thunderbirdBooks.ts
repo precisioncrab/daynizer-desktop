@@ -221,6 +221,20 @@ export async function addToThunderbirdList(listId: string, id: string): Promise<
   return true;
 }
 
+/** Takes a Thunderbird contact off a mailing list; false when the list is gone. */
+export async function removeFromThunderbirdList(listId: string, id: string): Promise<boolean> {
+  const at = splitThunderbirdId(id);
+  const lists = mailingListsApi();
+  if (!at || !lists) return false;
+  try {
+    await lists.get(listId);
+  } catch {
+    return false;
+  }
+  await lists.removeMember(listId, at.uid);
+  return true;
+}
+
 /** A mailing list with its members as card ids ("tb:<book>»<UID>"), for undo; null when it's gone. */
 export async function readThunderbirdList(id: string): Promise<ThunderbirdList | null> {
   const lists = mailingListsApi();
@@ -232,6 +246,13 @@ export async function readThunderbirdList(id: string): Promise<ThunderbirdList |
   } catch {
     return null;
   }
+}
+
+/** Makes a local Thunderbird address book (add-ons can't make synced ones); its id ("tb:<book>"). */
+export async function createThunderbirdBook(name: string): Promise<string> {
+  const api = addressBooks();
+  if (!api?.create) throw new Error("Thunderbird's address books aren't available here.");
+  return `${TB_PREFIX}${await api.create({ name })}`;
 }
 
 /** Makes a mailing list in a Thunderbird book ("tb:<book>"); its id. */
@@ -352,7 +373,7 @@ export function onThunderbirdChange(listener: () => void, wait = 600): () => voi
   const events = [
     contacts?.onCreated, contacts?.onUpdated, contacts?.onDeleted, contacts?.onManyCreated,
     api.onCreated, api.onUpdated, api.onDeleted,
-    lists?.onMemberAdded, lists?.onMemberRemoved
+    lists?.onCreated, lists?.onUpdated, lists?.onDeleted, lists?.onMemberAdded, lists?.onMemberRemoved
   ].filter(Boolean);
   for (const e of events) e.addListener(fire);
   return () => events.forEach((e) => e.removeListener(fire));

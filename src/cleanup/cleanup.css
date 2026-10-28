@@ -199,12 +199,16 @@
 .cleanup .contact-panel .detail-actions .link { flex: 0 0 auto; padding: 0; }
 .cleanup .contact-panel .cp-accounts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 2px; }
 .cleanup .contact-panel .cp-accounts .cp-hint { margin: 0; }
+.cleanup .contact-panel .cp-lists { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 2px 0 4px; }
 .cleanup .account-group { margin-top: 18px; }
 .cleanup .account-group:first-child { margin-top: 4px; }
 .cleanup .account-heading { margin: 0 0 6px; font-size: 14px; }
 .cleanup .account-heading span { font-weight: normal; font-size: 12px; color: var(--text-meta); }
 .cleanup .copies-box { margin: 10px 16px 0; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg-card); }
 .cleanup .copies-box-title { font-size: 12px; color: var(--text-2); margin-bottom: 8px; }
+.cleanup .copies-done .cp-line { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 12px; }
+.cleanup .copies-done .cp-line .spacer { flex: 1; }
+.cleanup .copies-done .cp-hint { margin: 6px 0 0; font-size: 11px; color: var(--text-muted); line-height: 1.45; }
 .cleanup .copies-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 12px; color: var(--text-2); }
 .cleanup .copies-controls label { display: flex; align-items: center; gap: 6px; }
 .cleanup .copies-controls select, .cleanup .copies-controls input[type="text"] { background: var(--bg-control); padding: 3px 8px; color: var(--text); max-width: 100%; min-width: 0; font-size: 12px; }

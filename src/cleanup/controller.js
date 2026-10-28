@@ -32,12 +32,12 @@ import { findDuplicates, suggestPeople } from "./core/duplicates.js";
 import { phoneFixes, proposeName } from "./core/fixes.js";
 import { prefixFixes, DEFAULT_GATEWAY } from "./core/chat.js";
 import { countryById } from "./core/phone.js";
-import { applyChanges, undoEntry, addEntry } from "./core/history.js";
+import { applyChanges, undoEntry, addEntry, entryChanged } from "./core/history.js";
 import { partnersOf, pruneLinks, followEdit } from "./core/copies.js";
 import { comparable } from "./core/vcard.js";
 import duplicates from "./ui/views/duplicates.js";
 import copies from "./ui/views/copies.js";
-import labelsView from "./ui/views/labels.js";
+import labelsView, { listToLabel, deleteList } from "./ui/views/labels.js";
 import phones from "./ui/views/phones.js";
 import names from "./ui/views/names.js";
 import chat from "./ui/views/chat.js";
@@ -88,6 +88,8 @@ export function createCleanup(options) {
     copiesLeft: new Set(),
     copiesChoice: new Map(),
     copiesShowLeft: false,
+    // In several books: what was applied since the page was opened, kept on screen with Undo (Contacts Cleanup 0.1.26).
+    copiesDone: [],
     selected: null,
     search: "",
     busy: null,
@@ -145,6 +147,7 @@ export function createCleanup(options) {
     saveLinks,
     leaveCopies,
     renameList,
+    writeTo,
     askName: (o) => askName(o),
     confirm: (o) => confirmDialog(o),
     toast: (text, o) => toast(text, o),
@@ -337,7 +340,8 @@ export function createCleanup(options) {
     if (extra.onDone) {
       await extra.onDone(results, entry);
     }
-    const changed = entry.cards.length > 0;
+    // Cards, or mailing lists alone (made, deleted, someone put on or taken off).
+    const changed = entryChanged(entry);
     if (changed) {
       if (extra.generated) {
         const done = new Set(entry.cards.map((c) => c.id));
@@ -506,6 +510,16 @@ export function createCleanup(options) {
   }
 
   /** Renames one of Thunderbird's mailing lists ({ id, name }); true when it's done. */
+  /** Opens a new message in Thunderbird with these recipients ({ to, bcc }); add-on only (compose.beginNew needs no permission). */
+  async function writeTo(details) {
+    try {
+      await globalThis.browser.compose.beginNew(details);
+    } catch (e) {
+      console.error("[cleanup] opening a new message", e);
+      toast(`Thunderbird didn't open a new message: ${e?.message ?? e}`, { error: true });
+    }
+  }
+
   async function renameList(list, name) {
     try {
       await api.renameList(list.id, name);
@@ -679,6 +693,7 @@ export function createCleanup(options) {
       const changed = state.view !== view;
       if (changed) {
         state.view = view;
+        state.copiesDone = [];
         state.selected = null;
         state.newContact = null;
         state.chat.pick = null;
@@ -727,6 +742,51 @@ export function createCleanup(options) {
     /** What OMEMO for Thunderbird answered: "none", "free" or "pro". */
     omemoStatus: () => state.omemo.status,
     openOmemoSettings: () => ctx.omemo.openOptions("settings").catch(() => {}),
+    /**
+     * Thunderbird's mailing lists from Daynizer's sidebar (add-on): the same
+     * questions and undo as Contacts Cleanup's (its New mailing list…, and
+     * Lists to labels' right-click). `bookId` and `listId` as in state.books
+     * ("tb:<book>" and Thunderbird's list id).
+     */
+    async newMailingList(bookId) {
+      await (ready ??= start());
+      const book = state.books.find((b) => b.id === bookId);
+      if (!book) {
+        return null;
+      }
+      const name = await askName({
+        title: `New mailing list in ${book.name}`,
+        text: "It opens with everyone in this address book listed: tick the ones to put on it, then Apply. Thunderbird only puts contacts with an email address on a mailing list, and only contacts in this address book. Mailing lists belong in local address books (like Personal Address Book): Thunderbird doesn't keep or sync them in synced ones (CardDAV, Google), where a label does the same job.",
+        value: "",
+        ok: "Create",
+      });
+      if (!name) {
+        return null;
+      }
+      const entry = await apply(`New mailing list ${name} in ${book.name}`, [{ type: "createList", parentId: book.id, name, label: name }]);
+      return entry?.madeLists?.[0]?.id ?? null;
+    },
+    async renameMailingList(listId, name) {
+      await (ready ??= start());
+      const list = state.books.flatMap((b) => b.lists ?? []).find((l) => l.id === listId);
+      return list ? renameList(list, name) : false;
+    },
+    async mailingListToLabel(listId) {
+      await (ready ??= start());
+      const book = state.books.find((b) => (b.lists ?? []).some((l) => l.id === listId));
+      if (book) {
+        await listToLabel(ctx, book, book.lists.find((l) => l.id === listId));
+      }
+    },
+    async deleteMailingList(listId) {
+      await (ready ??= start());
+      const book = state.books.find((b) => (b.lists ?? []).some((l) => l.id === listId));
+      if (book) {
+        await deleteList(ctx, book, book.lists.find((l) => l.id === listId));
+      }
+    },
+    /** A new message in Thunderbird ({ to, bcc }); add-on only. */
+    writeTo,
     /** The newest change not undone yet. */
     lastEntry: () => state.history.find((e) => !e.undone) ?? null,
     undo,

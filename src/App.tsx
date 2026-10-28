@@ -3,7 +3,7 @@ import Sidebar from "./components/Sidebar";
 import AddonMenuBar from "./components/AddonMenuBar";
 import TaskTable from "./components/TaskTable";
 import DetailPanel from "./components/DetailPanel";
-import ContextMenu from "./components/ContextMenu";
+import ContextMenu, { Item as MenuItem } from "./components/ContextMenu";
 import SettingsModal from "./components/SettingsModal";
 import AboutModal from "./components/AboutModal";
 import CalendarView, { CalendarShow } from "./components/CalendarView";
@@ -11,10 +11,11 @@ import TodayPane from "./components/TodayPane";
 import ContactsRail from "./components/ContactsRail";
 import EventDetailPanel from "./components/EventDetailPanel";
 import ContactsView from "./components/ContactsView";
+import MailingListView from "./components/MailingListView";
 import ImportVCardModal from "./components/ImportVCardModal";
 import ContactsSidebar, { CleanupItem } from "./components/ContactsSidebar";
 import ContactDetailPanel from "./components/ContactDetailPanel";
-import { ContactFilter, LabelColors, contactCategories, contactLabels, dropFromFilter, filterBooks, filterFirstBook, filterHas, toggleInFilter } from "./contactUtils";
+import { ContactFilter, LabelColors, contactCategories, contactGroupLabels, contactLabels, dropFromFilter, filterBooks, filterFirstBook, filterHas, toggleInFilter } from "./contactUtils";
 import { createCleanup, VIEWS as CLEANUP_VIEWS } from "./cleanup/controller.js";
 import { omemoTier } from "./cleanup/lib/omemo.js";
 import { LINKS as CLEANUP_LINKS, openLink } from "./cleanup/lib/links.js";
@@ -23,7 +24,7 @@ import ContactsSidebarModal, { SidebarPart, loadSidebarHidden, storeSidebarHidde
 import MoreAppsModal from "./components/MoreAppsModal";
 import {
   ThunderbirdBook, readThunderbirdBooks, sameAsDaynizer, shownThunderbirdBooks, setThunderbirdSameShown, thunderbirdShadowed, onThunderbirdChange, thunderbirdAddressBooks, thunderbirdContacts,
-  isThunderbirdId, thunderbirdBookOf, renameThunderbirdBook
+  isThunderbirdId, thunderbirdBookOf, renameThunderbirdBook, splitThunderbirdId, addToThunderbirdList, removeFromThunderbirdList
 } from "./thunderbirdBooks";
 import { HiddenItems, loadHiddenItems, storeHiddenItems, withHidden, loadThunderbirdBookColors, storeThunderbirdBookColors } from "./contactsHidden";
 import ProWall from "./components/ProWall";
@@ -231,6 +232,8 @@ export default function App() {
   const startupTaskFilters = startup.taskView?.origin === "tasks" ? startup.taskView.tasks : undefined;
   const [search, setSearch] = useState(startupTaskFilters?.search ?? "");
   const [menu, setMenu] = useState<{ x: number; y: number; taskId: string } | null>(null);
+  // Right-click on a contact: its labels, and (Thunderbird's contacts) its book's mailing lists.
+  const [contactMenu, setContactMenu] = useState<{ x: number; y: number; contact: Contact } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsPane, setSettingsPane] = useState<"accounts" | "calendars" | "contacts" | "sync" | "server" | "notifications" | "license" | undefined>(undefined);
   // Freemium tier (Thunderbird add-on only; window.api.entitlement is absent on
@@ -662,6 +665,126 @@ export default function App() {
     if (hidden) setContactFilter((f) => dropFromFilter(f, kind === "books" ? "book" : "label", id));
   }, []);
   useEffect(() => { cleanup.contactsChanged(); }, [contacts, addressBooks, tbBooks, hiddenItems, cleanup]);
+
+  // Add-on: Thunderbird's mailing lists, under their address book in the sidebar (Contacts Cleanup 0.1.26),
+  // and who's on each (contact ids "tb:<book>»<UID>"; a list holds contacts of its own book).
+  const tbLists = useMemo(
+    () => tbBooks.filter((b) => !hiddenBookSet.has(b.id)).flatMap((b) => b.lists.map((l) => ({ id: l.id, parentId: l.parentId, name: l.name, count: l.members.length }))),
+    [tbBooks, hiddenBookSet]
+  );
+  const tbListMembers = useMemo(
+    () => new Map(tbBooks.flatMap((b) => b.lists.map((l) => [l.id, new Set(l.members.map((m) => `${l.parentId}»${m}`))] as [string, Set<string>]))),
+    [tbBooks]
+  );
+  /** The editor's Mailing lists for a Thunderbird contact: its book's lists, and whether it's on each. */
+  const mailingListsOf = (id: string | null) => {
+    const at = id ? splitThunderbirdId(id) : null;
+    const book = at ? tbAllBooks.find((b) => b.id === thunderbirdBookOf(id)) : null;
+    return at && book ? book.lists.map((l) => ({ id: l.id, name: l.name, member: l.members.includes(at.uid) })) : undefined;
+  };
+  /** The editor's ticks, after its Save: puts the contact on lists or takes it off (Thunderbird skips one without an email address). */
+  async function setContactLists(id: string, changes: { listId: string; add: boolean }[]) {
+    for (const c of changes) {
+      try {
+        await (c.add ? addToThunderbirdList(c.listId, id) : removeFromThunderbirdList(c.listId, id));
+      } catch (err) {
+        contactError(err);
+      }
+    }
+    await loadThunderbirdBooks();
+  }
+  /** Puts contacts on a Thunderbird mailing list or takes them off, as one change Undo reverses (the list's page, a contact's right-click). */
+  async function applyListChanges(listId: string, listName: string, changes: { id: string; add: boolean; name: string }[]): Promise<boolean> {
+    if (!changes.length) return false;
+    const adding = changes.filter((c) => c.add).length;
+    const removing = changes.length - adding;
+    const one = changes.length === 1 ? changes[0] : null;
+    const title = one
+      ? (one.add ? `Put ${one.name} on the mailing list ${listName}` : `Took ${one.name} off the mailing list ${listName}`)
+      : `Mailing list ${listName}: ${[adding ? `put ${adding} on` : "", removing ? `took ${removing} off` : ""].filter(Boolean).join(", ")}`;
+    const entry = await cleanup.ctx.apply(title, changes.map((c) => ({ type: "listMember", listId, id: c.id, add: c.add, label: c.name })));
+    await loadThunderbirdBooks();
+    return Boolean(entry);
+  }
+  /** A contact's right-click: gives it a label or takes one off. */
+  async function setContactLabel(c: Contact, label: string, on: boolean) {
+    const own = contactCategories(c);
+    const next = on ? [...own, label] : own.filter((l) => l.toLowerCase() !== label.toLowerCase());
+    await updateContact(c.id, { categories: next.join(", ") });
+    cleanup.ctx.toast(on ? `Gave ${c.fn || "the contact"} the label ${label}.` : `Took the label ${label} off ${c.fn || "the contact"}.`);
+  }
+  /** The right-click menu on a contact (Contacts Cleanup 0.1.27): Labels and, for Thunderbird's contacts, Mailing lists. */
+  function contactMenuItems(c: Contact): MenuItem[] {
+    const name = c.fn || "this contact";
+    if (tbLocked.has(c.id)) {
+      return [{ label: `Can't change this copy (also in ${tbLocked.get(c.id)}): sort it out under In several books`, disabled: true, onClick: () => {} }];
+    }
+    const own = new Set(contactCategories(c).map((l) => l.toLowerCase()));
+    // A label from a server label group (Synology) isn't on the card itself; it's changed on the server.
+    const fromGroup = new Set(contactGroupLabels(c).map((l) => l.toLowerCase()));
+    const labels = [...new Set([...listedContacts.flatMap((x) => contactLabels(x)), ...contactLabels(c)])].sort((a, b) => a.localeCompare(b));
+    const items: MenuItem[] = [{
+      label: "Labels",
+      submenu: [
+        ...labels.map((l) => {
+          const has = own.has(l.toLowerCase());
+          const group = !has && fromGroup.has(l.toLowerCase());
+          return {
+            label: l,
+            checked: has || group,
+            disabled: group,
+            title: group ? "From a label group on your server; change it there." : undefined,
+            onClick: () => setContactLabel(c, l, !has),
+          };
+        }),
+        ...(labels.length ? [{ separator: true as const }] : []),
+        { label: "New label…", onClick: async () => {
+          const text = await cleanup.ctx.askName({ title: `New label for ${name}`, value: "", ok: "Add" });
+          if (text) await setContactLabel(c, text, true);
+        } },
+      ],
+    }];
+    const lists = IS_ADDON ? mailingListsOf(c.id) : undefined;
+    if (lists) {
+      let email = false;
+      try { email = (JSON.parse(c.emails || "[]") as { value?: string }[]).some((e) => String(e?.value ?? "").trim()); } catch { /* none */ }
+      items.push({
+        label: "Mailing lists",
+        submenu: lists.length
+          ? [
+            ...lists.map((l) => ({
+              label: l.name,
+              checked: l.member,
+              // Taking someone off always works; putting them on needs an email address.
+              disabled: !l.member && !email,
+              title: !l.member && !email ? "Thunderbird only puts contacts with an email address on a mailing list." : undefined,
+              onClick: () => { applyListChanges(l.id, l.name, [{ id: c.id, add: !l.member, name }]); },
+            })),
+            ...(email ? [] : [{ separator: true as const }, { label: "Add an email address first to put them on a list", disabled: true, onClick: () => {} }]),
+          ]
+          : [{ label: `${tbBookNames[c.address_book_id] ?? "This address book"} has no mailing lists`, disabled: true, onClick: () => {} }],
+      });
+    }
+    return items;
+  }
+  /** A new message in Thunderbird to everyone with the label who has an email address (one per address). */
+  function writeToLabel(label: string, field: "to" | "bcc") {
+    const key = label.toLowerCase();
+    const withLabel = listedContacts.filter((c) => !c.deleted && contactLabels(c).some((l) => l.toLowerCase() === key));
+    const seen = new Set<string>();
+    const recipients: string[] = [];
+    for (const c of withLabel) {
+      let address = "";
+      try { address = String(JSON.parse(c.emails || "[]")[0]?.value ?? "").trim(); } catch { /* no email */ }
+      if (!address || seen.has(address.toLowerCase())) continue;
+      seen.add(address.toLowerCase());
+      const name = (c.fn || "").trim();
+      recipients.push(!name ? address : /[",.;:<>@()[\]\\]/.test(name) ? `"${name.replace(/(["\\])/g, "\\$1")}" <${address}>` : `${name} <${address}>`);
+    }
+    cleanup.writeTo({ [field]: recipients });
+    const missing = withLabel.length - recipients.length;
+    if (missing > 0) cleanup.ctx.toast(`${missing} contact${missing > 1 ? "s" : ""} with the label ${label} ${missing > 1 ? "have" : "has"} no email address, or the same one as another, and ${missing > 1 ? "aren't" : "isn't"} in the message.`);
+  }
 
   // Live ref for the menu's New Task (Ctrl+N): the listener below is registered
   // once, so calling createTaskInScope directly would use the first render's
@@ -1525,6 +1648,21 @@ export default function App() {
           hiddenThunderbirdBookCount={tbAddressBooks.filter((b) => hiddenBookSet.has(b.id)).length}
           onHide={(kind, id) => setItemHidden(kind, id, true)}
           onShowHidden={() => setShowSidebarParts(true)}
+          thunderbirdLists={tbLists}
+          onNewThunderbirdList={IS_ADDON ? async (bookId) => {
+            const id = await cleanup.newMailingList(bookId);
+            await loadThunderbirdBooks();
+            if (id) { setContactFilter({ kind: "list", value: id }); setContactsMode("list"); }
+          } : undefined}
+          onWriteToList={IS_ADDON ? (id, field) => cleanup.writeTo({ [field]: [{ id, type: "mailingList" }] }) : undefined}
+          onRenameThunderbirdList={IS_ADDON ? async (id, name) => { await cleanup.renameMailingList(id, name); await loadThunderbirdBooks(); } : undefined}
+          onThunderbirdListToLabel={IS_ADDON ? async (id) => { await cleanup.mailingListToLabel(id); await loadThunderbirdBooks(); } : undefined}
+          onDeleteThunderbirdList={IS_ADDON ? async (id) => {
+            await cleanup.deleteMailingList(id);
+            await loadThunderbirdBooks();
+            setContactFilter((f) => dropFromFilter(f, "list", id));
+          } : undefined}
+          onWriteToLabel={IS_ADDON ? writeToLabel : undefined}
           thunderbirdBookColors={tbColors}
           onSetThunderbirdBookColor={setThunderbirdBookColor}
           onRenameThunderbirdBook={renameThunderbirdBookAsked}
@@ -1655,9 +1793,31 @@ export default function App() {
           cleanupView ? (
             // A clean-up page draws itself in here (src/cleanup/controller.js).
             <div ref={cleanupMainRef} className="cleanup cleanup-main" />
+          ) : IS_ADDON && contactFilter.kind === "list" && tbBooks.some((b) => b.lists.some((l) => l.id === (contactFilter as { value: string }).value)) ? (
+            // One of Thunderbird's mailing lists on its own: its page, everyone in its book with a checkbox.
+            (() => {
+              const listId = (contactFilter as { value: string }).value;
+              const book = tbBooks.find((b) => b.lists.some((l) => l.id === listId))!;
+              const list = book.lists.find((l) => l.id === listId)!;
+              return (
+                <MailingListView
+                  key={list.id}
+                  list={{ id: list.id, name: list.name, parentId: list.parentId }}
+                  bookName={book.name}
+                  contacts={shownContacts}
+                  members={tbListMembers.get(list.id) ?? new Set()}
+                  locked={tbLocked}
+                  selectedContactId={selectedContactId}
+                  onSelect={selectContact}
+                  onContextMenu={(e, c) => setContactMenu({ x: e.clientX, y: e.clientY, contact: c })}
+                  onApply={(changes) => applyListChanges(list.id, list.name, changes)}
+                />
+              );
+            })()
           ) : (
           <ContactsView
             contacts={listedContacts}
+            onContactMenu={(e, c) => setContactMenu({ x: e.clientX, y: e.clientY, contact: c })}
             filter={contactFilter}
             labelColors={labelColors}
             selectedContactId={selectedContactId}
@@ -1667,6 +1827,7 @@ export default function App() {
             onFindDuplicates={() => setContactsMode("duplicates")}
             duplicateCount={cleanup.count("duplicates") ?? 0}
             locked={tbLocked}
+            listMembers={tbListMembers}
             thunderbirdBookNames={tbBookNames}
             daynizerBookNames={tbBooks.length ? daynizerBookNames : undefined}
           />
@@ -1796,6 +1957,8 @@ export default function App() {
             existingLabels={existingLabels}
             onUpdate={updateContact}
             onDelete={deleteContact}
+            mailingLists={mailingListsOf(selectedContactId)}
+            onSetLists={setContactLists}
           />
         ) : selectedEventId ? (
           <EventDetailPanel
@@ -1826,6 +1989,15 @@ export default function App() {
           />
         ))}
       </div>
+
+      {contactMenu && (
+        <ContextMenu
+          x={contactMenu.x}
+          y={contactMenu.y}
+          onClose={() => setContactMenu(null)}
+          items={contactMenuItems(contactMenu.contact)}
+        />
+      )}
 
       {menu && (
         <ContextMenu
@@ -1918,9 +2090,20 @@ export default function App() {
       {showImport && (
         <ImportVCardModal
           addressBooks={addressBooks}
+          thunderbirdBooks={IS_ADDON ? tbAllBooks.filter((b) => !b.readOnly).map((b) => ({ id: b.id, name: b.name })) : undefined}
+          hiddenBooks={hiddenBookSet}
           defaultBookId={filterFirstBook(contactFilter) && !isThunderbirdId(filterFirstBook(contactFilter)) ? filterFirstBook(contactFilter) : (addressBooks.find((b) => b.carddav_addressbook_url)?.id ?? addressBooks[0]?.id ?? null)}
           onClose={() => setShowImport(false)}
-          onImported={() => { loadContacts(); scheduleDirtySync(); }}
+          onImported={(bookId) => {
+            loadContacts();
+            scheduleDirtySync();
+            // A new address book shows with what came in.
+            if (bookId) {
+              loadAddressBooks();
+              if (IS_ADDON) loadThunderbirdBooks();
+              setContactFilter({ kind: "book", value: bookId });
+            }
+          }}
         />
       )}
     </div>

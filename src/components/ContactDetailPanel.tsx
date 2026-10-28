@@ -6,7 +6,7 @@ interface Props {
   contact: Contact | null;
   addressBooks: AddressBook[];
   existingLabels?: string[];
-  onUpdate: (id: string, patch: Partial<Contact>) => void;
+  onUpdate: (id: string, patch: Partial<Contact>) => void | Promise<void>;
   onDelete: (id: string) => void;
   /** A contact in Thunderbird's own address books (add-on): tagged in the heading. */
   thunderbird?: boolean;
@@ -16,6 +16,13 @@ interface Props {
    * copy. Shown as a note; Save and Delete are off.
    */
   lockedBy?: string | null;
+  /**
+   * Add-on, a Thunderbird contact: the mailing lists of its address book and
+   * whether it's on each. Ticks wait for Save, like the other fields
+   * (Contacts Cleanup's Mailing lists field).
+   */
+  mailingLists?: { id: string; name: string; member: boolean }[];
+  onSetLists?: (id: string, changes: { listId: string; add: boolean }[]) => void | Promise<void>;
 }
 
 function parseArr<T>(s: string | undefined): T[] {
@@ -55,7 +62,7 @@ const rmBtnStyle: CSSProperties = {
   background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 14, padding: "0 4px"
 };
 
-export default function ContactDetailPanel({ contact, addressBooks, existingLabels = [], onUpdate, onDelete, thunderbird, lockedBy }: Props) {
+export default function ContactDetailPanel({ contact, addressBooks, existingLabels = [], onUpdate, onDelete, thunderbird, lockedBy, mailingLists, onSetLists }: Props) {
   const [bookId, setBookId] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -71,6 +78,8 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
   const [categories, setCategories] = useState("");
   const [notes, setNotes] = useState("");
   const [dirty, setDirty] = useState(false);
+  // Mailing list ticks changed since the contact was opened: list id -> wanted.
+  const [listTicks, setListTicks] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setBookId(contact?.address_book_id ?? "");
@@ -122,6 +131,7 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
     setAddresses(parseArr<PostalAddress>(contact?.addresses));
     setCategories(contact?.categories ?? "");
     setNotes(contact?.notes ?? "");
+    setListTicks({});
     setDirty(false);
   }, [contact?.id]);
 
@@ -130,9 +140,17 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
   }
   const mark = () => setDirty(true);
 
-  function handleSave() {
+  // Thunderbird only puts contacts with an email address on a mailing list.
+  const hasEmail = emails.some((e) => e.value.trim());
+  const listChanges = (mailingLists ?? [])
+    .filter((l) => l.id in listTicks && listTicks[l.id] !== l.member)
+    .map((l) => ({ listId: l.id, add: listTicks[l.id] }));
+
+  async function handleSave() {
     const fn = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ") || org.trim() || "Unnamed";
-    onUpdate(contact!.id, {
+    const lists = hasEmail ? listChanges : [];
+    // The card first (a new email address must be saved before Thunderbird takes the contact on a list).
+    await onUpdate(contact!.id, {
       address_book_id: bookId,
       fn,
       first_name: firstName,
@@ -147,6 +165,8 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
       categories,
       notes
     });
+    if (lists.length) await onSetLists?.(contact!.id, lists);
+    setListTicks({});
     setDirty(false);
   }
 
@@ -272,6 +292,31 @@ export default function ContactDetailPanel({ contact, addressBooks, existingLabe
           {existingLabels.map((l) => <option key={l} value={l}>{l}</option>)}
         </select>
       )}
+
+      {mailingLists && (<>
+        <label>Mailing lists</label>
+        {mailingLists.length === 0 ? (
+          <div className="cp-hint" style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            This address book has no mailing lists. Right-click it in the sidebar for New mailing list….
+          </div>
+        ) : (<>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", margin: "2px 0 4px" }}>
+            {mailingLists.map((l) => (
+              <label key={l.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, margin: 0, textTransform: "none", letterSpacing: 0, fontSize: 12, color: "var(--text-2)" }}>
+                <input
+                  type="checkbox"
+                  disabled={!hasEmail || Boolean(lockedBy)}
+                  checked={l.id in listTicks ? listTicks[l.id] : l.member}
+                  onChange={(e) => { setListTicks({ ...listTicks, [l.id]: e.target.checked }); mark(); }}
+                /> {l.name}
+              </label>
+            ))}
+          </div>
+          {!hasEmail && (
+            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Add an email address first: Thunderbird only puts contacts with an email address on a mailing list.</div>
+          )}
+        </>)}
+      </>)}
 
       <label>Notes</label>
       <AutoGrowTextarea

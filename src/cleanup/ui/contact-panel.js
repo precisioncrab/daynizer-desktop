@@ -18,6 +18,10 @@
  * A contact linked with its copies in other address books (In several
  * books) says so: saving changes the copies too (src/ui/tab.js), unless
  * "Save this copy only" is checked.
+ *
+ * Mailing lists: a checkbox for each list of the contact's address book
+ * (a Thunderbird list only holds contacts of its own book, and only ones
+ * with an email address). Ticks wait for Save like every other field.
  */
 
 import { h } from "./dom.js";
@@ -44,9 +48,9 @@ const writableBooks = (ctx) => {
 function draftFor(ctx, card) {
   let d = ctx.state.drafts.get(card.id);
   // The card changed (saved here or elsewhere): start from it again unless there are real edits waiting.
-  const edited = d && d.touched && (d.chatList.size || d.book !== card.parentId || JSON.stringify(d.model) !== JSON.stringify(cardModel(d.base)));
+  const edited = d && d.touched && (d.chatList.size || d.lists.size || d.book !== card.parentId || JSON.stringify(d.model) !== JSON.stringify(cardModel(d.base)));
   if (!d || (d.base !== card.vCard && !edited)) {
-    d = { base: card.vCard, model: cardModel(card.vCard), book: card.parentId, chatList: new Map(), touched: false };
+    d = { base: card.vCard, model: cardModel(card.vCard), book: card.parentId, chatList: new Map(), lists: new Map(), touched: false };
     ctx.state.drafts.set(card.id, d);
   }
   return d;
@@ -56,15 +60,32 @@ function draftFor(ctx, card) {
 export function startNewContact(ctx) {
   const books = writableBooks(ctx);
   const book = books.some((b) => b.id === ctx.state.settings.newCardBook) ? ctx.state.settings.newCardBook : books[0]?.id;
-  ctx.state.newContact = { model: emptyModel(), book, chatList: new Map(), touched: false };
+  ctx.state.newContact = { model: emptyModel(), book, chatList: new Map(), lists: new Map(), touched: false };
   ctx.state.selected = null;
   ctx.render();
   document.getElementById("cp-given")?.focus();
 }
 
+/** Whether the contact has an email address (Thunderbird leaves a contact without one off a mailing list). */
+const hasEmail = (m) => m.emails.some((e) => e.value.trim());
+
+/** Whether the contact is on a mailing list now (only in the list's own address book). */
+const isOnList = (card, list) => Boolean(card && card.parentId === list.parentId && list.members.includes(card.uid));
+
+/** The mailing list changes the ticks ask for, in the address book the contact is saved in: [{ list, add }]. */
+function listChanges(ctx, d, card) {
+  const book = ctx.state.books.find((b) => b.id === d.book);
+  if (!hasEmail(d.model)) {
+    return [];
+  }
+  return (book?.lists ?? [])
+    .filter((list) => d.lists.has(list.id) && d.lists.get(list.id) !== isOnList(card, list))
+    .map((list) => ({ list, add: d.lists.get(list.id) }));
+}
+
 /** Whether saving would change anything. */
 function isDirty(ctx, d, card) {
-  if (d.chatList.size) {
+  if (d.chatList.size || listChanges(ctx, d, card).length) {
     return true;
   }
   if (!card) {
@@ -106,10 +127,11 @@ async function save(ctx, card, d) {
   const bookName = (id) => books.find((b) => b.id === id)?.name ?? "";
   let entry = null;
   let name;
+  const lists = listChanges(ctx, d, card);
   if (!card) {
     const vCard = newContactVCard(d.model);
     name = cardModel(vCard).fn || "New contact";
-    entry = await ctx.apply(`New contact: ${name}`, [{ type: "create", parentId: d.book, vCard, label: name }]);
+    entry = await ctx.apply(`New contact: ${name}`, [{ type: "create", parentId: d.book, vCard, label: name, lists: lists.filter((c) => c.add).map((c) => c.list.id) }]);
     if (!entry) {
       return;
     }
@@ -119,15 +141,24 @@ async function save(ctx, card, d) {
   } else {
     const vCard = modelToVCard(card.vCard, d.model);
     name = cardModel(vCard).fn || cardLabel(card);
-    const changes = d.book !== card.parentId
-      ? [{ type: "create", parentId: d.book, vCard: withoutUid(vCard), label: name }, { type: "delete", id: card.id, label: name }]
-      : comparable(vCard) !== comparable(card.vCard) ? [{ type: "update", id: card.id, vCard, label: name, only: Boolean(d.only) }] : [];
+    const moved = d.book !== card.parentId;
+    const changes = moved
+      ? [{ type: "create", parentId: d.book, vCard: withoutUid(vCard), label: name, lists: lists.filter((c) => c.add).map((c) => c.list.id) }, { type: "delete", id: card.id, label: name }]
+      : [
+        ...(comparable(vCard) !== comparable(card.vCard) ? [{ type: "update", id: card.id, vCard, label: name, only: Boolean(d.only) }] : []),
+        ...lists.map((c) => ({ type: "listMember", listId: c.list.id, id: card.id, add: c.add, label: name })),
+      ];
     if (changes.length) {
-      entry = await ctx.apply(changes.length === 2 ? `Moved ${name} to ${bookName(d.book)}` : `Edited ${name}`, changes);
+      // Only a mailing list tick: say which list.
+      const listOnly = !moved && changes.length === 1 && lists.length === 1;
+      const title = moved ? `Moved ${name} to ${bookName(d.book)}`
+        : listOnly ? (lists[0].add ? `Put ${name} on the mailing list ${lists[0].list.name}` : `Took ${name} off the mailing list ${lists[0].list.name}`)
+          : `Edited ${name}`;
+      entry = await ctx.apply(title, changes);
       if (!entry) {
         return;
       }
-      if (changes.length === 2) {
+      if (moved) {
         ctx.state.selected = entry.cards[0].id;
       }
     }
@@ -182,6 +213,30 @@ function linkedNotice(ctx, card, d) {
       } }), "Save this copy only"),
       h("span", { class: "spacer" }),
       h("button", { class: "link", onClick: () => ctx.saveLinks(unlink(ctx.state.links, card.id)) }, "Unlink")));
+}
+
+/** A checkbox for each mailing list of the address book the contact is saved in. */
+function mailingLists(ctx, card, d, touch) {
+  // Daynizer: only Thunderbird's own address books (add-on, ids "tb:") have mailing lists; Daynizer's use labels.
+  if (!String(d.book ?? "").startsWith("tb:")) {
+    return null;
+  }
+  const book = ctx.state.books.find((b) => b.id === d.book);
+  const lists = book?.lists ?? [];
+  if (!lists.length) {
+    return [h("label", {}, "Mailing lists"), h("p", { class: "cp-hint" }, `${book?.name ?? "This address book"} has no mailing lists. Right-click it in the sidebar for New mailing list….`)];
+  }
+  const email = hasEmail(d.model);
+  return [
+    h("label", {}, "Mailing lists"),
+    h("div", { class: "cp-lists" }, lists.map((list) => h("label", { class: "cp-check", title: `Mailing list in ${book.name}` },
+      h("input", { type: "checkbox", disabled: !email, checked: d.lists.has(list.id) ? d.lists.get(list.id) : isOnList(card, list), onChange: (e) => {
+        d.lists.set(list.id, e.target.checked);
+        touch();
+      } }), list.name))),
+    email ? null : h("p", { class: "cp-hint" }, "Add an email address first: Thunderbird only puts contacts with an email address on a mailing list."),
+    card && d.book !== card.parentId ? h("p", { class: "cp-hint" }, `Moving takes the contact off the mailing lists of ${card.bookName}.`) : null,
+  ];
 }
 
 /**
@@ -310,10 +365,11 @@ export function contactPanel(ctx, card, { before = null } = {}) {
     h("label", {}, "Emails"),
     m.emails.map((e, i) => h("div", { class: "cp-line" },
       typeSelect(e, EMAIL_TYPES),
+      // Leaving the box draws the panel again, so the mailing list ticks follow whether there's an email address.
       h("input", { type: "text", id: id(`email-${i}`), value: e.value, "aria-label": "Email", onInput: (ev) => {
         e.value = ev.target.value;
         touch();
-      } }),
+      }, onChange: () => ctx.render() }),
       removeButton(m.emails, e))),
     addButton("+ Add email", () => {
       m.emails.push({ type: "home", value: "" });
@@ -396,6 +452,8 @@ export function contactPanel(ctx, card, { before = null } = {}) {
         }
       } }, h("option", { value: "" }, "+ Add existing label…"), allLabels.filter((l) => !mine.has(l.toLowerCase())).map((l) => h("option", { value: l }, l)))
       : null,
+
+    mailingLists(ctx, card, d, touch),
 
     h("label", { for: id("note") }, "Notes"),
     h("textarea", { id: id("note"), value: m.note, placeholder: "Add notes…", onInput: (e) => {

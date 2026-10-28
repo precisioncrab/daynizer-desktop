@@ -273,8 +273,11 @@ declare global {
         create: (input: Partial<Contact> & { address_book_id: string }) => Promise<Contact>;
         update: (id: string, patch: Partial<Contact>) => Promise<Contact>;
         delete: (id: string, hard?: boolean) => Promise<void>;
-        import: (opts: { label: string; bookId: string; createNew: boolean }) => Promise<{
+        /** `newBook`: make a new local address book first, with this name (the file's when empty). */
+        import: (opts: { label: string; bookId: string; createNew: boolean; newBook?: string }) => Promise<{
           canceled?: boolean; total?: number; labeled?: number; matched?: number; created?: number; skipped?: number;
+          /** The address book they went into, and its name when it's new. */
+          bookId?: string; bookName?: string;
         }>;
         merge: (keeperId: string, loserIds: string[], patch: Partial<Contact>) => Promise<Contact>;
         /** Whole vCards of the live contacts (all, or these ids), for the

@@ -1024,7 +1024,7 @@ function registerIpc() {
   ipcMain.handle("contacts:create", (_e, input: any) => contactCreate(input));
   ipcMain.handle("contacts:update", (_e, id: string, patch: any) => contactUpdate(id, patch));
   ipcMain.handle("contacts:delete", (_e, id: string, hard?: boolean) => contactDelete(id, hard));
-  ipcMain.handle("contacts:import", async (_e, opts: { label: string; bookId: string; createNew: boolean }) => {
+  ipcMain.handle("contacts:import", async (_e, opts: { label: string; bookId: string; createNew: boolean; newBook?: string }) => {
     const res = await dialog.showOpenDialog({
       title: "Import contacts from vCard",
       filters: [{ name: "vCard", extensions: ["vcf", "vcard"] }],
@@ -1032,8 +1032,16 @@ function registerIpc() {
     });
     if (res.canceled || !res.filePaths[0]) return { canceled: true };
     const text = fs.readFileSync(res.filePaths[0], "utf8");
-    const summary = importVCards(text, opts);
-    return { canceled: false, ...summary };
+    // "New address book…": a local one, named in the dialog or after the file.
+    let bookId = opts.bookId;
+    let bookName: string | undefined;
+    if (typeof opts.newBook === "string") {
+      const book = addressBookCreate(opts.newBook.trim() || path.basename(res.filePaths[0]).replace(/\.(vcf|vcard)$/i, "") || "Imported contacts");
+      bookId = book.id;
+      bookName = book.name;
+    }
+    const summary = importVCards(text, { label: opts.label, bookId, createNew: opts.createNew });
+    return { canceled: false, ...summary, bookId, bookName };
   });
   ipcMain.handle("contacts:merge", (_e, keeperId: string, loserIds: string[], patch: any) => contactsMerge(keeperId, loserIds, patch));
   // Whole vCards, for the contacts clean-up tools (they edit cards line by line).

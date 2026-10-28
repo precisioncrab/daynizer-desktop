@@ -45,7 +45,8 @@ const node = (uid: string) => ({ id: uid, parentId: store[uid].parentId, type: "
     async listMembers(id: string) { return lists[id].members.map((m) => ({ id: m })); },
     async create(book: string, props: any) { const id = `L${nextList++}`; lists[id] = { id, parentId: book, ...props, members: [] }; return id; },
     async delete(id: string) { delete lists[id]; },
-    async addMember(id: string, uid: string) { lists[id].members.push(uid); }
+    async addMember(id: string, uid: string) { lists[id].members.push(uid); },
+    async removeMember(id: string, uid: string) { lists[id].members = lists[id].members.filter((m) => m !== uid); }
   }
 };
 (globalThis as any).window = globalThis;
@@ -85,6 +86,22 @@ ok(again.length === 1 && again[0].name === "Wedding2" && again[0].nickName === "
   "the list is made again in its book with its name, nickname and description", JSON.stringify(again));
 ok(JSON.stringify([...(again[0]?.members ?? [])].sort()) === JSON.stringify(["a1", "b1"]), "with its members", JSON.stringify(again[0]?.members));
 ok(!/CATEGORIES/.test(store.a1.vCard) && !/CATEGORIES/.test(store.b1.vCard), "the labels are off again");
+
+// A new mailing list, a contact put on it and another taken off Wedding2 (Contacts Cleanup 0.1.26's
+// createList and listMember changes), then both undone: the members back, the new list gone.
+const made = await applyChanges(ab.api, "New mailing list Party in wedding 2", [{ type: "createList", parentId: "tb:w2", name: "Party", label: "Party" }]);
+const party = made.results[0];
+ok(!made.error && lists[party]?.name === "Party" && lists[party]?.parentId === "w2", "a new mailing list is made in its book", JSON.stringify(lists[party]));
+const w2list = Object.values(lists).find((l) => l.name === "Wedding2")!;
+const ticked = await applyChanges(ab.api, "Edited", [
+  { type: "listMember", listId: party, id: "tb:w2»c1", add: true, label: "Cy" },
+  { type: "listMember", listId: w2list.id, id: "tb:w2»a1", add: false, label: "Amy" }
+]);
+ok(!ticked.error && JSON.stringify(lists[party].members) === JSON.stringify(["c1"]) && !w2list.members.includes("a1"), "put on one list, taken off another", JSON.stringify(lists));
+await undoEntry(ab.api, ticked.entry, { force: true });
+ok(lists[party].members.length === 0 && w2list.members.includes("a1"), "undo puts the members back", JSON.stringify(lists));
+await undoEntry(ab.api, made.entry, { force: true });
+ok(!lists[party], "undo deletes the new list");
 
 console.log(failed ? `\n${failed} failed` : "\nall passed");
 process.exitCode = failed ? 1 : 0;

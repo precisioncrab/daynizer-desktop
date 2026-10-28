@@ -47,6 +47,27 @@ Thunderbird's hidden books `hidden`, so `excludedBooks()` and Lists to labels' `
 The sidebars themselves (Contacts Cleanup's `ui/tab.js`, Daynizer's React `ContactsSidebar.tsx`) each got the same
 right-click menus: address books Rename, color, Hide, Delete; labels Rename, color, Hide, Delete.
 
+**Changed on 2026-10-28 (Contacts Cleanup 0.1.27, `8855bbf`):** `core/copies.js` and `ui/views/copies.js` say "edited
+separately" (was "edited apart"), in both. Contacts Cleanup's `core/history.js` gained a `createBook` change (an import
+into a new address book) that Daynizer's copy doesn't have: Daynizer's import doesn't go through the history (its own
+`ImportVCardModal`, which got the same new-book and label choices). The list page and the contact right-click are
+Daynizer's own React (`components/MailingListView.tsx`, `contactMenuItems` in `App.tsx`), written to match
+Contacts Cleanup's `listPage` and `contactMenu`; list changes go through `ctx.apply` (`listMember`, undo).
+
+**Changed in both on 2026-10-28 (Contacts Cleanup 0.1.26, `d74abd3`):** `core/history.js` (copied unchanged) has the
+`createList` and `listMember` changes with undo (`entry.madeLists`, `entry.members`) and `entryChanged`; both
+`lib/addressbook.js` have `removeFromList` (Daynizer's through `removeFromThunderbirdList`). `ui/contact-panel.js` has
+a Mailing lists field (Daynizer: only for Thunderbird's books, "tb:" ids). `ui/views/copies.js` keeps what was applied
+on the page with Undo (`state.copiesDone`, cleared when the page changes; Daynizer's hint worded for both kinds of
+copies). `ui/views/labels.js` exports `listToLabel` and `deleteList`, and its `listMenu` has "New message to this
+list" (`ctx.writeTo`, `compose.beginNew`). Both tabs: `ctx.writeTo`, `apply` records an entry that changed only
+mailing lists. The sidebars (Contacts Cleanup's `ui/tab.js`, Daynizer's React `ContactsSidebar.tsx`) show each
+address book's mailing lists under it (click shows the members; Daynizer's through `ContactFilter` kind "list" and
+`ListMembers`), New mailing list… on a book's right-click (Daynizer: the controller's `newMailingList`), the list's
+menu, and New message to everyone with a label (Daynizer: add-on only). Daynizer's own editor
+(`ContactDetailPanel.tsx`) has the same Mailing lists field for Thunderbird contacts (ticks saved after the card).
+Contacts Cleanup's Ctrl+Z change isn't copied (Daynizer dropped Ctrl+Z after a clean-up change, 2026-10-27).
+
 **Changed in both on 2026-10-26 (not yet in a Contacts Cleanup build):** the "include" checkboxes on
 address books are gone; the clean-up tools work on the address books selected in the sidebar (click one,
 Ctrl+click for several, none = all). The pages ask `ctx.excludedBooks()` instead of reading

@@ -10,7 +10,7 @@
  *              add-on's storage only)
  *   keep       one copy stays, with the others' details and their address
  *              books (and mailing lists) as labels; the others are deleted
- *   separate   each copy gets its own UID, and they're edited apart
+ *   separate   each copy gets its own UID, and they're edited separately
  *   leave      nothing changes (the page stops asking)
  * The changes themselves are made by src/core/history.js ("copies").
  *

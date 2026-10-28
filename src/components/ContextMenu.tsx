@@ -4,6 +4,10 @@ interface ActionItem {
   label: string;
   onClick: () => void;
   danger?: boolean;
+  disabled?: boolean;
+  /** true or false puts a tick column in front of the label. */
+  checked?: boolean;
+  title?: string;
 }
 
 /** A row of color dots in the real colors (as in Contacts Cleanup's menu); `current` is ringed.
@@ -15,7 +19,17 @@ interface ColorsItem {
   onNone?: () => void;
 }
 
-type Item = ActionItem | ColorsItem;
+interface SeparatorItem {
+  separator: true;
+}
+
+/** Items that open beside this one on hover (as in Contacts Cleanup's menu). */
+interface SubmenuItem {
+  label: string;
+  submenu: (ActionItem | SeparatorItem)[];
+}
+
+export type Item = ActionItem | ColorsItem | SeparatorItem | SubmenuItem;
 
 interface Props {
   x: number;
@@ -42,6 +56,9 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
       ? Math.max(margin, window.innerHeight - height - margin) : y;
     setPos({ x: nx, y: ny });
   }, [x, y, items.length]);
+  // The submenu open (its item's index); a submenu that won't fit on the right opens on the left.
+  const [openSub, setOpenSub] = useState<number | null>(null);
+  const [subLeft, setSubLeft] = useState(false);
 
   useEffect(() => {
     // Only close on a subsequent click outside the menu. We deliberately do NOT
@@ -57,10 +74,47 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
     };
   }, [onClose]);
 
+  const action = (item: ActionItem, key: React.Key, onMouseEnter?: () => void) => (
+    <div
+      key={key}
+      className={`item ${item.danger ? "danger" : ""} ${item.disabled ? "disabled" : ""}`}
+      title={item.title}
+      role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+      aria-checked={item.checked === undefined ? undefined : item.checked}
+      onMouseEnter={onMouseEnter}
+      onClick={item.disabled ? undefined : () => { item.onClick(); onClose(); }}
+    >
+      {item.checked !== undefined && <span className="tick" aria-hidden="true">{item.checked ? "✓" : ""}</span>}
+      {item.label}
+    </div>
+  );
+
   return (
     <div className="context-menu" style={{ left: pos.x, top: pos.y }} ref={ref}>
-      {items.map((item) => ("colors" in item ? (
-        <div key="colors" className="colors">
+      {items.map((item, i) => ("separator" in item ? (
+        <div key={`sep-${i}`} className="separator" />
+      ) : "submenu" in item ? (
+        <div
+          key={item.label}
+          className="item has-sub"
+          aria-haspopup="true"
+          onMouseEnter={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setSubLeft(r.right + 240 > window.innerWidth);
+            setOpenSub(i);
+          }}
+          onClick={() => setOpenSub(i)}
+        >
+          <span>{item.label}</span>
+          <span className="sub-arrow" aria-hidden="true">▸</span>
+          {openSub === i && (
+            <div className={`context-menu sub${subLeft ? " left" : ""}`} onClick={(e) => e.stopPropagation()}>
+              {item.submenu.map((s, k) => ("separator" in s ? <div key={`sep-${k}`} className="separator" /> : action(s, k)))}
+            </div>
+          )}
+        </div>
+      ) : "colors" in item ? (
+        <div key="colors" className="colors" onMouseEnter={() => setOpenSub(null)}>
           {item.colors.map((c) => (
             <button
               key={c.color}
@@ -83,13 +137,7 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
           )}
         </div>
       ) : (
-        <div
-          key={item.label}
-          className={`item ${item.danger ? "danger" : ""}`}
-          onClick={() => { item.onClick(); onClose(); }}
-        >
-          {item.label}
-        </div>
+        action(item, item.label, () => setOpenSub(null))
       )))}
     </div>
   );

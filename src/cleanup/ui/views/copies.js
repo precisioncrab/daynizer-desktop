@@ -121,9 +121,9 @@ function explainThunderbird(ctx, group, choice, books, first) {
     lines.push(`The copy in ${bookName(ctx, book)} stays and gets the other copies' details${labels.length ? `, with the label${labels.length > 1 ? "s" : ""} ${names([...new Set(labels)])}` : ""}.`);
     lines.push(`The copies in ${names(others)} are deleted, and leave their mailing lists there.`);
   } else {
-    lines.push(`Each copy gets its own contact ID and keeps its own details. From then on they're two contacts, edited apart. The copy in ${first} is made again with a new ID (same details, same mailing lists).`);
+    lines.push(`Each copy gets its own contact ID and keeps its own details. From then on they're two contacts, edited separately. The copy in ${first} is made again with a new ID (same details, same mailing lists).`);
   }
-  lines.push("Undo (the message after, or Changes) puts the details and mailing lists back. The copies keep separate IDs: Thunderbird doesn't let add-ons give two contacts one ID again.");
+  lines.push("Undo (on this page, the message after, or Changes) puts the details and mailing lists back. The copies keep separate IDs, so the contact won't come back to this list: Thunderbird doesn't let add-ons give two contacts one ID again.");
   return lines;
 }
 
@@ -147,7 +147,7 @@ function explain(ctx, groups, choice) {
     lines.push(`The copy in ${bookName(ctx, book)} stays and gets the other copies' details${labels.length ? `, with the label${labels.length > 1 ? "s" : ""} ${names([...new Set(labels)])}` : ""}.`);
     lines.push(`The copies in ${names(others)} are deleted.`);
   } else {
-    lines.push(`Each copy gets its own contact ID and keeps its own details. From then on they're two contacts, edited apart. The copy in ${first} keeps its ID; the copy in ${names(books.filter((b) => b !== first))} is made again there with a new ID (same details) and the old one removed.`);
+    lines.push(`Each copy gets its own contact ID and keeps its own details. From then on they're two contacts, edited separately. The copy in ${first} keeps its ID; the copy in ${names(books.filter((b) => b !== first))} is made again there with a new ID (same details) and the old one removed.`);
   }
   lines.push("Synced address books send the change to the server, so phones and other apps get it too. Undo (the message after, or Changes) puts it all back.");
   return lines;
@@ -185,7 +185,7 @@ async function applyChoice(ctx, groups, choice) {
     made.push({ keepId: keeper.id, created: plan.created.map((i) => i + changes.length) });
     changes.push(...plan.changes);
   }
-  await ctx.apply(`${groups.length > 1 ? plural(groups.length, "contact", "contacts") : groups[0].name}: ${what}`, changes, {
+  const entry = await ctx.apply(`${groups.length > 1 ? plural(groups.length, "contact", "contacts") : groups[0].name}: ${what}`, changes, {
     onDone: async (results) => {
       if (choice.action === "link") {
         let links = ctx.state.links;
@@ -201,8 +201,30 @@ async function applyChoice(ctx, groups, choice) {
       }
     },
   });
+  // A contact sorted out leaves the list (its copies don't share an ID any more), so what was done stays on screen.
+  if (entry) {
+    ctx.state.copiesDone = [{ title: entry.title, entry }, ...ctx.state.copiesDone];
+  }
   ctx.state.selected = null;
   ctx.render();
+}
+
+/** What was applied on this page since it was opened, each with Undo. */
+function doneBox(ctx) {
+  const done = ctx.state.copiesDone ?? [];
+  if (!done.length) {
+    return null;
+  }
+  return h("div", { class: "copies-box copies-done" },
+    h("div", { class: "copies-box-title" }, "Done on this page (sorted-out contacts leave the list):"),
+    done.map(({ title, entry }) => h("div", { class: "cp-line" },
+      h("span", {}, `${title}.`),
+      h("span", { class: "spacer" }),
+      entry.undone
+        ? tag("undone", "plain")
+        : h("button", { class: "small", disabled: Boolean(ctx.state.busy), onClick: () => ctx.undo(entry) }, "Undo"))),
+    // Daynizer: worded for both kinds of copies (Thunderbird's never share an ID again; see explainThunderbird).
+    h("p", { class: "cp-hint" }, "Undo puts the details back (and Thunderbird's mailing lists). A contact whose copies got their own IDs may not come back to this list: Thunderbird doesn't let add-ons give two of its contacts one ID again."));
 }
 
 /** The choice and its Apply button, for one contact or every contact in `groups` (all in the same address books). */
@@ -214,7 +236,7 @@ function controls(ctx, key, groups) {
     ["leave", "Leave as is"],
     ["link", "Link the copies: editing one edits the others"],
     ...books.map((b) => [`keep:${b}`, `Keep the copy in ${bookName(ctx, b)}, label it, delete the others`]),
-    ["separate", "Separate them: two contacts, edited apart"],
+    ["separate", "Separate them: two contacts, edited separately"],
   ];
   const keepBook = choice.action.startsWith("keep:") ? choice.action.slice(5) : null;
   const removedLists = keepBook ? [...new Set(groups.flatMap((g) => g.cards.filter((c) => c.parentId !== keepBook).flatMap((c) => listsOf(ctx, c))))] : [];
@@ -270,6 +292,7 @@ export default {
     const selected = open.find((g) => rowKey(g) === ctx.state.selected) ?? null;
     return [
       toolbar(ctx, { title: "In several address books" }),
+      doneBox(ctx),
       h("div", { class: "toolbar-filters" },
         h("span", {}, "The same contact in more than one address book, with one contact ID. Thunderbird and some phones treat one ID as one contact, so they show or change only one of the copies. Choose what to do with them all at once (below), or select a contact to sort out just that one."),
         leftCount

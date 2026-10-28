@@ -33,7 +33,7 @@
 import {
   readThunderbirdBooks, sameAsDaynizer, shownThunderbirdBooks, readThunderbirdCard, readThunderbirdByUid, thunderbirdShadowed,
   thunderbirdPhoto, setThunderbirdPhoto, thunderbirdBookExists, deleteThunderbirdBook, renameThunderbirdList,
-  thunderbirdListsOf, addToThunderbirdList, readThunderbirdList, createThunderbirdList, deleteThunderbirdList, isThunderbirdId,
+  thunderbirdListsOf, addToThunderbirdList, removeFromThunderbirdList, readThunderbirdList, createThunderbirdList, deleteThunderbirdList, isThunderbirdId,
 } from "../../thunderbirdBooks";
 import { hiddenContactBooks } from "../../contactsHidden";
 
@@ -139,6 +139,9 @@ export const api = {
   },
   async addToList(listId, id) {
     return isThunderbirdId(id) ? addToThunderbirdList(listId, id) : false;
+  },
+  async removeFromList(listId, id) {
+    return isThunderbirdId(id) ? removeFromThunderbirdList(listId, id) : false;
   },
   async getList(id) {
     return readThunderbirdList(id);

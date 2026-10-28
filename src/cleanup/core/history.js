@@ -23,14 +23,18 @@
  * A deleted card also keeps the mailing lists it was in (`lists`), and
  * undo puts the card back in them. A deleted mailing list is kept in
  * entry.lists ({ parentId, name, nickName, description, members }) and
- * undo makes it again with its members.
+ * undo makes it again with its members. A mailing list made is kept in
+ * entry.madeLists ({ id, parentId, name }) and undo deletes it; a card put
+ * on or taken off a list is kept in entry.members ({ listId, id, add }) and
+ * undo does the opposite.
  *
  * `api` is the address book (src/lib/addressbook.js, or a fake in tests):
  * get(id) -> node|null, update(id, vCard), create(parentId, vCard) -> id,
  * remove(id), photo(id) -> dataUrl|null, setPhoto(id, dataUrl); and for
  * mailing lists, when it has them: listsOf(id) -> [list id],
- * addToList(listId, id), getList(id), createList(parentId, list) -> id,
- * deleteList(id); and bookExists(id) -> bool, when it can tell.
+ * addToList(listId, id), removeFromList(listId, id), getList(id),
+ * createList(parentId, list) -> id, deleteList(id); and bookExists(id) ->
+ * bool, when it can tell.
  */
 
 import { comparable, parseVCard, parseLine, serializeVCard, insertProp, photoLines, withoutPhoto, withPhoto } from "./vcard.js";
@@ -119,8 +123,11 @@ const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).sli
  * Applies changes in order: [{ type: "update", id, vCard, label }],
  * [{ type: "delete", id, label }], [{ type: "create", parentId, vCard,
  * label, lists }] (lists: mailing list ids to put the new card in),
- * [{ type: "copies", uid, books, want, label }] (see sortCopies) or
- * [{ type: "deleteList", listId, label }]. Stops at the first failure, so
+ * [{ type: "copies", uid, books, want, label }] (see sortCopies),
+ * [{ type: "deleteList", listId, label }], [{ type: "createList", parentId,
+ * name, label }] or [{ type: "listMember", listId, id, add, label }] (puts
+ * the card on the list, or with add false takes it off; Thunderbird skips a
+ * card without an email address). Stops at the first failure, so
  * a merge never deletes cards after its kept card failed to save.
  * Returns { entry, error, results }: the entry holds what was done, even
  * after a failure; results[i] is what change i gave (a "copies" change: its
@@ -149,6 +156,17 @@ export async function applyChanges(api, title, changes, onProgress = () => {}) {
           entry.lists = [...(entry.lists ?? []), list];
         }
         results.push(null);
+      } else if (change.type === "createList") {
+        const id = await api.createList(change.parentId, { name: change.name });
+        entry.madeLists = [...(entry.madeLists ?? []), { id, parentId: change.parentId, name: change.name }];
+        results.push(id);
+      } else if (change.type === "listMember") {
+        const done = await (change.add ? api.addToList(change.listId, change.id) : api.removeFromList(change.listId, change.id));
+        if (done === false) {
+          throw new Error(`The mailing list for "${change.label}" isn't there any more.`);
+        }
+        entry.members = [...(entry.members ?? []), { listId: change.listId, id: change.id, add: Boolean(change.add) }];
+        results.push(change.id);
       } else {
         const node = await api.get(change.id);
         if (!node) {
@@ -235,6 +253,10 @@ export async function undoEntry(api, entry, { force = false } = {}) {
     return { conflicts, done: false, error: null };
   }
   try {
+    // Cards put on or taken off a list go back first, newest first.
+    for (const m of [...(entry.members ?? [])].reverse()) {
+      await (m.add ? api.removeFromList(m.listId, m.id) : api.addToList(m.listId, m.id)).catch(() => false);
+    }
     // Deleted mailing lists come back first (empty), so cards brought back can join them.
     const listIds = new Map();
     for (const list of entry.lists ?? []) {
@@ -272,6 +294,12 @@ export async function undoEntry(api, entry, { force = false } = {}) {
         await api.addToList(listIds.get(list.id), newIds.get(member) ?? member).catch(() => false);
       }
     }
+    // Mailing lists it made go last (their contacts stay); one deleted since is left alone.
+    for (const list of entry.madeLists ?? []) {
+      if (await api.getList(list.id)) {
+        await api.deleteList(list.id);
+      }
+    }
     return { conflicts, done: true, error: null };
   } catch (e) {
     return { conflicts, done: false, error: e?.message ?? String(e) };
@@ -289,6 +317,9 @@ async function createWithFallback(api, parentId, vCard) {
     return api.create(parentId, withoutUid(vCard));
   }
 }
+
+/** Whether an entry changed anything (cards, or mailing lists alone). */
+export const entryChanged = (entry) => Boolean(entry.cards.length || entry.lists?.length || entry.madeLists?.length || entry.members?.length);
 
 /** The history with a new entry on top, at most HISTORY_LIMIT long. */
 export function addEntry(history, entry) {
