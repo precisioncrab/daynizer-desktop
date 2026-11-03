@@ -9,8 +9,8 @@
 // members moved into another address book, Thunderbird's or Daynizer's, then undone) and
 // thunderbird-hidden-move.test.ts (a book moved out when some contacts share an ID with a hidden book).
 // Run: node scripts/test-thunderbird-books.mjs
-// Each test is bundled with esbuild (Vite's own) into a temp folder, then run.
-import { build } from "esbuild";
+// Each test is bundled with Rolldown (Vite 8's own bundler) into a temp folder, then run.
+import { build } from "rolldown";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +22,7 @@ let failed = false;
 try {
   for (const name of ["thunderbird-patch.test.ts", "thunderbird-write.test.ts", "thunderbird-copies.test.ts", "thunderbird-lists.test.ts", "thunderbird-list-move.test.ts", "thunderbird-hidden-move.test.ts"]) {
     const file = join(out, name.replace(/\.ts$/, ".mjs"));
-    await build({ entryPoints: [resolve(here, name)], bundle: true, platform: "node", format: "esm", outfile: file, logLevel: "warning" });
+    await build({ input: resolve(here, name), platform: "node", logLevel: "warn", output: { file, format: "esm" } });
     console.log(`\n== ${name}`);
     const run = spawnSync(process.execPath, [file], { stdio: "inherit" });
     if (run.status !== 0) failed = true;

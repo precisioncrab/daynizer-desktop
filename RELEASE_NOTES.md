@@ -1,3 +1,26 @@
+Daynizer v0.9.1
+
+Changes since v0.9.0. Daynizer remains beta, pre-1.0, keep a backup of anything important.
+
+- **Thunderbird add-on: servers over HTTPS only.** Thunderbird Add-ons requires every connection to
+  a server to be encrypted, so the add-on no longer connects to plain http:// addresses. An account
+  saved with one stops syncing and says how to switch: change the address to https:// (on a
+  Synology NAS, port 5001 instead of 5000), and if Thunderbird doesn't trust a self-signed
+  certificate yet, open the address in a Thunderbird tab once and accept it. Pairing links must be
+  caldavs://. **The desktop app is unchanged** and still connects to plain http servers.
+- **Contacts tab: right-click menus.** Rename, color, hide or delete an address book or label from
+  its right-click menu, and hide address books and labels one at a time.
+- **Color menus show the real colors**, one row of dots for lists, calendars, address books and
+  labels, with the current color ringed; labels can have No color.
+- **Import vCard into any address book or a new one**, with an optional label on each imported
+  contact. Right-click a contact for Labels.
+- **Thunderbird add-on: Thunderbird's mailing lists** show under their address book. Make a new one,
+  add a contact from its details, open a list to tick who's on it, and right-click a list for New
+  message or New Bcc message to this list.
+- Build tools updated (Vite 8).
+
+---
+
 Daynizer v0.9.0
 
 Changes since v0.8.10. Daynizer remains beta, pre-1.0, keep a backup of anything important.

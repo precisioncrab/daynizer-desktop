@@ -4,6 +4,7 @@ import { CaldavAccountPublic, DiscoveredCalendar, DiscoveredAddressBook, Address
 import { PRO_STORE_URL, openStore } from "./ProWall";
 import { dateTimeLabel } from "../dates";
 import { thunderbirdBooksAvailable, thunderbirdBooksShown, setThunderbirdBooksShown } from "../thunderbirdBooks";
+import { HTTPS_ONLY_MESSAGE, isHttpsUrl } from "../httpsOnly";
 
 /** Renderer-side twin of db.ts's davUrlKey: normalize a CalDAV/CardDAV URL so
  *  http<->https, trailing-slash, default-port and host-casing differences don't
@@ -200,14 +201,17 @@ export default function SettingsModal({
    *  URL is used for both CalDAV and CardDAV, matching how these links are built
    *  (and how Radicale-style servers serve both from one address). Returns null
    *  for anything that isn't a well-formed pairing link. */
-  function parsePairingLink(input: string): { serverUrl: string; carddavUrl: string; username: string; password: string } | null {
+  function parsePairingLink(input: string): { serverUrl: string; carddavUrl: string; username: string; password: string } | "insecure" | null {
     const trimmed = input.trim();
     const isSecure = /^caldavs:\/\//i.test(trimmed);
     if (!isSecure && !/^caldav:\/\//i.test(trimmed)) return null;
+    // caldav:// means plain http. The add-on (__ADDON__ is true) refuses it; this
+    // branch is decided at build time, so the add-on bundle has no http path.
+    if (__ADDON__ && !isSecure) return "insecure";
     // Swap in a standard scheme before parsing -- custom schemes' userinfo
     // handling is inconsistent across URL implementations, http(s): isn't.
     let url: URL;
-    try { url = new URL(trimmed.replace(/^caldavs?:/i, isSecure ? "https:" : "http:")); } catch { return null; }
+    try { url = new URL(trimmed.replace(/^caldavs?:/i, isSecure || __ADDON__ ? "https:" : "http:")); } catch { return null; }
     const username = decodeURIComponent(url.username || "");
     const password = decodeURIComponent(url.password || "");
     if (!username) return null;
@@ -219,8 +223,14 @@ export default function SettingsModal({
 
   function fillFromPairingLink() {
     const parsed = parsePairingLink(pairingInput);
+    if (parsed === "insecure") {
+      setTestMsg("That link is for an unencrypted server (caldav://). " + HTTPS_ONLY_MESSAGE);
+      return;
+    }
     if (!parsed) {
-      setTestMsg("Couldn't read that link — check it starts with caldav:// or caldavs:// and includes a username and password.");
+      setTestMsg(__ADDON__
+        ? "Couldn't read that link — check it starts with caldavs:// and includes a username and password."
+        : "Couldn't read that link — check it starts with caldav:// or caldavs:// and includes a username and password.");
       return;
     }
     setServerUrl(parsed.serverUrl);
@@ -384,6 +394,10 @@ export default function SettingsModal({
       setTestMsg("Enter a CalDAV URL or a CardDAV URL, plus username and password, before saving.");
       return;
     }
+    if (__ADDON__ && (!isHttpsUrl(serverUrl) || !isHttpsUrl(draftCarddavUrl))) {
+      setTestMsg(HTTPS_ONLY_MESSAGE);
+      return;
+    }
     setBusy(true);
     setTestMsg(null);
     // Snapshot the URLs entered, since the fields are cleared before the slow
@@ -456,6 +470,10 @@ export default function SettingsModal({
       setTestMsg("Enter a CalDAV URL or a CardDAV URL, plus username and password, before testing.");
       return;
     }
+    if (__ADDON__ && (!isHttpsUrl(serverUrl) || !isHttpsUrl(draftCarddavUrl))) {
+      setTestMsg(HTTPS_ONLY_MESSAGE);
+      return;
+    }
     setBusy(true);
     setTestMsg(null);
     try {
@@ -494,6 +512,10 @@ export default function SettingsModal({
     setTestMsg(null);
     try {
       const url = carddavUrlByAccount[accountId] ?? (accounts.find((a) => a.id === accountId)?.carddav_url || "");
+      if (__ADDON__ && !isHttpsUrl(url)) {
+        setTestMsg(HTTPS_ONLY_MESSAGE);
+        return;
+      }
       // Persist the CardDAV URL first -- discovery reads it off the account.
       await window.api.accounts.update(accountId, { carddav_url: url });
       await refresh();
@@ -775,7 +797,7 @@ export default function SettingsModal({
         <div style={{ display: "flex", gap: 6, alignItems: "center", width: "100%" }}>
           <input
             style={{ flex: 1, background: "var(--bg-field)", border: "1px solid var(--border-strong)", borderRadius: 6, color: "var(--text)", padding: "5px 8px", fontSize: 12 }}
-            placeholder="CardDAV URL (e.g. http://host:5000/carddav.php/…)"
+            placeholder="CardDAV URL (e.g. https://host:5001/carddav.php/…)"
             value={carddavUrlByAccount[acc.id] ?? (acc.carddav_url || "")}
             onChange={(e) => setCarddavUrlByAccount((prev) => ({ ...prev, [acc.id]: e.target.value }))}
           />
@@ -1060,7 +1082,7 @@ export default function SettingsModal({
             <div style={{ marginTop: 8 }}>
               <div style={{ display: "flex", gap: 6 }}>
                 <input
-                  placeholder="caldav://user:pass@host:port/"
+                  placeholder="caldavs://user:pass@host:port/"
                   value={pairingInput}
                   onChange={(e) => setPairingInput(e.target.value)}
                   style={{ flex: 1 }}

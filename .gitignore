@@ -3,6 +3,8 @@ dist
 dist-electron
 dist-addon
 dist-addon-listed
+# ATN build staging (npm run package:addon:source)
+addon-release
 release
 *.db
 *.sqlite3
