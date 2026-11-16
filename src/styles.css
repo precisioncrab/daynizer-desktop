@@ -282,7 +282,7 @@ input, textarea, select { user-select: text; }
   margin-top: 2px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .task-row .checkbox.done { background: var(--accent-color); border-color: var(--accent-color); }
-.task-row .checkbox.done::after { content: "âœ“"; font-size: 10px; color: var(--on-accent); }
+.task-row .checkbox.done::after { content: "\2713"; font-size: 10px; color: var(--on-accent); }
 .task-row .priority-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .task-row .title-col { flex: 1; min-width: 0; }
 .task-row .title { font-size: 13px; }
@@ -553,6 +553,19 @@ input, textarea, select { user-select: text; }
   border: 1px dashed rgba(255, 255, 255, 0.45) !important;
   background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.10) 0 4px, transparent 4px 8px);
 }
+/* Task priority dot at the left of a calendar bar. The light ring keeps it
+   visible on a bar of the same color. */
+.calendar-view-grid .ec-priority-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  margin-right: 4px;
+  align-self: center;
+  vertical-align: middle;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
+}
 .calendar-view-grid .ec-recur-mark {
   margin-right: 2px;
   font-size: 0.85em;
@@ -632,6 +645,7 @@ input, textarea, select { user-select: text; }
 .context-menu .item.disabled { color: var(--text-faint); cursor: default; }
 .context-menu .item.disabled:hover { background: transparent; }
 .context-menu .separator { height: 1px; margin: 4px 0; background: var(--border-alt); }
+.context-menu .info { padding: 6px 14px; font-size: 11px; color: var(--text-muted); cursor: default; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .context-menu .colors { display: flex; gap: 6px; padding: 6px 14px; }
 .context-menu .swatch { width: 16px; height: 16px; padding: 0; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
 .context-menu .swatch.on { border-color: var(--text-strong); }
@@ -641,7 +655,7 @@ input, textarea, select { user-select: text; }
 .context-menu .item.has-sub { position: relative; display: flex; align-items: center; gap: 12px; }
 .context-menu .item.has-sub > span:first-child { flex: 1; }
 .context-menu .sub-arrow { color: var(--text-faint); font-size: 10px; }
-.context-menu .context-menu.sub { position: absolute; left: 100%; top: -4px; max-height: 70vh; overflow-y: auto; cursor: default; }
+.context-menu .context-menu.sub { position: absolute; left: 100%; top: -4px; max-height: calc(100vh - 16px); overflow-y: auto; cursor: default; }
 .context-menu .context-menu.sub.left { left: auto; right: 100%; }
 /* A Thunderbird mailing list's page: its ticks wait for Apply. */
 .list-page-filters { display: flex; align-items: center; gap: 14px; padding: 6px 16px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }

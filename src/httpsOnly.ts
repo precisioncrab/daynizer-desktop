@@ -9,7 +9,8 @@
 export const HTTPS_ONLY_MESSAGE =
   "Daynizer for Thunderbird only connects to servers over an encrypted connection (https://). " +
   "Change this account's address to start with https:// (on a Synology NAS: port 5001 instead of 5000). " +
-  "If Thunderbird doesn't trust your server's certificate yet, open the https:// address in a Thunderbird tab once and accept it.";
+  "If Thunderbird doesn't trust your server's certificate yet (a self-signed one), add it in Thunderbird's Settings: " +
+  "Privacy & Security, Security certificates, Manage Certificates…, Servers, Add Exception…, then enter the https:// address.";
 
 /** True for an https:// URL. Empty values pass (a CardDAV-only account has no CalDAV URL). */
 export function isHttpsUrl(url: string | null | undefined): boolean {

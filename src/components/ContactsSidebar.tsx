@@ -4,6 +4,7 @@ import ContextMenu from "./ContextMenu";
 import { ContactFilter, FilterKind, LabelColors, contactLabels, filterHas, toggleInFilter } from "../contactUtils";
 
 import { PALETTE, randomSwatch } from "../palette";
+import { syncPlace } from "../syncPlace";
 
 /** One clean-up page in the sidebar (Contacts Cleanup's pages, src/cleanup/). */
 export interface CleanupItem { id: string; title: string; dot: string; count: number | null }
@@ -464,6 +465,11 @@ export default function ContactsSidebar({
           y={bookMenu.y}
           onClose={() => setBookMenu(null)}
           items={[
+            {
+              info: syncPlace(bookMenu.book.carddav_account_id, bookMenu.book.carddav_addressbook_url, accounts),
+              title: bookMenu.book.carddav_addressbook_url ?? undefined
+            },
+            { separator: true as const },
             { label: "Rename", onClick: () => { setEditingBookId(bookMenu.book.id); setEditName(bookMenu.book.name); } },
             { colors: PALETTE, current: bookMenu.book.color, onPick: (color: string) => onSetBookColor(bookMenu.book.id, color) },
             { label: "Hide (and its contacts)", onClick: () => onHide("books", bookMenu.book.id) },
@@ -480,6 +486,8 @@ export default function ContactsSidebar({
           y={tbBookMenu.y}
           onClose={() => setTbBookMenu(null)}
           items={[
+            { info: "Thunderbird address book" },
+            { separator: true as const },
             ...(onNewThunderbirdList ? [{ label: "New mailing list…", onClick: () => onNewThunderbirdList(tbBookMenu.id) }] : []),
             ...(onRenameThunderbirdBook ? [{ label: "Rename", onClick: () => { setEditingBookId(tbBookMenu.id); setEditName(tbBookMenu.name); } }] : []),
             ...(onSetThunderbirdBookColor ? [{ colors: PALETTE, current: thunderbirdBookColors[tbBookMenu.id] ?? null, onPick: (color: string) => onSetThunderbirdBookColor(tbBookMenu.id, color) }] : []),

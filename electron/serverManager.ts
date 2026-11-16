@@ -470,7 +470,10 @@ class ServerManager {
    *  is the "start fresh" path — Radicale stores each user's data under
    *  /<username>/, so the old collections are left behind and the client sees an
    *  empty home under the new name (the caller/UI is responsible for warning). */
-  async setCredentials(opts: { username?: string; password?: string }): Promise<ServerStatus> {
+  async setCredentials(
+    opts: { username?: string; password?: string },
+    extra: { keepOldStorage?: boolean } = {}
+  ): Promise<ServerStatus> {
     const username = (opts.username ?? "").trim();
     const password = opts.password ?? "";
     // Remember the outgoing username so a first-run change can clean up the
@@ -501,19 +504,22 @@ class ServerManager {
     // now authenticated as the new user, can never reach them over CalDAV to
     // remove them. So they linger as an orphaned collection-root/<previousUser>/
     // beside the live user. Delete that directory directly from storage. Gated on
-    // first-run (never configured): the old collections there are just the empty
-    // auto-provisioned defaults, so this can't touch data from a deliberate later
-    // "start fresh" (whose documented behavior is to leave the old data behind).
+    // first-run (never configured) AND on the caller saying the old user held no
+    // data (keepOldStorage): "first run" alone is not proof the collections are
+    // empty, since the server starts and provisions before Settings is ever opened
+    // (code review 2026-11-10, finding 1). A later "start fresh" always leaves the
+    // old data behind, as documented.
     // Done AFTER the restart so the server is no longer serving the old principal
     // (no open file handles on that tree to block the delete on Windows).
-    if (usernameChanged && !this.isConfigured()) {
+    if (usernameChanged && !this.isConfigured() && !extra.keepOldStorage) {
       this.purgeUserStorage(previousUser);
     }
     return this.getStatus();
   }
 
   /** Remove one Radicale user's on-disk collection tree
-   *  (collection-root/<user>/). Best-effort and never throws — a cleanup failure
+   *  (collection-root/<user>/), only when it holds no items (empty
+   *  auto-provisioned collections). Best-effort and never throws: a cleanup failure
    *  must not break a credential change. The username is validated against the
    *  same charset setCredentials enforces (no slashes / dots-only / traversal) so
    *  the join can't escape the collections directory. */
@@ -522,12 +528,41 @@ class ServerManager {
       if (!/^[A-Za-z0-9._-]{1,64}$/.test(user) || user === "." || user === "..") return;
       const dir = path.join(this.collectionsDir, "collection-root", user);
       if (fs.existsSync(dir)) {
+        // Decide from the storage itself, not from Daynizer's database: a phone
+        // or another client may have saved items there that this app never
+        // synced (code review 2026-11-11, finding 2). Keep the folder if it holds
+        // any item at all.
+        const items = this.countStoredItems(dir);
+        if (items > 0) {
+          this.log(`kept storage for previous user "${user}": it holds ${items} item(s)`);
+          return;
+        }
         fs.rmSync(dir, { recursive: true, force: true });
         this.log(`removed orphaned storage for previous user "${user}"`);
       }
     } catch (err: any) {
       this.log(`could not remove old user storage "${user}": ${err?.message || err}`);
     }
+  }
+
+  /** Count the items (tasks, events, contacts) stored under a Radicale folder.
+   *  Radicale keeps each item as a plain file inside its collection folder and
+   *  its own bookkeeping as dot entries (.Radicale.props, .Radicale.cache/, lock
+   *  and temp files), so every regular file whose name doesn't start with "."
+   *  is an item. On any read error it returns 1, so an unreadable tree is kept. */
+  private countStoredItems(dir: string): number {
+    let count = 0;
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name.startsWith(".")) continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) count += this.countStoredItems(full);
+        else if (entry.isFile()) count++;
+      }
+    } catch {
+      return Math.max(count, 1);
+    }
+    return count;
   }
 
   /** Generate a fresh strong password (returns it via the resulting info). */

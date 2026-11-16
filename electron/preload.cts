@@ -15,6 +15,8 @@ const api = {
     create: (name: string, color?: string) => ipcRenderer.invoke("lists:create", name, color),
     update: (id: string, patch: any) => ipcRenderer.invoke("lists:update", id, patch),
     delete: (id: string) => ipcRenderer.invoke("lists:delete", id),
+    merge: (sourceId: string, targetId: string) => ipcRenderer.invoke("lists:merge", sourceId, targetId),
+    rowCount: (id: string) => ipcRenderer.invoke("lists:rowCount", id),
     export: (id: string) => ipcRenderer.invoke("lists:export", id)
   },
   tasks: {
@@ -81,7 +83,8 @@ const api = {
       ipcRenderer.invoke("accounts:connectCalendar", accountId, calendarUrl, displayName, color),
     unlinkList: (listId: string) => ipcRenderer.invoke("accounts:unlinkList", listId),
     sync: (accountId: string) => ipcRenderer.invoke("accounts:sync", accountId),
-    createServerCalendar: (accountId: string, name: string) => ipcRenderer.invoke("accounts:createServerCalendar", accountId, name),
+    createServerCalendar: (accountId: string, name: string, existingListId?: string) =>
+      ipcRenderer.invoke("accounts:createServerCalendar", accountId, name, existingListId),
     deleteServerCalendar: (accountId: string, calendarUrl: string) => ipcRenderer.invoke("accounts:deleteServerCalendar", accountId, calendarUrl),
     bootstrapDefaults: (accountId: string) => ipcRenderer.invoke("accounts:bootstrapDefaults", accountId)
   },

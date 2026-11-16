@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { TaskList, Task } from "../types";
 import ContextMenu from "./ContextMenu";
-import { TaskScope, CalendarLists } from "../views";
+import { TaskScope } from "../views";
+import { syncPlace } from "../syncPlace";
 
 import { PALETTE, randomSwatch } from "../palette";
 
@@ -34,12 +35,14 @@ interface Props {
   onRemoveList: (id: string) => void;
   onRenameList: (id: string, name: string) => void;
   onExportList: (id: string) => void;
+  /** Right-click, Merge into…: move every task and event into another list, then remove this one. */
+  onMergeList: (sourceId: string, targetId: string) => void;
+  /** Right-click a local list, Sync to server…: new calendar on that account, linked to this list. */
+  onSyncListToServer: (listId: string, accountId: string) => void;
   onSyncList: (accountId: string) => void;
   smartFilters?: SidebarSmartFilter[];
   onApplyFilter?: (f: any) => void;
   onDeleteFilter?: (id: string) => void;
-  calendarListFilter?: CalendarLists;
-  onSetCalendarListFilter?: (id: string) => void;
   /** Experimental: when collapsed, only a thin "›" re-expand tab renders,
    *  freeing up width for the calendar/task table (mirrors the Today pane's
    *  collapse toggle on the other side of the window). */
@@ -67,12 +70,12 @@ export default function Sidebar({
   onRemoveList,
   onRenameList,
   onExportList,
+  onMergeList,
+  onSyncListToServer,
   onSyncList,
   smartFilters = [],
   onApplyFilter,
   onDeleteFilter,
-  calendarListFilter = "all",
-  onSetCalendarListFilter,
   collapsed,
   onToggleCollapsed
 }: Props) {
@@ -132,8 +135,7 @@ export default function Sidebar({
 
   const isSelected = (id: string) => (Array.isArray(selection) ? selection.includes(id) : selection === id);
   const additive = (e: React.MouseEvent) => e.ctrlKey || e.metaKey;
-  const calendarShowsOnly = (id: string) =>
-    Array.isArray(calendarListFilter) && calendarListFilter.length === 1 && calendarListFilter[0] === id;
+  const showsOnly = (id: string) => Array.isArray(selection) && selection.length === 1 && selection[0] === id;
 
   const openCount = (listId: string) => tasks.filter((t) => t.list_id === listId && !t.completed && !t.parent_id).length;
   const todayCount = tasks.filter((t) => {
@@ -296,21 +298,50 @@ export default function Sidebar({
           y={listMenu.y}
           onClose={() => setListMenu(null)}
           items={[
+            {
+              info: syncPlace(listMenu.list.caldav_account_id, listMenu.list.caldav_calendar_url, accounts),
+              title: listMenu.list.caldav_calendar_url ?? undefined
+            },
+            { separator: true as const },
             ...(listMenu.list.caldav_account_id
               ? [{ label: "Sync now", onClick: () => onSyncList(listMenu.list.caldav_account_id!) }]
               : []),
-            ...(onSetCalendarListFilter
-              ? [
-                  calendarShowsOnly(listMenu.list.id)
-                    ? { label: "Show all lists in Calendar", onClick: () => onSetCalendarListFilter("all") }
-                    : { label: `Show only "${listMenu.list.name}" in Calendar`, onClick: () => onSetCalendarListFilter(listMenu.list.id) }
-                ]
-              : []),
+            // Acts on the tab you're on (Tasks or Calendar).
+            showsOnly(listMenu.list.id)
+              ? { label: "Show all lists", onClick: () => onSelect("all", false) }
+              : { label: `Show only "${listMenu.list.name}"`, onClick: () => onSelect(listMenu.list.id, false) },
             {
               label: "Rename",
               onClick: () => { setEditingListId(listMenu.list.id); setEditName(listMenu.list.name); }
             },
             { colors: PALETTE, current: listMenu.list.color, onPick: (color: string) => onSetListColor(listMenu.list.id, color) },
+            ...(lists.length > 1
+              ? [{
+                  label: "Merge into…",
+                  submenu: lists
+                    .filter((l) => l.id !== listMenu.list.id)
+                    .map((l) => ({
+                      label: l.caldav_account_id ? l.name : `${l.name} (local)`,
+                      onClick: () => {
+                        const src = listMenu.list;
+                        const msg = src.caldav_account_id
+                          ? `Move every task and event from "${src.name}" into "${l.name}", then delete "${src.name}" here and its calendar on the server?`
+                          : `Move every task and event from "${src.name}" into "${l.name}", then delete "${src.name}"?`;
+                        if (confirm(msg)) onMergeList(src.id, l.id);
+                      }
+                    }))
+                }]
+              : []),
+            // Sync to server…: only for a local list, and only with a CalDAV account.
+            ...(!listMenu.list.caldav_account_id && accounts.length === 1
+              ? [{ label: `Sync to ${accounts[0].label}`, onClick: () => onSyncListToServer(listMenu.list.id, accounts[0].id) }]
+              : []),
+            ...(!listMenu.list.caldav_account_id && accounts.length > 1
+              ? [{
+                  label: "Sync to server…",
+                  submenu: accounts.map((a) => ({ label: a.label, onClick: () => onSyncListToServer(listMenu.list.id, a.id) }))
+                }]
+              : []),
             {
               label: "Export to .ics…",
               onClick: () => onExportList(listMenu.list.id)

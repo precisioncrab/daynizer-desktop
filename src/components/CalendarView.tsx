@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createCalendar, destroyCalendar, DayGrid, TimeGrid, Interaction } from "@event-calendar/core";
 import "@event-calendar/core/index.css";
 import { RRule } from "rrule";
-import { CalendarEvent, EventOverride, Task, TaskList } from "../types";
+import { CalendarEvent, EventOverride, Task, TaskList, PRIORITY_COLORS } from "../types";
 import { selectWidth } from "../selectWidth";
 import { useResolvedTheme } from "../theme";
 import { displayLocale, timeLabel, weekStartDay } from "../dates";
@@ -226,6 +226,39 @@ function selectedClassNames(taskId: string | null, eventId: string | null) {
   };
 }
 
+/** Sort rank for the all-day area: tasks High, Medium, Low, None, then all-day
+ *  events. Task priority uses the iCal numbers (1 high, 5 medium, 9 low, 0 none). */
+function allDayRank(props: any): number {
+  if (props?.kind !== "task") return 4;
+  return ({ 1: 0, 5: 1, 9: 2 } as Record<number, number>)[props.priority] ?? 3;
+}
+
+/** The library's `eventOrder`: all-day bars first (as the library does by
+ *  default), all-day ones by priority rank, then by start; timed ones keep the
+ *  default start-time order. The library still puts each bar in the topmost
+ *  free slot, so a later-ranked bar on an emptier day can sit higher there. */
+function calendarEventOrder(a: any, b: any): number {
+  if (!!a.allDay !== !!b.allDay) return a.allDay ? -1 : 1;
+  const start = (a.start?.getTime?.() ?? 0) - (b.start?.getTime?.() ?? 0);
+  if (a.allDay) {
+    const rank = allDayRank(a.extendedProps) - allDayRank(b.extendedProps);
+    if (rank) return rank;
+    if (start) return start;
+    return String(a.title ?? "").localeCompare(String(b.title ?? ""));
+  }
+  return start;
+}
+
+/** A small dot in the task's priority color, drawn before the title on its bar. */
+function priorityDot(priority: number | undefined): HTMLElement | null {
+  if (!priority || !PRIORITY_COLORS[priority]) return null;
+  const d = document.createElement("span");
+  d.className = "ec-priority-dot";
+  d.style.background = PRIORITY_COLORS[priority];
+  d.setAttribute("aria-label", "priority");
+  return d;
+}
+
 export default function CalendarView({
   events, tasks, lists, calendarShow, onSetCalendarShow, selectedTaskId, selectedEventId, onSelectTask, onSelectEvent, onCreateEvent, onCreateTask, listFilter, onSetListFilter, onUpdateEvent, onUpdateTask, firstDayOverride,
   categoryFilter, onSetCategoryFilter, displayMode, onSetDisplayMode, eventDisplayMode, onSetEventDisplayMode, onSaveView,
@@ -338,7 +371,11 @@ export default function CalendarView({
       ? events.map((ev) => (ev.id === hp.id ? { ...ev, start_date: hp.start_date, end_date: hp.end_date } : ev))
       : events;
     if (showEvents) {
+      // Events whose list is gone (left behind by a list delete before 0.9.1)
+      // can't sync or be edited; don't draw them.
+      const listIds = new Set(lists.map((l) => l.id));
       for (const e of eventsForRender) {
+        if (!listIds.has(e.list_id)) continue;
         if (listFilter !== "all" && !listFilter.includes(e.list_id)) continue;
         if (!matchesCategory(e.tags)) continue;
         const recurring = !!e.recurrence;
@@ -470,7 +507,7 @@ export default function CalendarView({
               editable: !recurring,
               startEditable: !recurring,
               durationEditable: false,
-              extendedProps: { kind: "task", masterId: t.id, recurring }
+              extendedProps: { kind: "task", masterId: t.id, recurring, priority: t.priority }
             });
           });
           continue;
@@ -522,7 +559,7 @@ export default function CalendarView({
             editable: !recurring,
             startEditable: !recurring,
             durationEditable: !recurring && displayMode === "range",
-            extendedProps: { kind: "task", masterId: t.id, recurring }
+            extendedProps: { kind: "task", masterId: t.id, recurring, priority: t.priority }
           });
         });
       }
@@ -599,6 +636,8 @@ export default function CalendarView({
       // week/day view. `false` lays intersecting events side by side in
       // their own columns instead -- each stays independently clickable.
       slotEventOverlap: false,
+      // All-day row: tasks High, Medium, Low, None, then all-day events.
+      eventOrder: calendarEventOrder,
       // Fires on mount and on every navigate/view change with the visible span
       // (activeRange). Stash it and bump rangeVersion so the reactive effect
       // re-expands recurring items for the new window. Guard against a no-op
@@ -660,11 +699,18 @@ export default function CalendarView({
           m.setAttribute("aria-label", "repeats");
           return m;
         };
+        // Tasks with a priority get a dot in its color at the left of the bar.
+        const dot = arg.event.extendedProps?.kind === "task" ? priorityDot(arg.event.extendedProps?.priority) : null;
+        const lead = [...(dot ? [dot] : []), ...(recurring ? [mark()] : [])];
         if (arg.event.allDay) {
-          if (!recurring) return undefined; // default (title-only) rendering is fine
-          return { domNodes: [mark(), el("span", "ec-event-title", arg.event.title)] };
+          if (!lead.length) return undefined; // default (title-only) rendering is fine
+          return { domNodes: [...lead, el("span", "ec-event-title", arg.event.title)] };
         }
-        const nodes = [el("time", "ec-event-time", timeLabel(arg.event.start as Date)), el("h4", "ec-event-title", arg.event.title)];
+        // Timed bars stack their lines (column layout in week/day), so the dot
+        // goes inside the time line instead of on a line of its own.
+        const time = el("time", "ec-event-time", timeLabel(arg.event.start as Date));
+        if (dot) time.prepend(dot);
+        const nodes = [time, el("h4", "ec-event-title", arg.event.title)];
         return { domNodes: recurring ? [mark(), ...nodes] : nodes };
       },
       eventClick(info: any) {

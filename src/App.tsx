@@ -1403,15 +1403,40 @@ export default function App() {
   }
 
   async function deleteTask(id: string) {
-    // Delete cascades to direct subtasks (DB: id OR parent_id = id). Capture
-    // the affected (currently-visible) ids so undo can un-delete them all.
-    const affectedIds = tasks.filter((t) => t.id === id || t.parent_id === id).map((t) => t.id);
-    await window.api.tasks.delete(id);
+    // Delete cascades to the whole subtree (subtasks at any depth). The DB returns
+    // the ids it just marked deleted, so undo un-deletes exactly those.
+    const parentOf = new Map(tasks.map((t) => [t.id, t.parent_id ?? null] as const));
+    const deleted = await window.api.tasks.delete(id);
+    const affectedIds = Array.isArray(deleted) && deleted.length ? deleted : [id];
     if (selectedTaskId === id) selectTask(null);
     await loadTasks();
     scheduleDirtySync();
     lastActionRef.current = async () => {
-      for (const tid of affectedIds) await window.api.tasks.update(tid, { deleted: 0 } as Partial<Task>);
+      // A sync may already have finished the delete, removing some or all rows
+      // (code review 2026-11-11, finding 4). Restore what's still here, parents
+      // first (affectedIds is root first). A subtask whose parent couldn't come
+      // back stays deleted instead of reappearing at the top level.
+      const inSet = new Set(affectedIds);
+      const restored = new Set<string>();
+      for (const tid of affectedIds) {
+        const parent = parentOf.get(tid) ?? null;
+        if (tid !== affectedIds[0] && parent && inSet.has(parent) && !restored.has(parent)) continue;
+        try {
+          await window.api.tasks.update(tid, { deleted: 0 } as Partial<Task>);
+          restored.add(tid);
+        } catch {
+          // Row already removed by the sync's server delete.
+        }
+      }
+      if (restored.size < affectedIds.length) {
+        const n = affectedIds.length;
+        setSyncMsg(
+          restored.size === 0
+            ? `Couldn't undo: the delete already synced to the server.`
+            : `Restored ${restored.size} of ${n} tasks; the rest were already deleted on the server.`
+        );
+        setTimeout(() => setSyncMsg(null), 8000);
+      }
     };
   }
 
@@ -1472,6 +1497,60 @@ export default function App() {
     setCalendarListFilter((prev) => pruneSelection(prev, remaining) as CalendarLists);
     await loadLists();
     await loadTasks();
+    await loadEvents();
+  }
+
+  /** Right-click a list, Merge into… (2026-11-14). Moves every task and event,
+   *  syncs both accounts (the old server copies are deleted, new ones made on
+   *  the target), then deletes the emptied list, and its calendar on the server,
+   *  only once nothing is left waiting to be removed there. */
+  async function mergeList(sourceId: string, targetId: string) {
+    const source = lists.find((l) => l.id === sourceId);
+    const target = lists.find((l) => l.id === targetId);
+    if (!source || !target) return;
+    let msg: string;
+    try {
+      const moved = await window.api.lists.merge(sourceId, targetId);
+      setSyncMsg(`Moved ${moved.tasks} task(s) and ${moved.events} event(s) into "${target.name}", syncing…`);
+      await loadTasks();
+      await loadEvents();
+      const accountIds = [...new Set([source.caldav_account_id, target.caldav_account_id].filter(Boolean))] as string[];
+      for (const id of accountIds) {
+        try { await window.api.accounts.sync(id); } catch { /* checked below: the list stays if anything is left */ }
+      }
+      if ((await window.api.lists.rowCount(sourceId)) === 0) {
+        await deleteList(sourceId);
+        msg = `Merged "${source.name}" into "${target.name}".`;
+      } else {
+        msg = `Moved into "${target.name}". "${source.name}" is kept until its old copies are removed from the server: sync again, then delete it.`;
+      }
+      if (mainView !== "calendar" && mainView !== "contacts") changeScope([targetId]);
+    } catch (err: any) {
+      msg = `Merge failed: ${err?.message || err}`;
+    }
+    await loadLists();
+    await loadTasks();
+    await loadEvents();
+    setSyncMsg(msg);
+    setTimeout(() => setSyncMsg(null), 8000);
+  }
+
+  /** Right-click a local list, Sync to server… (2026-11-14): make a calendar
+   *  with the list's name on the account and link this list to it. */
+  async function syncListToServer(listId: string, accountId: string) {
+    const list = lists.find((l) => l.id === listId);
+    if (!list) return;
+    try {
+      setSyncMsg(`Creating "${list.name}" on the server…`);
+      await window.api.accounts.createServerCalendar(accountId, list.name, listId);
+      await loadLists();
+      setSyncMsg(`Created "${list.name}" on the server, syncing…`);
+      await syncAccountNow(accountId);
+      setSyncMsg(`"${list.name}" now syncs with the server.`);
+    } catch (err: any) {
+      setSyncMsg(`Couldn't create "${list.name}" on the server: ${err?.message || err}`);
+    }
+    setTimeout(() => setSyncMsg(null), 6000);
   }
 
   async function renameList(id: string, name: string) {
@@ -1694,7 +1773,7 @@ export default function App() {
       <Sidebar
         lists={lists}
         tasks={tasks}
-        accounts={accounts.map((a) => ({ id: a.id, label: a.label }))}
+        accounts={accounts.filter((a) => a.server_url).map((a) => ({ id: a.id, label: a.label }))}
         mode={mainView === "calendar" ? "calendar" : "tasks"}
         selection={mainView === "calendar" ? calendarListFilter : scope}
         onSelect={selectSidebarList}
@@ -1705,6 +1784,8 @@ export default function App() {
         onRemoveList={removeList}
         onRenameList={renameList}
         onExportList={exportList}
+        onMergeList={mergeList}
+        onSyncListToServer={syncListToServer}
         onSyncList={syncListAccount}
         onOpenSettings={() => setShowSettings(true)}
         onSync={() => runSync()}
@@ -1715,8 +1796,6 @@ export default function App() {
         smartFilters={savedViews}
         onApplyFilter={applySavedView}
         onDeleteFilter={deleteSavedView}
-        calendarListFilter={calendarListFilter}
-        onSetCalendarListFilter={(id) => setCalendarListFilter(id === "all" ? "all" : [id])}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed(!sidebarCollapsed)}
       />

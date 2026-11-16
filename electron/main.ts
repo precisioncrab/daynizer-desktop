@@ -12,6 +12,8 @@ import {
   listCreate,
   listUpdate,
   listDelete,
+  listMergeInto,
+  listRowCount,
   countDirtyItems,
   tasksAll,
   tasksByList,
@@ -48,7 +50,10 @@ import {
   contactUpdate,
   contactDelete,
   contactsMerge,
-  dedupeDatabase
+  dedupeDatabase,
+  listHasData,
+  addressBookHasData,
+  localSuffixName
 } from "./db.js";
 import { testConnection, discoverCalendars, linkListToCalendar, unlinkList, syncAccount, createServerCalendar, deleteServerCalendar, encryptPassword, connectCalendar, syncLog, pushCalendarName, pushCalendarColor } from "./caldav.js";
 import { taskToVTodo, eventToVEvent, bundleIcs } from "./ical.js";
@@ -213,16 +218,27 @@ async function ensureSelfAccount(): Promise<void> {
   // /<user>/ home moved. The self-account's lists/books are still linked to the
   // OLD principal path — and rehomeSelfCollections only rewrites scheme/host/port,
   // not the path — so once we re-provision under the new principal they would
-  // linger as broken duplicates. During first-run setup (the expected time for a
-  // username change, while these are still the empty auto-provisioned defaults),
-  // drop them so re-provisioning below is clean. Post-first-run they are left
-  // alone (a deliberate "start fresh" keeps the old data as local lists).
+  // linger as broken duplicates (the new user can't reach /<olduser>/). So on a
+  // username change, an EMPTY collection (no tasks, events or contacts, e.g. the
+  // auto-provisioned defaults) is dropped, and one holding data is unlinked and
+  // kept as a local "(local)" list or book. Nothing the user saved is deleted,
+  // first run or not (code review 2026-11-10, finding 1: a first-run change used
+  // to delete every list and book here, tasks and contacts included).
   if (existing) {
     const prevUser = (getSetting(SELF_ACCOUNT_SIG_KEY).split("|")[1] || "");
-    if (prevUser && prevUser !== info.username && !serverManager.isConfigured()) {
-      for (const l of listsAll()) if (l.caldav_account_id === existing.id) listDelete(l.id);
-      for (const b of addressBooksAll()) if (b.carddav_account_id === existing.id) addressBookDelete(b.id);
-      syncLog(`self-account: username ${prevUser} → ${info.username} on first run — cleared the old principal's auto-provisioned collections`);
+    if (prevUser && prevUser !== info.username) {
+      let dropped = 0, kept = 0;
+      for (const l of listsAll()) {
+        if (l.caldav_account_id !== existing.id) continue;
+        if (listHasData(l.id)) { unlinkList(l.id); listUpdate(l.id, { name: localSuffixName(l.name) } as any); kept++; }
+        else { listDelete(l.id); dropped++; }
+      }
+      for (const b of addressBooksAll()) {
+        if (b.carddav_account_id !== existing.id) continue;
+        if (addressBookHasData(b.id)) { unlinkAddressBook(b.id); addressBookUpdate(b.id, { name: localSuffixName(b.name) } as any); kept++; }
+        else { addressBookDelete(b.id); dropped++; }
+      }
+      syncLog(`self-account: username ${prevUser} → ${info.username}: dropped ${dropped} empty collection(s), kept ${kept} with data as local`);
     }
   }
   // Heal any collections still pinned to a previous port BEFORE the sig gate, so a
@@ -304,6 +320,27 @@ function showMainWindow() {
   mainWindow.focus();
 }
 
+/** True when a key press matches an accelerator string such as "CmdOrCtrl+R"
+ *  or "F5" (the sync hotkey setting). */
+function inputMatchesAccelerator(input: Electron.Input, accel: string | undefined): boolean {
+  if (!accel) return false;
+  const parts = accel.split("+").map((p) => p.trim().toLowerCase()).filter(Boolean);
+  const key = parts.pop();
+  if (!key) return false;
+  const want = { ctrl: false, alt: false, shift: false, meta: false };
+  for (const p of parts) {
+    if (["cmdorctrl", "commandorcontrol", "ctrl", "control"].includes(p)) want.ctrl = true;
+    else if (["alt", "option", "altgr"].includes(p)) want.alt = true;
+    else if (p === "shift") want.shift = true;
+    else if (["cmd", "command", "super", "meta"].includes(p)) want.meta = true;
+  }
+  if (input.control !== want.ctrl || input.alt !== want.alt || input.shift !== want.shift || input.meta !== want.meta) return false;
+  const pressed = input.key.toLowerCase();
+  if (pressed === key) return true;
+  if (key === "space") return pressed === " ";
+  return input.code.toLowerCase() === `key${key}` || input.code.toLowerCase() === `digit${key}`;
+}
+
 function createWindow(show = true) {
   mainWindow = new BrowserWindow({
     width: 1180,
@@ -328,6 +365,17 @@ function createWindow(show = true) {
       nodeIntegration: false
     }
   });
+
+  // The sync hotkey on Windows and Linux, where Sync is a top menu item with no
+  // list to hold its accelerator (see buildMenu).
+  if (process.platform !== "darwin") {
+    mainWindow.webContents.on("before-input-event", (e, input) => {
+      if (input.type === "keyDown" && !input.isAutoRepeat && inputMatchesAccelerator(input, getSetting("syncHotkey"))) {
+        e.preventDefault();
+        mainWindow?.webContents.send("shortcut:sync-now");
+      }
+    });
+  }
 
   // Right-click Cut/Copy/Paste on inputs (and Copy on any selected text).
   mainWindow.webContents.on("context-menu", (_e, params) => {
@@ -771,17 +819,24 @@ function buildMenu() {
         }
       ]
     },
-    {
-      label: "Sync",
-      submenu: [
-        {
-          label: "Sync Now",
-          // Configurable so it can be changed/disabled on hotkey conflicts.
-          ...(getSetting("syncHotkey") ? { accelerator: getSetting("syncHotkey") } : {}),
-          click: () => mainWindow?.webContents.send("shortcut:sync-now")
+    // Windows and Linux: clicking Sync syncs at once (Arlis, 2026-11-14: "Sync,
+    // then Sync now" was a click for nothing). macOS needs a list under every top
+    // menu, so it keeps Sync > Sync Now. Without a list there's no menu item to
+    // hold the hotkey, so Windows and Linux catch it in before-input-event
+    // (createWindow).
+    process.platform === "darwin"
+      ? {
+          label: "Sync",
+          submenu: [
+            {
+              label: "Sync Now",
+              // Configurable so it can be changed/disabled on hotkey conflicts.
+              ...(getSetting("syncHotkey") ? { accelerator: getSetting("syncHotkey") } : {}),
+              click: () => mainWindow?.webContents.send("shortcut:sync-now")
+            }
+          ]
         }
-      ]
-    }
+      : { label: "Sync", click: () => mainWindow?.webContents.send("shortcut:sync-now") }
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -931,6 +986,8 @@ function registerIpc() {
     return updated;
   });
   ipcMain.handle("lists:delete", (_e, id: string) => listDelete(id));
+  ipcMain.handle("lists:merge", (_e, sourceId: string, targetId: string) => listMergeInto(sourceId, targetId));
+  ipcMain.handle("lists:rowCount", (_e, id: string) => listRowCount(id));
   ipcMain.handle("lists:export", async (_e, listId: string) => {
     const list = listsAll().find((l) => l.id === listId);
     if (!list) throw new Error("List not found");
@@ -1103,10 +1160,10 @@ function registerIpc() {
   // One-shot cleanup of duplicate lists / address books / contacts already in
   // the database (the http<->https reconnect fallout). Non-destructive to tasks.
   ipcMain.handle("maintenance:dedupe", (_e, dryRun?: boolean) => dedupeDatabase(!!dryRun));
-  ipcMain.handle("accounts:createServerCalendar", async (_e, accountId: string, name: string) => {
+  ipcMain.handle("accounts:createServerCalendar", async (_e, accountId: string, name: string, existingListId?: string) => {
     const account = accountsAll().find((a) => a.id === accountId);
     if (!account) throw new Error("Account not found");
-    return createServerCalendar(account, name);
+    return createServerCalendar(account, name, existingListId);
   });
   ipcMain.handle("accounts:deleteServerCalendar", async (_e, accountId: string, calendarUrl: string) => {
     const account = accountsAll().find((a) => a.id === accountId);
@@ -1216,7 +1273,16 @@ function registerIpc() {
   // Config surface (B3/C3): the Settings "Sync Server" pane drives these.
   ipcMain.handle("server:setEnabled", (_e, on: boolean) => serverManager.setEnabled(!!on));
   ipcMain.handle("server:setPort", (_e, port: number) => serverManager.setPort(Number(port)));
-  ipcMain.handle("server:setCredentials", (_e, opts: { username?: string; password?: string }) => serverManager.setCredentials(opts || {}));
+  ipcMain.handle("server:setCredentials", (_e, opts: { username?: string; password?: string }) => {
+    // Keep the old user's server storage when Daynizer holds anything for the
+    // built-in account; only empty auto-provisioned defaults may be purged.
+    const selfId = getSetting(SELF_ACCOUNT_ID_KEY);
+    const keepOldStorage = !!selfId && (
+      listsAll().some((l) => l.caldav_account_id === selfId && listHasData(l.id)) ||
+      addressBooksAll().some((b) => b.carddav_account_id === selfId && addressBookHasData(b.id))
+    );
+    return serverManager.setCredentials(opts || {}, { keepOldStorage });
+  });
   ipcMain.handle("server:regeneratePassword", () => serverManager.regeneratePassword());
   ipcMain.handle("server:markConfigured", async () => {
     const status = serverManager.markConfigured();
@@ -1252,8 +1318,24 @@ if (!gotSingleInstanceLock) {
   app.on("second-instance", () => showMainWindow());
 }
 
+/** Typing waits while the main process is busy, since Electron passes input
+ *  through it (Arlis, 2026-11-14: about 10 s before a new list's name field took
+ *  typing, during a sync). Logs any stall over half a second to sync.log; the
+ *  line before it is the step that was running. */
+function startStallMonitor() {
+  const tick = 250;
+  let last = Date.now();
+  setInterval(() => {
+    const now = Date.now();
+    const stall = now - last - tick;
+    if (stall > 500) syncLog(`STALL: main process busy ${stall} ms (the step logged just before this line)`);
+    last = now;
+  }, tick).unref();
+}
+
 app.whenReady().then(() => {
   if (!gotSingleInstanceLock) return;
+  startStallMonitor();
   // Distinct AppUserModelID in dev so a raw `electron .` run doesn't register a
   // shortcut under the packaged app's identity — that collision is what made
   // Windows show the Electron icon on the installed app's taskbar button.

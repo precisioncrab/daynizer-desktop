@@ -16,6 +16,8 @@ interface MenuItem {
 interface Menu {
   title: string;
   items: MenuItem[];
+  /** A top item with no list: clicking it runs this at once (Sync, 2026-11-14). */
+  onClick?: () => void;
 }
 
 interface Props {
@@ -111,8 +113,9 @@ export default function AddonMenuBar(props: Props) {
       items: [{ label: "CalDAV / CardDAV Accounts…", onClick: props.onSettings }]
     },
     {
-      title: "Sync",
-      items: [{ label: props.syncing ? "Syncing…" : "Sync Now", hint: "Ctrl+R", onClick: props.onSync }]
+      title: props.syncing ? "Syncing…" : "Sync",
+      items: [],
+      onClick: props.onSync
     }
   ];
 
@@ -158,12 +161,16 @@ export default function AddonMenuBar(props: Props) {
         <div className="menu-bar-item" key={menu.title}>
           <button
             className={`menu-bar-title ${open === menu.title ? "active" : ""}`}
-            onClick={() => setOpen(open === menu.title ? null : menu.title)}
-            onMouseEnter={() => { if (open) setOpen(menu.title); }}
+            onClick={() => {
+              if (menu.onClick) { setOpen(null); menu.onClick(); return; }
+              setOpen(open === menu.title ? null : menu.title);
+            }}
+            onMouseEnter={() => { if (open) setOpen(menu.onClick ? null : menu.title); }}
+            title={menu.onClick ? "Sync now" : undefined}
           >
             {menu.title}
           </button>
-          {open === menu.title && (
+          {open === menu.title && menu.items.length > 0 && (
             <div className="menu-dropdown">{renderItems(menu.items, menu.title)}</div>
           )}
         </div>

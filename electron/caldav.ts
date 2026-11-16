@@ -29,9 +29,11 @@ import {
   eventUpdate,
   eventDelete,
   eventsPruneMissing,
+  tasksPruneMissing,
   remindersForOwner,
   mergeRemindersFromRemote,
-  accountExists
+  accountExists,
+  listDetachForeignSyncIdentity
 } from "./db.js";
 import { taskToVTodo, parseVTodo, newUid, ParsedVTodo, eventToVEvent, parseVEvent, ParsedVEvent, EventOverride } from "./ical.js";
 
@@ -379,6 +381,12 @@ export function linkListToCalendar(listId: string, accountId: string, calendarUr
   for (const l of previouslyLinked) {
     listUpdate(l.id, { caldav_account_id: null, caldav_calendar_url: null, caldav_ctag: null } as Partial<TaskList>);
   }
+  // Rows synced with another calendar would otherwise be pruned as "deleted on
+  // the server" by the next sync; they upload to this calendar instead.
+  const current = listsAll().find((l) => l.id === listId);
+  const sameCalendar = !!current && current.caldav_account_id === accountId && davUrlKey(current.caldav_calendar_url) === key;
+  const detached = sameCalendar ? 0 : listDetachForeignSyncIdentity(listId, calendarUrl);
+  if (detached) syncLog(`link: ${detached} item(s) of list ${listId} came from another calendar; they will upload to ${calendarUrl}`);
   listUpdate(listId, {
     caldav_account_id: accountId,
     caldav_calendar_url: calendarUrl,
@@ -514,7 +522,9 @@ export async function deleteServerCalendar(account: CaldavAccount, calendarUrl: 
 }
 
 /** Create a new calendar on the server, make a local list, and link them together. */
-export async function createServerCalendar(account: CaldavAccount, name: string): Promise<TaskList> {
+/** `existingListId` (right-click a local list, Sync to server…): link that list
+ *  instead of making a new one. */
+export async function createServerCalendar(account: CaldavAccount, name: string, existingListId?: string): Promise<TaskList> {
   const client = await clientFor(account);
 
   // Determine the calendar-home URL. Prefer the principal's calendar-home-set,
@@ -569,9 +579,11 @@ export async function createServerCalendar(account: CaldavAccount, name: string)
     } as any
   });
 
-  const newList = listCreate(name);
+  const existing = existingListId ? listsAll().find((l) => l.id === existingListId) : undefined;
+  if (existingListId && !existing) throw new Error("List not found");
+  const newList = existing ?? listCreate(name);
   linkListToCalendar(newList.id, account.id, newCalUrl);
-  return newList;
+  return listsAll().find((l) => l.id === newList.id) ?? newList;
 }
 
 export interface SyncResult {
@@ -1059,13 +1071,34 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
       }
     }
 
+    // Remote deletes: a clean synced task whose uid is no longer on the server was
+    // deleted on another device, so remove it here too (code review 2026-11-10,
+    // finding 2). Only reached after a successful full fetch (a failed or timed-out
+    // fetch throws above). The uid set comes from every UID line in the raw data,
+    // not just the objects parseVTodo accepted, so a task the parser can't read is
+    // never mistaken for a deleted one. Runs before the push, so tasks created in
+    // this round (no uid yet) can't be pruned.
+    {
+      const presentUids = new Set<string>(remoteByUid.keys());
+      for (const obj of objects) {
+        const unfolded = (obj.data || "").replace(/\r?\n[ \t]/g, "");
+        for (const m of unfolded.matchAll(/^UID(?:;[^:\r\n]*)?:(.*)$/gim)) presentUids.add(m[1].trim());
+      }
+      const pruned = tasksPruneMissing(list.id, presentUids);
+      if (pruned) syncLog(`tasks: removed ${pruned} task(s) deleted on the server from list "${list.name}"`);
+      if (pruned && objects.length === 0) {
+        syncLog(`WARNING: the server listed no objects at all for "${list.name}" (${calendarUrl}); that emptied the list. If the calendar was re-created or restored on the server, the tasks are gone here too.`);
+      }
+    }
+
     // Reconcile subtask nesting now that EVERY pulled task exists locally.
     // The pull loop above creates tasks in unordered map order, so a child can
     // be inserted before its parent and orphan to the top level; the etag
     // update path also never re-resolves parent_id, so such an orphan would
     // otherwise never re-nest. Re-derive each child's parent from its
-    // RELATED-TO here. This is a clean sync write (carries caldav_etag ->
-    // dirty stays 0), so it never triggers a re-push. We only SET a resolved
+    // RELATED-TO here. A sync write (carries caldav_etag) that keeps the
+    // child's own dirty flag: a clean child stays clean (no re-push), a child
+    // with an unpushed local edit stays dirty so the push below sends it. We only SET a resolved
     // parent; we don't clear one when the server reports none, to avoid
     // clobbering local nesting that hasn't been pushed yet.
     {
@@ -1080,7 +1113,9 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
         const resolved = localParentId(parsed2.parent_uid, list.id);
         if (resolved && resolved !== child.id && child.parent_id !== resolved) {
           syncLog(`re-nesting "${child.title}" (${uid}) under parent ${parsed2.parent_uid}`);
-          taskUpdate(child.id, { parent_id: resolved, caldav_etag: child.caldav_etag });
+          // Keep the child's dirty flag: a sync write would otherwise clear it and
+          // drop an edit made here that hasn't been pushed yet (it pushes below).
+          taskUpdate(child.id, { parent_id: resolved, caldav_etag: child.caldav_etag, dirty: child.dirty });
         }
       }
     }
@@ -1149,9 +1184,8 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
             const etag = created.headers?.get?.("etag") || null;
             taskUpdate(local.id, { caldav_href: href, caldav_etag: etag } as Partial<Task>);
             if (!etag) needEtagRefresh.push({ id: local.id, href, title: local.title });
-            // No remoteUids bookkeeping here: unlike events, the task path has
-            // no prune step, so there is no set that would mistake this
-            // just-created object for one deleted on the server.
+            // No uid bookkeeping needed: the task prune runs before this push,
+            // so it can't mistake this just-created object for a remote delete.
             syncLog(`re-created missing "${local.title}" (${local.caldav_uid}) to unwedge a dirty edit`);
             result.pushed++;
           } catch (err: any) {

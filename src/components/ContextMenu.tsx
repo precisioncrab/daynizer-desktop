@@ -29,7 +29,13 @@ interface SubmenuItem {
   submenu: (ActionItem | SeparatorItem)[];
 }
 
-export type Item = ActionItem | ColorsItem | SeparatorItem | SubmenuItem;
+/** A line of information, not clickable (e.g. which server a list syncs with). */
+interface InfoItem {
+  info: string;
+  title?: string;
+}
+
+export type Item = ActionItem | ColorsItem | SeparatorItem | SubmenuItem | InfoItem;
 
 interface Props {
   x: number;
@@ -59,6 +65,18 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
   // The submenu open (its item's index); a submenu that won't fit on the right opens on the left.
   const [openSub, setOpenSub] = useState<number | null>(null);
   const [subLeft, setSubLeft] = useState(false);
+  // A submenu taller than the room below its item moves up to fit the window
+  // (Merge into… with many lists ran off the bottom, 2026-11-14).
+  const subRef = useRef<HTMLDivElement>(null);
+  const [subShift, setSubShift] = useState(0);
+  useLayoutEffect(() => {
+    const el = subRef.current;
+    if (!el || !el.parentElement) { setSubShift(0); return; }
+    const margin = 8;
+    const naturalTop = el.parentElement.getBoundingClientRect().top - 4;
+    const top = Math.max(margin, Math.min(naturalTop, window.innerHeight - margin - el.offsetHeight));
+    setSubShift(top - naturalTop);
+  }, [openSub, pos.y]);
 
   useEffect(() => {
     // Only close on a subsequent click outside the menu. We deliberately do NOT
@@ -93,6 +111,8 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
     <div className="context-menu" style={{ left: pos.x, top: pos.y }} ref={ref}>
       {items.map((item, i) => ("separator" in item ? (
         <div key={`sep-${i}`} className="separator" />
+      ) : "info" in item ? (
+        <div key={`info-${i}`} className="info" title={item.title} onMouseEnter={() => setOpenSub(null)}>{item.info}</div>
       ) : "submenu" in item ? (
         <div
           key={item.label}
@@ -108,7 +128,12 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
           <span>{item.label}</span>
           <span className="sub-arrow" aria-hidden="true">▸</span>
           {openSub === i && (
-            <div className={`context-menu sub${subLeft ? " left" : ""}`} onClick={(e) => e.stopPropagation()}>
+            <div
+              ref={subRef}
+              className={`context-menu sub${subLeft ? " left" : ""}`}
+              style={{ top: -4 + subShift }}
+              onClick={(e) => e.stopPropagation()}
+            >
               {item.submenu.map((s, k) => ("separator" in s ? <div key={`sep-${k}`} className="separator" /> : action(s, k)))}
             </div>
           )}

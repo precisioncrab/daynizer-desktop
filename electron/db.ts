@@ -530,10 +530,117 @@ export function listUpdate(id: string, patch: Partial<TaskList>): TaskList {
   return db.prepare(`SELECT * FROM lists WHERE id = ?`).get(id) as unknown as TaskList;
 }
 
+/** Delete a list with its tasks, events and their reminders. The server side
+ *  (the calendar collection) is deleted by the caller first, when linked. */
 export function listDelete(id: string) {
   const db = getDb();
+  db.prepare(`DELETE FROM reminders WHERE owner_type = 'task' AND owner_id IN (SELECT id FROM tasks WHERE list_id = ?)`).run(id);
+  db.prepare(`DELETE FROM reminders WHERE owner_type = 'event' AND owner_id IN (SELECT id FROM events WHERE list_id = ?)`).run(id);
   db.prepare(`DELETE FROM tasks WHERE list_id = ?`).run(id);
+  db.prepare(`DELETE FROM events WHERE list_id = ?`).run(id);
   db.prepare(`DELETE FROM lists WHERE id = ?`).run(id);
+}
+
+/** Right-click a list, Merge into… (2026-11-14): move every task and event of
+ *  `sourceId` into `targetId`, subtasks keeping their parents. A CalDAV object
+ *  can't move between collections in place, so a synced item leaves a tombstone
+ *  on the source (the next sync deletes the old server copy) and is recreated
+ *  fresh on the target. The source list itself is removed by the caller once
+ *  it holds nothing (listRowCount === 0), i.e. after the tombstones are pushed. */
+export function listMergeInto(sourceId: string, targetId: string): { tasks: number; events: number } {
+  if (sourceId === targetId) throw new Error("A list can't be merged into itself");
+  const db = getDb();
+  if (!db.prepare(`SELECT 1 FROM lists WHERE id = ?`).get(targetId)) throw new Error("Target list not found");
+  const now = nowIso();
+  const tasks = db
+    .prepare(`SELECT id, title, caldav_uid, caldav_href, caldav_etag FROM tasks WHERE list_id = ? AND deleted = 0`)
+    .all(sourceId) as Array<{ id: string; title: string; caldav_uid: string | null; caldav_href: string | null; caldav_etag: string | null }>;
+  for (const t of tasks) {
+    if (t.caldav_uid) tombstoneMovedObject(sourceId, t.title, t.caldav_uid, t.caldav_href, t.caldav_etag);
+    db.prepare(
+      `UPDATE tasks SET list_id = ?, caldav_uid = NULL, caldav_href = NULL, caldav_etag = NULL,
+       dirty = 1, sequence = sequence + 1, updated_at = ? WHERE id = ?`
+    ).run(targetId, now, t.id);
+  }
+  const events = db
+    .prepare(`SELECT id, title, start_date, caldav_uid, caldav_href, caldav_etag FROM events WHERE list_id = ? AND deleted = 0`)
+    .all(sourceId) as Array<{ id: string; title: string; start_date: string; caldav_uid: string | null; caldav_href: string | null; caldav_etag: string | null }>;
+  for (const e of events) {
+    if (e.caldav_uid) {
+      db.prepare(
+        `INSERT INTO events (id, list_id, title, start_date, caldav_uid, caldav_href, caldav_etag, deleted, dirty, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?)`
+      ).run(nanoid(), sourceId, e.title, e.start_date, e.caldav_uid, e.caldav_href, e.caldav_etag, now, now);
+    }
+    db.prepare(
+      `UPDATE events SET list_id = ?, caldav_uid = NULL, caldav_href = NULL, caldav_etag = NULL,
+       dirty = 1, sequence = sequence + 1, updated_at = ? WHERE id = ?`
+    ).run(targetId, now, e.id);
+  }
+  return { tasks: tasks.length, events: events.length };
+}
+
+/** Tasks and events a list still holds: live ones, plus tombstones whose server
+ *  delete hasn't been pushed yet (0 = safe to remove the list). A deleted row
+ *  that never reached the server doesn't count. */
+export function listRowCount(id: string): number {
+  const db = getDb();
+  const t = db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE list_id = ? AND (deleted = 0 OR caldav_uid IS NOT NULL)`).get(id) as { n: number };
+  const e = db.prepare(`SELECT COUNT(*) AS n FROM events WHERE list_id = ? AND (deleted = 0 OR caldav_uid IS NOT NULL)`).get(id) as { n: number };
+  return Number(t.n) + Number(e.n);
+}
+
+/** True when a list holds any task or event that isn't deleted. */
+export function listHasData(id: string): boolean {
+  const db = getDb();
+  return !!db.prepare(`SELECT 1 FROM tasks WHERE list_id = ? AND deleted = 0 LIMIT 1`).get(id) ||
+    !!db.prepare(`SELECT 1 FROM events WHERE list_id = ? AND deleted = 0 LIMIT 1`).get(id);
+}
+
+/** True when an address book holds any contact that isn't deleted. */
+export function addressBookHasData(id: string): boolean {
+  return !!getDb().prepare(`SELECT 1 FROM contacts WHERE address_book_id = ? AND deleted = 0 LIMIT 1`).get(id);
+}
+
+/** True when a stored object href points inside the given collection URL.
+ *  Compared by davUrlKey (scheme, default port, trailing slash ignored); a
+ *  relative href ("/dav/cal/x.ics") is compared with the collection's path. */
+export function hrefInCollection(href: string | null | undefined, collectionUrl: string | null | undefined): boolean {
+  if (!href || !collectionUrl) return false;
+  const coll = davUrlKey(collectionUrl);
+  if (!coll) return false;
+  if (href.startsWith("/")) {
+    const slash = coll.indexOf("/");
+    const collPath = slash === -1 ? "" : coll.slice(slash);
+    return !!collPath && href.startsWith(collPath + "/");
+  }
+  return davUrlKey(href).startsWith(coll + "/");
+}
+
+/** Before a list is linked to a calendar: tasks and events whose server copy
+ *  lives in a different calendar lose their sync identity (uid, href, etag) and
+ *  are marked dirty, so the next sync uploads them to the new calendar. Without
+ *  this the remote-delete prune reads them as "deleted on the server" and removes
+ *  them (code review 2026-11-11, finding 1). Rows already in this calendar keep
+ *  their identity, so re-linking the same calendar doesn't duplicate anything.
+ *  Tombstones (deleted = 1) are left alone. Returns how many rows changed. */
+export function listDetachForeignSyncIdentity(listId: string, calendarUrl: string): number {
+  const db = getDb();
+  let changed = 0;
+  for (const table of ["tasks", "events"] as const) {
+    const rows = db
+      .prepare(`SELECT id, caldav_href FROM ${table} WHERE list_id = ? AND deleted = 0 AND caldav_uid IS NOT NULL`)
+      .all(listId) as { id: string; caldav_href: string | null }[];
+    const clear = db.prepare(
+      `UPDATE ${table} SET caldav_uid = NULL, caldav_href = NULL, caldav_etag = NULL, dirty = 1 WHERE id = ?`
+    );
+    for (const r of rows) {
+      if (hrefInCollection(r.caldav_href, calendarUrl)) continue;
+      clear.run(r.id);
+      changed++;
+    }
+  }
+  return changed;
 }
 
 /** Append " (local)" to a name unless it's already tagged, so a disconnected /
@@ -925,13 +1032,61 @@ export function taskToggleComplete(id: string): Task {
   return taskUpdate(id, { completed, completed_at: completed ? nowIso() : null } as Partial<Task>);
 }
 
-export function taskDelete(id: string, hard = false) {
+/** Ids of every descendant of a task (children, grandchildren, ...), deleted or
+ *  not. The visited set guards against a parent_id cycle in bad data. */
+function taskDescendantIds(id: string): string[] {
   const db = getDb();
-  if (hard) {
-    db.prepare(`DELETE FROM tasks WHERE id = ? OR parent_id = ?`).run(id, id);
-  } else {
-    db.prepare(`UPDATE tasks SET deleted = 1, updated_at = ? WHERE id = ? OR parent_id = ?`).run(nowIso(), id, id);
+  const out: string[] = [];
+  const seen = new Set<string>([id]);
+  const stmt = db.prepare(`SELECT id FROM tasks WHERE parent_id = ?`);
+  const queue = [id];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    for (const row of stmt.all(cur) as unknown as { id: string }[]) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      out.push(row.id);
+      queue.push(row.id);
+    }
   }
+  return out;
+}
+
+/** Delete a task and its whole subtree (code review 2026-11-10, finding 3: this
+ *  used to reach only direct children, so grandchildren stayed live, hidden and
+ *  still synced).
+ *  - Soft (default): marks the task and every descendant deleted. Returns the ids
+ *    that were live before, so undo can bring back exactly those.
+ *  - Hard: removes the task row. Descendants that were never on a server go too;
+ *    ones with a caldav_uid are only soft-deleted, so the sync's delete loop still
+ *    removes their server copy before their row goes. */
+export function taskDelete(id: string, hard = false): string[] {
+  const db = getDb();
+  const ids = [id, ...taskDescendantIds(id)];
+  if (hard) {
+    const softDel = db.prepare(`UPDATE tasks SET deleted = 1, updated_at = ? WHERE id = ? AND caldav_uid IS NOT NULL`);
+    const hardDel = db.prepare(`DELETE FROM tasks WHERE id = ? AND caldav_uid IS NULL`);
+    const now = nowIso();
+    db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
+    for (const d of ids.slice(1)) { softDel.run(now, d); hardDel.run(d); }
+    // Reminders of rows that are now gone (code review 2026-11-11, finding 3).
+    // Synced descendants kept as tombstones keep theirs until their own hard
+    // delete; the soft path never touches reminders, so undo keeps them.
+    const dropReminders = db.prepare(
+      `DELETE FROM reminders WHERE owner_type = 'task' AND owner_id = ? AND NOT EXISTS (SELECT 1 FROM tasks WHERE id = ?)`
+    );
+    for (const d of ids) dropReminders.run(d, d);
+    return [];
+  }
+  const live = db.prepare(`SELECT id FROM tasks WHERE id = ? AND deleted = 0`);
+  const mark = db.prepare(`UPDATE tasks SET deleted = 1, updated_at = ? WHERE id = ?`);
+  const now = nowIso();
+  const changed: string[] = [];
+  for (const t of ids) {
+    if (live.get(t)) changed.push(t);
+    mark.run(now, t);
+  }
+  return changed;
 }
 
 export function subtasksOf(parentId: string): Task[] {
@@ -1045,6 +1200,7 @@ export function eventDelete(id: string, hard = false) {
   const db = getDb();
   if (hard) {
     db.prepare(`DELETE FROM events WHERE id = ?`).run(id);
+    db.prepare(`DELETE FROM reminders WHERE owner_type = 'event' AND owner_id = ?`).run(id);
   } else {
     db.prepare(`UPDATE events SET deleted = 1, updated_at = ? WHERE id = ?`).run(nowIso(), id);
   }
@@ -1131,8 +1287,32 @@ export function eventsPruneMissing(listId: string, remoteUids: Set<string>) {
   for (const row of local) {
     if (row.caldav_uid && !remoteUids.has(row.caldav_uid) && !row.dirty) {
       db.prepare(`DELETE FROM events WHERE id = ?`).run(row.id);
+      db.prepare(`DELETE FROM reminders WHERE owner_type = 'event' AND owner_id = ?`).run(row.id);
     }
   }
+}
+
+/** Remove clean, synced tasks whose uid is no longer on the server: they were
+ *  deleted on another device (code review 2026-11-10, finding 2; tasks had no
+ *  prune step, so a remote delete stayed here and a later edit re-created it on
+ *  the server). Dirty rows are kept so a pending local edit still pushes; already
+ *  soft-deleted rows are left to the push-delete loop. Subtasks of a removed task
+ *  move to the top level (written directly, so a pending edit keeps its dirty
+ *  flag). Returns how many tasks were removed. */
+export function tasksPruneMissing(listId: string, remoteUids: Set<string>): number {
+  const db = getDb();
+  const rows = db
+    .prepare(`SELECT id, caldav_uid FROM tasks WHERE list_id = ? AND deleted = 0 AND dirty = 0 AND caldav_uid IS NOT NULL`)
+    .all(listId) as { id: string; caldav_uid: string }[];
+  let removed = 0;
+  for (const row of rows) {
+    if (remoteUids.has(row.caldav_uid)) continue;
+    db.prepare(`DELETE FROM tasks WHERE id = ?`).run(row.id);
+    db.prepare(`DELETE FROM reminders WHERE owner_type = 'task' AND owner_id = ?`).run(row.id);
+    db.prepare(`UPDATE tasks SET parent_id = NULL WHERE parent_id = ?`).run(row.id);
+    removed++;
+  }
+  return removed;
 }
 
 // ---------- CalDAV accounts ----------

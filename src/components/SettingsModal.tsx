@@ -137,7 +137,6 @@ export default function SettingsModal({
   // takes effect until the single "Save changes" button is clicked.
   const [pendingByCal, setPendingByCal] = useState<Record<string, string>>({});
   const [pendingByBook, setPendingByBook] = useState<Record<string, string>>({});
-  const [advancedLinking, setAdvancedLinking] = useState(() => localStorage.getItem("advancedListLinking") === "1");
   const [version, setVersion] = useState<string>("");
   const [update, setUpdate] = useState<{ state: string; detail?: any } | null>(null);
   const [prefs, setPrefs] = useState<Record<string, string>>({});
@@ -272,8 +271,10 @@ export default function SettingsModal({
     if (usernameChanged) {
       const ok = window.confirm(
         "Change the server username?\n\nThe server stores each user's calendars and contacts under their name, " +
-        "so any data already on the built-in server stays under the OLD username and the apps you've connected " +
-        "will see an empty account until you re-point them. The password can be changed safely on its own.\n\nContinue?"
+        "so a new, empty account starts under the new name. Lists, calendars and address books that hold anything " +
+        "stay in Daynizer as local copies marked (local), no longer synced, and the server keeps them under the OLD " +
+        "username. The apps you've connected will see an empty account until you re-point them. " +
+        "The password can be changed safely on its own.\n\nContinue?"
       );
       if (!ok) return;
     }
@@ -343,9 +344,6 @@ export default function SettingsModal({
       .catch(() => {});
   }
 
-  useEffect(() => {
-    localStorage.setItem("advancedListLinking", advancedLinking ? "1" : "0");
-  }, [advancedLinking]);
 
   async function refresh() {
     setAccounts(await window.api.accounts.all());
@@ -779,10 +777,8 @@ export default function SettingsModal({
                   <option value="__new__">Connected</option>
                 </>
               )}
-              {advancedLinking &&
-                lists.filter((l) => l.id !== current).map((l) => (
-                  <option key={l.id} value={l.id}>Add to {l.name}</option>
-                ))}
+              {/* "Add to <list>" (link a calendar to an existing list) was here; replaced
+                  2026-11-14 by a list's right-click menu: Merge into… and Sync to server…. */}
             </select>
           </div>
         </div>
@@ -976,10 +972,6 @@ export default function SettingsModal({
                   </select>
                 </label>
               </div>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
-                <input type="checkbox" checked={advancedLinking} onChange={(e) => setAdvancedLinking(e.target.checked)} />
-                Additional list linking options (link a calendar to an existing list)
-              </label>
               {accounts.length === 0 && <div className="status">Add an account first (Accounts tab).</div>}
               {accounts.map((acc) => (
                 <div className="account-card" key={acc.id}>
@@ -1349,7 +1341,7 @@ export default function SettingsModal({
               </div>
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
                 Changing the password is safe. Changing the username starts a fresh account on the
-                server (existing data stays under the old name).
+                server. Existing data stays under the old name, and here as local (unsynced) copies.
               </div>
 
               <h3 style={{ marginTop: 18 }}>Port</h3>

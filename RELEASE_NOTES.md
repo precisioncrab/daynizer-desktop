@@ -1,4 +1,4 @@
-Daynizer v0.9.1
+Daynizer v0.9.2
 
 Changes since v0.9.0. Daynizer remains beta, pre-1.0, keep a backup of anything important.
 
@@ -6,7 +6,8 @@ Changes since v0.9.0. Daynizer remains beta, pre-1.0, keep a backup of anything 
   a server to be encrypted, so the add-on no longer connects to plain http:// addresses. An account
   saved with one stops syncing and says how to switch: change the address to https:// (on a
   Synology NAS, port 5001 instead of 5000), and if Thunderbird doesn't trust a self-signed
-  certificate yet, open the address in a Thunderbird tab once and accept it. Pairing links must be
+  certificate yet, add it in Thunderbird's Settings under Privacy & Security, Security certificates,
+  Manage Certificates…, Servers, Add Exception… Pairing links must be
   caldavs://. **The desktop app is unchanged** and still connects to plain http servers.
 - **Contacts tab: right-click menus.** Rename, color, hide or delete an address book or label from
   its right-click menu, and hide address books and labels one at a time.
@@ -17,7 +18,51 @@ Changes since v0.9.0. Daynizer remains beta, pre-1.0, keep a backup of anything 
 - **Thunderbird add-on: Thunderbird's mailing lists** show under their address book. Make a new one,
   add a contact from its details, open a list to tick who's on it, and right-click a list for New
   message or New Bcc message to this list.
+- **Calendar: task priority shows.** A task with a priority has a dot in the priority color at the
+  left of its bar, and the all-day area lists tasks High, Medium, Low, then None, with all-day
+  events after them.
+- **Right-click a list, calendar or address book to see where it syncs:** the top line names the
+  server account (and its address), or says "Local only, not synced".
+- **"Show only" works on the tab you're on.** Right-click a list, Show only "name" filters the
+  Tasks tab or the Calendar tab, whichever is open (it used to change only the Calendar).
+- **Right-click a list, Merge into…** moves every task and event (subtasks included) into another
+  list, local or synced, then removes the emptied list, and its calendar on the server. Use it to
+  combine two lists, or to move a list to another calendar or server. The emptied list is only
+  removed once its old copies are gone from the server; if a sync fails, it stays and says so.
+- **Right-click a local list, Sync to server…** makes a calendar with the list's name on your
+  server and starts syncing the list to it.
+- **Settings: "Additional list linking options" is gone.** Merge into… and Sync to server… replace
+  it.
+- **Clicking Sync syncs.** The Sync menu no longer opens a list with one item in it (Windows,
+  Linux and the Thunderbird add-on; macOS keeps Sync > Sync Now, since every Mac menu needs a list).
+  Ctrl+R still syncs on the desktop.
+- **Fixed: the tick on done tasks showed as "âœ“"** instead of a check mark (since v0.8.10).
+- **Thunderbird add-on: one permission fewer.** It no longer asks for "storage", which it didn't
+  use (its data lives in its own database).
 - Build tools updated (Vite 8).
+- **Fixed: changing the built-in server's username during setup could delete your tasks and
+  contacts.** Lists, calendars and address books that hold anything are now kept as local copies
+  marked (local), and the server keeps them under the old username. Only empty ones are removed,
+  and the old username's folder on the server is deleted only when it holds nothing at all
+  (including anything a phone saved there).
+- **Fixed: linking a list to a different calendar could delete its tasks and events** on the next
+  sync. They now upload to the new calendar (the old calendar keeps its copies). Settings no longer
+  offers "Add to" for a list that is already linked to another calendar; unlink it first.
+- **Fixed: Undo after a delete had already synced did nothing, or brought back only some
+  subtasks.** It now restores what is still there, keeps subtasks with their parent, and says when
+  the rest was already deleted on the server.
+- Deleted tasks and events no longer leave their reminders behind in the database.
+- **Fixed: a task deleted on another device (Tasks.org, a phone) stayed in Daynizer**, and editing it
+  later put it back on the server. It is now removed here on the next sync, unless you changed it
+  here first.
+- **Fixed: deleting a task only deleted one level of subtasks.** Sub-subtasks stayed hidden in the
+  database and still synced to other devices with no parent. Delete and Undo now cover every level.
+- **Fixed: deleting a list left its calendar events behind.** They kept showing in the calendar and
+  could never sync. Deleting a list now removes its events too, and events left over from an
+  earlier delete no longer show.
+- **Fixed: an edit to a subtask could be lost.** If a subtask arrived before its parent and you
+  edited it, the sync that later put it under its parent marked it as sent without sending your
+  edit. It is now sent.
 
 ---
 

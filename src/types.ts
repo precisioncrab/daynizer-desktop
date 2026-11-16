@@ -223,6 +223,8 @@ declare global {
         update: (id: string, patch: Partial<TaskList>) => Promise<TaskList>;
         delete: (id: string) => Promise<void>;
         export: (id: string) => Promise<{ ok: boolean; canceled?: boolean; count?: number; path?: string }>;
+        merge: (sourceId: string, targetId: string) => Promise<{ tasks: number; events: number }>;
+        rowCount: (id: string) => Promise<number>;
       };
       tasks: {
         all: () => Promise<Task[]>;
@@ -231,7 +233,8 @@ declare global {
         create: (input: Partial<Task> & { list_id: string; title: string }) => Promise<Task>;
         update: (id: string, patch: Partial<Task>) => Promise<Task>;
         toggleComplete: (id: string) => Promise<Task>;
-        delete: (id: string, hard?: boolean) => Promise<void>;
+        /** Returns the ids marked deleted (soft delete); empty for a hard delete. */
+        delete: (id: string, hard?: boolean) => Promise<string[]>;
       };
       /** Absent in the Thunderbird add-on shim -- always optional-chain. */
       events?: {
@@ -311,7 +314,7 @@ declare global {
         connectCalendar: (accountId: string, calendarUrl: string, displayName: string, color?: string | null) => Promise<TaskList>;
         unlinkList: (listId: string) => Promise<void>;
         sync: (accountId: string) => Promise<{ listId: string; pulled: number; pushed: number; errors: string[] }[]>;
-        createServerCalendar: (accountId: string, name: string) => Promise<TaskList>;
+        createServerCalendar: (accountId: string, name: string, existingListId?: string) => Promise<TaskList>;
         deleteServerCalendar: (accountId: string, calendarUrl: string) => Promise<void>;
         /** Auto-create default collections (Calendar / Contacts) on a server
          *  that has none yet. No-op where collections already exist. Absent in
