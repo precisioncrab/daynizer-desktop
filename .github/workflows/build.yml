@@ -22,6 +22,10 @@ on:
       release_tag:
         description: "Existing release tag to attach rebuilt assets to (tag protection means the real v* tag can't just be moved and re-pushed after a CI-only fix)"
         required: true
+      only_job:
+        description: "Rebuild only this job (windows, linux, mac-arm64, mac-x64); empty rebuilds all"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -35,6 +39,7 @@ env:
 
 jobs:
   windows:
+    if: github.event_name == 'push' || github.event.inputs.only_job == '' || github.event.inputs.only_job == 'windows'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,6 +81,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   linux:
+    if: github.event_name == 'push' || github.event.inputs.only_job == '' || github.event.inputs.only_job == 'linux'
     # ubuntu-22.04, not -latest: an older glibc here is more broadly compatible
     # with users' systems (see DAYNIZER-SERVER-LINUX-MACOS-PLAN.md's note).
     runs-on: ubuntu-22.04
@@ -125,7 +131,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   mac-arm64:
-    runs-on: macos-14
+    if: github.event_name == 'push' || github.event.inputs.only_job == '' || github.event.inputs.only_job == 'mac-arm64'
+    # macos-14 was retired by GitHub (v0.9.2's run failed on it, 2026-11-17); macos-15 is Apple Silicon.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -168,6 +176,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   mac-x64:
+    if: github.event_name == 'push' || github.event.inputs.only_job == '' || github.event.inputs.only_job == 'mac-x64'
     # Intel Macs are gone from GitHub-hosted runners as of late 2025; this is
     # the replacement label (available through Aug 2027) -- do not swap back
     # to macos-13, it no longer exists.
