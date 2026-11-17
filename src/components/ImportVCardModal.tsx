@@ -106,7 +106,7 @@ export default function ImportVCardModal({ addressBooks, thunderbirdBooks = [], 
             : "Contacts already here are matched and updated (not duplicated)."} Any label below is added to every contact in the file.
         </p>
 
-        <label>Add label to all imported contacts (optional)</label>
+        <label>Add a label to each contact (optional)</label>
         <input
           type="text"
           value={label}
