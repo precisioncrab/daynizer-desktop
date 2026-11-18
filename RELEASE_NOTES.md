@@ -1,3 +1,16 @@
+Daynizer v0.9.3
+
+Changes since v0.9.2. Daynizer remains beta, pre-1.0, keep a backup of anything important.
+
+- **Calendar: tasks no longer hide behind multi-day events.** In month view and the week view's
+  all-day row, a task on a day crossed by a multi-day all-day event (for example a week-long event
+  that started on an earlier day) could be drawn underneath that event's bar and not show at all.
+  Bars are now placed by start day first, so every task shows. Within one day the order is still
+  tasks High, Medium, Low, None, then all-day events; a multi-day event that started earlier sits
+  above that day's tasks.
+
+---
+
 Daynizer v0.9.2
 
 Changes since v0.9.0. Daynizer remains beta, pre-1.0, keep a backup of anything important.

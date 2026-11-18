@@ -233,11 +233,27 @@ function allDayRank(props: any): number {
   return ({ 1: 0, 5: 1, 9: 2 } as Record<number, number>)[props.priority] ?? 3;
 }
 
-/** The library's `eventOrder`: all-day bars first (as the library does by
- *  default), all-day ones by priority rank, then by start; timed ones keep the
- *  default start-time order. The library still puts each bar in the topmost
- *  free slot, so a later-ranked bar on an emptier day can sit higher there. */
+/** Local midnight of a bar's start, so bars can be compared by start day. */
+function startDay(d: any): number {
+  if (!d?.getFullYear) return 0;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+/** The library's `eventOrder`: by start day first, then within one day the
+ *  all-day bars first, all-day ones by priority rank, then by start; timed ones
+ *  keep the start-time order.
+ *
+ *  Start day must come first. The library lays bars out in this order, and a
+ *  bar only moves clear of the multi-day bars already placed in its cell
+ *  (`repositionEvent` in @event-calendar/core). Ranking every task ahead of
+ *  every all-day event placed a task starting Wednesday before a multi-day
+ *  event that started earlier, so the event was then drawn over the task (month
+ *  view and the week view's all-day row). Sorting by start day means every bar
+ *  passing through a cell is placed before the bars that start there. The cost:
+ *  a multi-day bar that started earlier sits above a high-priority task. */
 function calendarEventOrder(a: any, b: any): number {
+  const day = startDay(a.start) - startDay(b.start);
+  if (day) return day;
   if (!!a.allDay !== !!b.allDay) return a.allDay ? -1 : 1;
   const start = (a.start?.getTime?.() ?? 0) - (b.start?.getTime?.() ?? 0);
   if (a.allDay) {
@@ -636,7 +652,7 @@ export default function CalendarView({
       // week/day view. `false` lays intersecting events side by side in
       // their own columns instead -- each stays independently clickable.
       slotEventOverlap: false,
-      // All-day row: tasks High, Medium, Low, None, then all-day events.
+      // By start day, then all-day row: tasks High, Medium, Low, None, then all-day events.
       eventOrder: calendarEventOrder,
       // Fires on mount and on every navigate/view change with the visible span
       // (activeRange). Stash it and bump rangeVersion so the reactive effect
