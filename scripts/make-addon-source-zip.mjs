@@ -36,7 +36,7 @@ const version = desktop.version;
 // Everything the add-on bundle imports (src/ + thunderbird-addon/), and the
 // build tools. Ranges are copied from the desktop package.json.
 const ADDON_DEPS = ["@event-calendar/core", "ical.js", "nanoid", "qrcode", "react", "react-dom", "rrule", "sql.js", "tsdav"];
-const ADDON_BUILD_DEPS = ["@vitejs/plugin-react", "archiver", "vite"];
+const ADDON_BUILD_DEPS = ["archiver", "rolldown"];
 
 function pick(names) {
   const out = {};
@@ -60,7 +60,7 @@ const addonPkg = {
   private: true,
   type: "module",
   scripts: {
-    "build:addon:listed": "vite build --config thunderbird-addon/vite.config.ts --mode listed",
+    "build:addon:listed": "node thunderbird-addon/build.mjs --mode listed",
     "package:addon:listed": "npm run build:addon:listed && node scripts/package-addon-xpi.mjs --listed"
   },
   dependencies: pick(ADDON_DEPS),
@@ -91,7 +91,7 @@ try {
 const BUILD_MD = `# Daynizer for Thunderbird ${version}: build instructions
 
 This archive is the complete source of the Daynizer add-on submitted to
-addons.thunderbird.net. The submitted .xpi is produced by Vite (Rolldown +
+addons.thunderbird.net. The submitted .xpi is produced by Rolldown (with
 Oxc minification) from the TypeScript/React source below, using exactly these
 steps in a clean copy of this archive. Nothing is obfuscated.
 
@@ -116,7 +116,7 @@ Output: \`daynizer-addon-listed.xpi\` (and the unpacked build in
   script (storage via sql.js, CalDAV/CardDAV sync over https only, freemium
   entitlement), \`tab/\` hosts the UI, \`manifest.json\` is the base manifest (the
   build sets the version from package.json and the listed add-on id),
-  \`vite.config.ts\` is the build config (\`--mode listed\`).
+  \`build.mjs\` is the build script (\`--mode listed\`).
 - \`src/\`: the React UI shared with the Daynizer desktop app.
 - \`scripts/package-addon-xpi.mjs\`: zips the build output into the .xpi.
 `;

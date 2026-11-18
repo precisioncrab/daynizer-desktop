@@ -16,13 +16,12 @@
     "start": "npm run build && electron .",
     "package": "npm run build && electron-builder",
     "package:exp": "npm run build && electron-builder --publish never -c.appId=com.precisioncrab.daynizer.experimental -c.productName=\"Daynizer (Experimental)\" -c.win.artifactName=Daynizer-Experimental-Setup-${version}.${ext} -c.win.icon=build/icon-exp.ico",
-    "build:addon": "vite build --config thunderbird-addon/vite.config.ts",
+    "build:addon": "node thunderbird-addon/build.mjs",
     "package:addon": "npm run build:addon && node scripts/package-addon-xpi.mjs",
-    "build:addon:listed": "vite build --config thunderbird-addon/vite.config.ts --mode listed",
+    "build:addon:listed": "node thunderbird-addon/build.mjs --mode listed",
     "package:addon:listed": "npm run build:addon:listed && node scripts/package-addon-xpi.mjs --listed",
-    "package:addon:test": "vite build --config thunderbird-addon/vite.config.ts --mode listed-test && node scripts/package-addon-xpi.mjs --listed --test",
-    "package:addon:source": "node scripts/make-addon-source-zip.mjs",
-    "dev:addon": "vite --config thunderbird-addon/vite.config.ts"
+    "package:addon:test": "node thunderbird-addon/build.mjs --mode listed-test && node scripts/package-addon-xpi.mjs --listed --test",
+    "package:addon:source": "node scripts/make-addon-source-zip.mjs"
   },
   "dependencies": {
     "@event-calendar/core": "^5.18.1",

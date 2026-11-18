@@ -1,7 +1,7 @@
 // Zips dist-addon/ into daynizer-addon.xpi at the repo root, or, with
 // `--listed`, dist-addon-listed/ into daynizer-addon-listed.xpi (the
-// Experiment-free ATN build from `vite --mode listed`). With `--test` too (the
-// `vite --mode listed-test` build), daynizer-addon-test-<version>.xpi, so each
+// Experiment-free ATN build from `thunderbird-addon/build.mjs --mode listed`). With
+// `--test` too (the `--mode listed-test` build), daynizer-addon-test-<version>.xpi, so each
 // test build's file says which one it is.
 //
 // Replaces a prior PowerShell `Compress-Archive` step: that produced a zip
