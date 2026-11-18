@@ -64,7 +64,11 @@ const addonPkg = {
     "package:addon:listed": "npm run build:addon:listed && node scripts/package-addon-xpi.mjs --listed"
   },
   dependencies: pick(ADDON_DEPS),
-  devDependencies: pick(ADDON_BUILD_DEPS)
+  devDependencies: pick(ADDON_BUILD_DEPS),
+  // archiver 8 asks for readdir-glob ^3, which pulls minimatch 10 (GHSA-g3hv-75wg-m249,
+  // fixed in minimatch 11.0.1). readdir-glob 4 is the same API on minimatch 11.
+  // Drop this once archiver depends on readdir-glob 4 itself.
+  overrides: { "readdir-glob": "^4.0.0" }
 };
 mkdirSync(depsDir, { recursive: true });
 writeFileSync(resolve(depsDir, "package.json"), JSON.stringify(addonPkg, null, 2) + "\n");
