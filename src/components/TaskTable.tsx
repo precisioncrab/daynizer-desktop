@@ -8,6 +8,8 @@ interface Props {
   onSelect: (id: string) => void;
   onToggleComplete: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, taskId: string) => void;
+  /** Right-click on the empty space around the rows (offers New Task). */
+  onBlankContextMenu?: (e: React.MouseEvent) => void;
   /** Manual sort mode only: rows become draggable. */
   dragEnabled?: boolean;
   onReorder?: (draggedId: string, targetId: string) => void;
@@ -30,7 +32,7 @@ function formatDue(due: string | null): { text: string; overdue: boolean } | nul
   return { text: allDay ? day : `${day} ${timeLabel(when)}`, overdue };
 }
 
-export default function TaskTable({ tasks, selectedTaskId, onSelect, onToggleComplete, onContextMenu, dragEnabled = false, onReorder, forceExpand = false }: Props) {
+export default function TaskTable({ tasks, selectedTaskId, onSelect, onToggleComplete, onContextMenu, onBlankContextMenu, dragEnabled = false, onReorder, forceExpand = false }: Props) {
   const topLevel = tasks.filter((t) => !t.parent_id);
   const childrenOf = (id: string) => tasks.filter((t) => t.parent_id === id);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -50,8 +52,19 @@ export default function TaskTable({ tasks, selectedTaskId, onSelect, onToggleCom
     });
   }
 
+  // A right-click that bubbles up from a row is that row's own menu.
+  function blankMenu(e: React.MouseEvent) {
+    if (!onBlankContextMenu || (e.target as HTMLElement).closest(".task-row")) return;
+    e.preventDefault();
+    onBlankContextMenu(e);
+  }
+
   if (topLevel.length === 0) {
-    return <div className="empty-state">No tasks here. Press Ctrl+N to add one.</div>;
+    return (
+      <div className="task-table" onContextMenu={blankMenu}>
+        <div className="empty-state">No tasks here. Press Ctrl+N to add one.</div>
+      </div>
+    );
   }
 
   function renderRow(t: Task, depth: number) {
@@ -116,5 +129,5 @@ export default function TaskTable({ tasks, selectedTaskId, onSelect, onToggleCom
     );
   }
 
-  return <div className="task-table">{topLevel.map((t) => renderRow(t, 0))}</div>;
+  return <div className="task-table" onContextMenu={blankMenu}>{topLevel.map((t) => renderRow(t, 0))}</div>;
 }

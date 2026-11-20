@@ -105,8 +105,8 @@ function dateEq(a: string | null, b: string | null): boolean {
 }
 
 /** True when the remote VTODO carries the same content as the local task. Then
- *  an etag difference is just a version-stamp move — typically our own last
- *  push whose PUT response carried no ETag header — not a real remote edit. */
+ *  an etag difference is just a version-stamp move, typically our own last
+ *  push whose PUT response carried no ETag header, not a real remote edit. */
 function sameContent(local: Task, remote: ParsedVTodo): boolean {
   const norm = (s: string | null | undefined) => (s ?? "").trim();
   const tagSet = (s: string | null | undefined) =>
@@ -204,7 +204,7 @@ function isLoopbackHttps(url: string): boolean {
 
 /** Minimal fetch built on Node's core http/https client, used ONLY for the
  *  built-in server's self-signed loopback account (C4). Two reasons Node's core
- *  client — not the default global `fetch` (undici) — is used here:
+ *  client, not the default global `fetch` (undici), is used here:
  *    1. The cert is self-signed, so we set `rejectUnauthorized: false` (safe:
  *       loopback only).
  *    2. undici's strict HTTP/1.1 parser asserts (`assert(!this.paused)` →
@@ -212,7 +212,7 @@ function isLoopbackHttps(url: string): boolean {
  *       Node's lenient llhttp client handles it fine.
  *  Implements just the Response surface tsdav uses (ok/status/statusText/url/
  *  redirected + headers.get() + text()). Redirects are returned as-is, never
- *  auto-followed — tsdav's service discovery sends `redirect:"manual"` and reads
+ *  auto-followed, tsdav's service discovery sends `redirect:"manual"` and reads
  *  the Location header itself. Real remote accounts keep the default global
  *  fetch (unchanged, proven). */
 function nodeLoopbackFetch(url: string, init: any = {}): Promise<any> {
@@ -225,7 +225,7 @@ function nodeLoopbackFetch(url: string, init: any = {}): Promise<any> {
     const headers: Record<string, string> = { ...(init.headers || {}) };
     // Radicale's bundled Python server does NOT read chunked request bodies, and
     // Node's http.request uses chunked transfer-encoding unless Content-Length is
-    // set. Without an explicit length the server sees an EMPTY body — PUT fails
+    // set. Without an explicit length the server sees an EMPTY body, PUT fails
     // with 400 "Item contains 0 components" and REPORT/PROPFIND return nothing.
     // So always send a Content-Length for a bodied request.
     if (body && headers["Content-Length"] == null && headers["content-length"] == null) {
@@ -262,7 +262,11 @@ function nodeLoopbackFetch(url: string, init: any = {}): Promise<any> {
               }
             },
             text: async () => text,
-            json: async () => JSON.parse(text)
+            json: async () => JSON.parse(text),
+            arrayBuffer: async () => {
+              const b = Buffer.concat(chunks);
+              return b.buffer.slice(b.byteOffset, b.byteOffset + b.length);
+            }
           });
         });
         res.on("error", reject);
@@ -281,6 +285,12 @@ function nodeLoopbackFetch(url: string, init: any = {}): Promise<any> {
  *  self-account the same way. */
 export function loopbackFetchFor(url: string): typeof nodeLoopbackFetch | undefined {
   return isLoopbackHttps(url) ? nodeLoopbackFetch : undefined;
+}
+
+/** The fetch Copy to... (davcopy.ts) uses for a server: the same choice tsdav
+ *  gets, with the global fetch spelled out. */
+export function davFetchFor(url: string): (url: string, init?: any) => Promise<any> {
+  return loopbackFetchFor(url) ?? ((u: string, init?: any) => fetch(u, init));
 }
 
 async function clientFor(account: CaldavAccount): Promise<Client> {
@@ -524,15 +534,14 @@ export async function deleteServerCalendar(account: CaldavAccount, calendarUrl: 
 /** Create a new calendar on the server, make a local list, and link them together. */
 /** `existingListId` (right-click a local list, Sync to server…): link that list
  *  instead of making a new one. */
-export async function createServerCalendar(account: CaldavAccount, name: string, existingListId?: string): Promise<TaskList> {
+/** The account's calendar home (where new calendars go). Prefers the
+ *  principal's calendar-home-set, resolved via tsdav account discovery -- this
+ *  works even when the server has ZERO calendars (e.g. a fresh Radicale user),
+ *  which is exactly the case the old "derive from an existing calendar" approach
+ *  could not handle. Falls back to deriving the home from an existing calendar
+ *  for any server that doesn't cleanly advertise the home. */
+export async function calendarHomeUrl(account: CaldavAccount): Promise<string> {
   const client = await clientFor(account);
-
-  // Determine the calendar-home URL. Prefer the principal's calendar-home-set,
-  // resolved via tsdav account discovery -- this works even when the server has
-  // ZERO calendars (e.g. a fresh Radicale user), which is exactly the case the old
-  // "derive from an existing calendar" approach could not handle: it threw, so the
-  // very first list could never be created. Fall back to deriving the home from an
-  // existing calendar for any server that doesn't cleanly advertise the home.
   let calHomeUrl = "";
   try {
     const acct = await client.createAccount({
@@ -555,6 +564,12 @@ export async function createServerCalendar(account: CaldavAccount, name: string,
     const existingUrl = String(calendars[0].url).replace(/\/?$/, "/");
     calHomeUrl = existingUrl.replace(/[^/]+\/$/, "");
   }
+  return calHomeUrl;
+}
+
+export async function createServerCalendar(account: CaldavAccount, name: string, existingListId?: string): Promise<TaskList> {
+  const client = await clientFor(account);
+  const calHomeUrl = await calendarHomeUrl(account);
 
   // Build a URL-safe slug from the name.
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "list";
@@ -627,7 +642,7 @@ export async function syncAccount(account: CaldavAccount): Promise<SyncResult[]>
 }
 
 /** Two-way sync of VEVENTs for a linked list's calendar. Recurring events
- *  (have an RRULE) are still read-only — the server's version always wins, no
+ *  (have an RRULE) are still read-only, the server's version always wins, no
  *  local edits are possible for them yet (see docs/roadmap.md "Recurring
  *  event editing"). Non-recurring events get full create/edit/delete with the
  *  same etag/dirty/conflict-copy handling `syncList` uses for tasks. */
@@ -791,7 +806,7 @@ async function syncEvents(client: Client, list: TaskList) {
           // below would treat it as "deleted on the server" and hard-delete
           // the event we just successfully pushed.
           remoteUids.add(uid);
-          syncLog(`pushed new event "${local.title}" (${uid})${etag ? "" : " — no etag in response"}`);
+          syncLog(`pushed new event "${local.title}" (${uid})${etag ? "" : ", no etag in response"}`);
           pushed++;
         } catch (err: any) {
           syncLog(`push create FAILED for event "${local.title}": ${err?.message || err}`);
@@ -847,7 +862,7 @@ async function syncEvents(client: Client, list: TaskList) {
           const etag = updated.headers?.get?.("etag") || null;
           eventUpdate(local.id, { caldav_etag: etag || local.caldav_etag } as Partial<CalendarEvent>);
           if (!etag) needEtagRefresh.push({ id: local.id, href, title: local.title });
-          syncLog(`pushed update event "${local.title}" (${local.caldav_uid})${etag ? "" : " — no etag in response"}`);
+          syncLog(`pushed update event "${local.title}" (${local.caldav_uid})${etag ? "" : ", no etag in response"}`);
           pushed++;
         } catch (err: any) {
           syncLog(`push update FAILED for event "${local.title}": ${err?.message || err}`);
@@ -903,7 +918,7 @@ async function syncEvents(client: Client, list: TaskList) {
     }
 
     eventsPruneMissing(list.id, remoteUids);
-    syncLog(`events: synced list "${list.name}" — pulled ${pulled}, pushed ${pushed}`);
+    syncLog(`events: synced list "${list.name}": pulled ${pulled}, pushed ${pushed}`);
   } catch (err: any) {
     const msg = err?.message || String(err);
     if (isNotFound(msg)) {
@@ -1018,7 +1033,7 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
         result.pulled++;
       } else if (local.caldav_etag !== remote.etag) {
         if (sameContent(local, parsed)) {
-          // Same content, different version stamp — usually our own previous
+          // Same content, different version stamp, usually our own previous
           // push whose PUT response carried no ETag header. Record the etag;
           // there is nothing to pull and nothing left to push.
           syncLog(`etag-only catchup for "${local.title}" (${uid}): ${local.caldav_etag} -> ${remote.etag}`);
@@ -1154,7 +1169,7 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
             caldav_etag: etag
           } as Partial<Task>);
           if (!etag) needEtagRefresh.push({ id: local.id, href, title: local.title });
-          syncLog(`pushed new "${local.title}" (${uid})${etag ? "" : " — no etag in response"}`);
+          syncLog(`pushed new "${local.title}" (${uid})${etag ? "" : ", no etag in response"}`);
           result.pushed++;
         } catch (err: any) {
           syncLog(`push create FAILED for "${local.title}": ${err?.message || err}`);
@@ -1215,7 +1230,7 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
             caldav_etag: etag || local.caldav_etag
           } as Partial<Task>);
           if (!etag) needEtagRefresh.push({ id: local.id, href, title: local.title });
-          syncLog(`pushed update "${local.title}" (${local.caldav_uid})${etag ? "" : " — no etag in response"}`);
+          syncLog(`pushed update "${local.title}" (${local.caldav_uid})${etag ? "" : ", no etag in response"}`);
           result.pushed++;
         } catch (err: any) {
           syncLog(`push update FAILED for "${local.title}": ${err?.message || err}`);
@@ -1272,11 +1287,11 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
         gone = res?.ok === true || isNotFound(res?.status);
         if (!gone) {
           const detail = `HTTP ${res?.status ?? "?"}${res?.statusText ? ` ${res.statusText}` : ""}`;
-          result.errors.push(`Delete failed for "${t.title}": ${detail} — will retry next sync`);
+          result.errors.push(`Delete failed for "${t.title}": ${detail}, will retry next sync`);
           syncLog(`task delete kept pending for "${t.title}" (${t.caldav_uid}): ${detail}`);
         }
       } catch (err: any) {
-        result.errors.push(`Delete failed for "${t.title}": ${err?.message || err} — will retry next sync`);
+        result.errors.push(`Delete failed for "${t.title}": ${err?.message || err}, will retry next sync`);
         syncLog(`task delete threw for "${t.title}" (${t.caldav_uid}): ${err?.message || err}`);
       }
       if (gone) taskDelete(t.id, true);
@@ -1286,6 +1301,6 @@ async function syncList(client: Client, list: TaskList): Promise<SyncResult> {
     result.errors.push(err?.message || String(err));
   }
 
-  syncLog(`--- sync done: list "${list.name}" — pulled ${result.pulled}, pushed ${result.pushed}, errors ${result.errors.length}`);
+  syncLog(`--- sync done: list "${list.name}": pulled ${result.pulled}, pushed ${result.pushed}, errors ${result.errors.length}`);
   return result;
 }

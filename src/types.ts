@@ -79,6 +79,54 @@ export interface Reminder {
   created_at: string;
 }
 
+// ---------- Copy to... (electron/davcopy.ts, electron/copyTo.ts) ----------
+export type DavKind = "calendar" | "addressbook";
+export interface CopyItemResult {
+  name: string;
+  uid: string | null;
+  label: string | null;
+  status: "copied" | "already" | "failed";
+  reason?: string;
+  targetName?: string;
+}
+export interface CopyReport {
+  kind: DavKind;
+  sourceUrl: string;
+  targetUrl: string;
+  sourceName: string;
+  createdTarget: boolean;
+  sourceCount: number;
+  targetCountBefore: number;
+  targetCountAfter: number;
+  copied: number;
+  already: number;
+  failed: number;
+  missing: number;
+  complete: boolean;
+  items: CopyItemResult[];
+}
+export interface CopyOutcome {
+  sourceName: string;
+  kind: DavKind;
+  report: CopyReport | null;
+  error: string | null;
+  linkedId: string | null;
+}
+export interface CopyPlan {
+  sourceName: string;
+  collections: { url: string; name: string }[];
+  sameFolderUrl: string | null;
+}
+export interface CopyAllItem { kind: DavKind; url: string; name: string; existingTargetUrl: string | null }
+export interface CopyProgress {
+  phase: "reading" | "creating" | "copying" | "checking" | "done";
+  done: number;
+  total: number;
+  collection?: string;
+  index?: number;
+  count?: number;
+}
+
 export interface CaldavAccountPublic {
   id: string;
   label: string;
@@ -176,13 +224,13 @@ export interface ServerStatus {
   configured: boolean;     // first-run setup card dismissed
   port: number | null;     // port bound right now
   preferredPort: number;   // port the user asked for
-  baseUrl: string | null;  // LAN URL — give to phones / other apps
-  localUrl: string | null; // 127.0.0.1 URL — for a client on THIS machine
+  baseUrl: string | null;  // LAN URL: give to phones / other apps
+  localUrl: string | null; // 127.0.0.1 URL: for a client on THIS machine
   username: string;
   error: string | null;
   note: string | null;     // non-fatal note (e.g. preferred port was taken)
   lastActivity: number | null; // epoch ms of the last request from another device
-  platform: string;        // process.platform — "win32" gates the firewall control
+  platform: string;        // process.platform: "win32" gates the firewall control
 }
 export interface ServerInfo extends ServerStatus { password: string; }
 
@@ -260,6 +308,13 @@ declare global {
          *  server refuses (e.g. DAViCal/Synology 405 on collection DELETE) --
          *  caller deletes locally anyway and warns. Absent in the add-on shim. */
         deleteServer?: (accountId: string, addressBookUrl: string) => Promise<void>;
+      };
+      /** Copy to... (desktop only for now; absent in the add-on shim). */
+      copy?: {
+        plan: (kind: DavKind, sourceId: string, targetAccountId: string) => Promise<CopyPlan>;
+        one: (kind: DavKind, sourceId: string, targetAccountId: string, targetUrl: string | null) => Promise<CopyOutcome>;
+        allPlan: (sourceAccountId: string, targetAccountId: string) => Promise<CopyAllItem[]>;
+        all: (sourceAccountId: string, targetAccountId: string, items: { kind: DavKind; url: string; name: string }[]) => Promise<CopyOutcome[]>;
       };
       /** Absent in the Thunderbird add-on shim -- always optional-chain. */
       maintenance?: {

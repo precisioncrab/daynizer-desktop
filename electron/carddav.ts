@@ -71,7 +71,7 @@ export async function discoverAddressBooks(account: CaldavAccount): Promise<Disc
     const cause = err?.cause?.message || err?.cause?.code || (err?.cause ? String(err.cause) : "");
     syncLog(`carddav discover FAILED for ${account.carddav_url || account.server_url}: ${err?.message}${cause ? ` (cause: ${cause})` : ""}`);
     console.error("carddav discover error:", err, "\ncause:", err?.cause);
-    throw new Error(cause ? `${err?.message || "discover failed"} — ${cause}` : (err?.message || String(err)));
+    throw new Error(cause ? `${err?.message || "discover failed"}, ${cause}` : (err?.message || String(err)));
   }
 }
 
@@ -156,7 +156,9 @@ export async function pushAddressBookName(account: CaldavAccount, addressBookUrl
  *  falls back to deriving the home from an existing book. tsdav has no
  *  makeAddressBook helper, so the MKCOL is issued directly (mirroring how
  *  makeCalendar issues MKCALENDAR), declaring an addressbook resourcetype. */
-export async function createServerAddressBook(account: CaldavAccount, name: string): Promise<AddressBook> {
+/** The account's addressbook home (where new address books go): the
+ *  principal's addressbook-home-set, else derived from an existing book. */
+export async function addressBookHomeUrl(account: CaldavAccount): Promise<string> {
   const client = await clientFor(account);
 
   let homeUrl = "";
@@ -181,6 +183,12 @@ export async function createServerAddressBook(account: CaldavAccount, name: stri
     const existingUrl = String(books[0].url).replace(/\/?$/, "/");
     homeUrl = existingUrl.replace(/[^/]+\/$/, "");
   }
+  return homeUrl;
+}
+
+export async function createServerAddressBook(account: CaldavAccount, name: string): Promise<AddressBook> {
+  const client = await clientFor(account);
+  const homeUrl = await addressBookHomeUrl(account);
 
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "contacts";
   const newBookUrl = `${homeUrl}${slug}-${Date.now()}/`;
@@ -477,7 +485,7 @@ async function syncAddressBook(client: Client, book: AddressBook): Promise<Conta
           contactUpdate(local.id, { carddav_uid: uid, carddav_href: href, carddav_etag: etag, raw_vcard: vcf } as Partial<Contact>);
           if (!etag) needEtagRefresh.push({ id: local.id, href, name: local.fn });
           remoteUids.add(uid);
-          syncLog(`pushed new contact "${local.fn}" (${uid})${etag ? "" : " — no etag in response"}`);
+          syncLog(`pushed new contact "${local.fn}" (${uid})${etag ? "" : ", no etag in response"}`);
           result.pushed++;
         } catch (err: any) {
           syncLog(`push create FAILED for contact "${local.fn}": ${err?.message || err}`);
@@ -518,7 +526,7 @@ async function syncAddressBook(client: Client, book: AddressBook): Promise<Conta
           const etag = resp.headers?.get?.("etag") || null;
           contactUpdate(local.id, { carddav_etag: etag || local.carddav_etag, raw_vcard: vcf } as Partial<Contact>);
           if (!etag) needEtagRefresh.push({ id: local.id, href, name: local.fn });
-          syncLog(`pushed update contact "${local.fn}" (${local.carddav_uid})${etag ? "" : " — no etag in response"}`);
+          syncLog(`pushed update contact "${local.fn}" (${local.carddav_uid})${etag ? "" : ", no etag in response"}`);
           result.pushed++;
         } catch (err: any) {
           syncLog(`push update FAILED for contact "${local.fn}": ${err?.message || err}`);
@@ -569,7 +577,7 @@ async function syncAddressBook(client: Client, book: AddressBook): Promise<Conta
 
     contactsPruneMissing(book.id, remoteUids);
     contactGroupsPruneMissing(book.id, groupRemoteUids);
-    syncLog(`carddav: synced book "${book.name}" — pulled ${result.pulled}, pushed ${result.pushed}, ${groupsSeen} group card(s) → labels`);
+    syncLog(`carddav: synced book "${book.name}": pulled ${result.pulled}, pushed ${result.pushed}, ${groupsSeen} group card(s) → labels`);
   } catch (err: any) {
     syncLog(`carddav sync FAILED for book "${book.name}": ${err?.message || err}`);
     result.errors.push(err?.message || String(err));

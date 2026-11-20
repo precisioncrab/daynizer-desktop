@@ -46,6 +46,13 @@ const api = {
     createServer: (accountId: string, name: string) => ipcRenderer.invoke("addressbooks:createServer", accountId, name),
     deleteServer: (accountId: string, addressBookUrl: string) => ipcRenderer.invoke("addressbooks:deleteServer", accountId, addressBookUrl)
   },
+  copy: {
+    plan: (kind: string, sourceId: string, targetAccountId: string) => ipcRenderer.invoke("copy:plan", kind, sourceId, targetAccountId),
+    one: (kind: string, sourceId: string, targetAccountId: string, targetUrl: string | null) =>
+      ipcRenderer.invoke("copy:one", kind, sourceId, targetAccountId, targetUrl),
+    allPlan: (sourceAccountId: string, targetAccountId: string) => ipcRenderer.invoke("copy:allPlan", sourceAccountId, targetAccountId),
+    all: (sourceAccountId: string, targetAccountId: string, items: any[]) => ipcRenderer.invoke("copy:all", sourceAccountId, targetAccountId, items)
+  },
   maintenance: {
     dedupe: (dryRun?: boolean) => ipcRenderer.invoke("maintenance:dedupe", dryRun)
   },

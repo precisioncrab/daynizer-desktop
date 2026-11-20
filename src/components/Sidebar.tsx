@@ -40,6 +40,12 @@ interface Props {
   /** Right-click a local list, Sync to server…: new calendar on that account, linked to this list. */
   onSyncListToServer: (listId: string, accountId: string) => void;
   onSyncList: (accountId: string) => void;
+  /** Right-click a server list, Copy to…: copy its items to another account (CopyToModal). */
+  onCopyList?: (listId: string) => void;
+  /** Lists hidden on this computer (right-click > Hide): left out of the sidebar, tasks and calendar. */
+  hiddenLists?: TaskList[];
+  onHideList?: (listId: string) => void;
+  onShowList?: (listId: string) => void;
   smartFilters?: SidebarSmartFilter[];
   onApplyFilter?: (f: any) => void;
   onDeleteFilter?: (id: string) => void;
@@ -73,6 +79,10 @@ export default function Sidebar({
   onMergeList,
   onSyncListToServer,
   onSyncList,
+  onCopyList,
+  hiddenLists = [],
+  onHideList,
+  onShowList,
   smartFilters = [],
   onApplyFilter,
   onDeleteFilter,
@@ -84,6 +94,7 @@ export default function Sidebar({
   const [newColor, setNewColor] = useState(randomSwatch()); // color for the list being created
   const [listTarget, setListTarget] = useState("local"); // "local" or accountId
   const [listMenu, setListMenu] = useState<{ x: number; y: number; list: TaskList } | null>(null);
+  const [hiddenMenu, setHiddenMenu] = useState<{ x: number; y: number } | null>(null);
   // Inline rename: the list whose name is being edited, plus the working text.
   const [editingListId, setEditingListId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -237,6 +248,22 @@ export default function Sidebar({
             </div>
           )
         ))}
+        {hiddenLists.length > 0 && (
+          <div
+            className="sidebar-hidden-note"
+            role="button"
+            tabIndex={0}
+            title="Show a hidden list again"
+            onClick={(e) => setHiddenMenu({ x: e.clientX, y: e.clientY })}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                setHiddenMenu({ x: r.left, y: r.bottom });
+              }
+            }}
+          >{hiddenLists.length} hidden</div>
+        )}
         {adding ? (
           <div style={{ padding: "6px 14px" }}>
             <input
@@ -342,6 +369,13 @@ export default function Sidebar({
                   submenu: accounts.map((a) => ({ label: a.label, onClick: () => onSyncListToServer(listMenu.list.id, a.id) }))
                 }]
               : []),
+            // Copy to…: only a list on a server has raw items to copy.
+            ...(listMenu.list.caldav_account_id && onCopyList
+              ? [{ label: "Copy to…", onClick: () => onCopyList(listMenu.list.id) }]
+              : []),
+            ...(onHideList
+              ? [{ label: "Hide", onClick: () => onHideList(listMenu.list.id) }]
+              : []),
             {
               label: "Export to .ics…",
               onClick: () => onExportList(listMenu.list.id)
@@ -353,7 +387,7 @@ export default function Sidebar({
                   label: "Unlink",
                   danger: true,
                   onClick: () => {
-                    if (confirm(`Unlink "${listMenu.list.name}"? It becomes a local-only list — its tasks stay here and on the server, but they stop syncing.`)) {
+                    if (confirm(`Unlink "${listMenu.list.name}"? It becomes a local-only list. Its tasks stay here and on the server, but they stop syncing.`)) {
                       onRemoveList(listMenu.list.id);
                     }
                   }
@@ -374,6 +408,18 @@ export default function Sidebar({
                 }
               }
             }
+          ]}
+        />
+      )}
+      {hiddenMenu && (
+        <ContextMenu
+          x={hiddenMenu.x}
+          y={hiddenMenu.y}
+          onClose={() => setHiddenMenu(null)}
+          items={[
+            { info: "Hidden on this computer" },
+            { separator: true as const },
+            ...hiddenLists.map((l) => ({ label: `Show "${l.name}"`, onClick: () => onShowList?.(l.id) }))
           ]}
         />
       )}

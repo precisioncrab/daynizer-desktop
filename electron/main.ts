@@ -59,6 +59,7 @@ import { testConnection, discoverCalendars, linkListToCalendar, unlinkList, sync
 import { taskToVTodo, eventToVEvent, bundleIcs } from "./ical.js";
 import { discoverAddressBooks, linkAddressBook, unlinkAddressBook, syncAccountContacts, connectAddressBook, importVCards, createServerAddressBook, deleteServerAddressBook, pushAddressBookName, contactsVCards, contactSaveVCard, contactCreateFromVCard } from "./carddav.js";
 import { serverManager, type ServerStatus } from "./serverManager.js";
+import { copyAll, copyAllPlan, copyOne, copyPlan } from "./copyTo.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
@@ -172,7 +173,7 @@ let selfAccountBusy = false;
  *  busy at launch → an ephemeral port is used), but linked collections store
  *  ABSOLUTE URLs with the port baked in, so a list provisioned on one port
  *  otherwise fails with "fetch failed" against the dead port next launch. The
- *  collection path is unchanged — only scheme/host/port move — so we clear the
+ *  collection path is unchanged, only scheme/host/port move, so we clear the
  *  ctag to force a clean re-compare. Idempotent: a no-op when origins match. */
 function rehomeSelfCollections(accountId: string, base: string): void {
   const rehome = (url: string): string | null => {
@@ -216,8 +217,8 @@ async function ensureSelfAccount(): Promise<void> {
   // Username (principal) change on the built-in server: the signature stores
   // localUrl|username|password, so a differing middle field means the server's
   // /<user>/ home moved. The self-account's lists/books are still linked to the
-  // OLD principal path — and rehomeSelfCollections only rewrites scheme/host/port,
-  // not the path — so once we re-provision under the new principal they would
+  // OLD principal path, and rehomeSelfCollections only rewrites scheme/host/port,
+  // not the path, so once we re-provision under the new principal they would
   // linger as broken duplicates (the new user can't reach /<olduser>/). So on a
   // username change, an EMPTY collection (no tasks, events or contacts, e.g. the
   // auto-provisioned defaults) is dropped, and one holding data is unlinked and
@@ -407,7 +408,7 @@ function createWindow(show = true) {
   });
 
   // Close-to-tray: the X button hides the window instead of quitting when EITHER
-  // the user opted in (closeToTray) OR the built-in server is running — the server
+  // the user opted in (closeToTray) OR the built-in server is running, the server
   // is meant to be an always-on background service (C1), so closing the window must
   // not take it down. Quitting is always available from the tray menu and File > Exit.
   mainWindow.on("close", (e) => {
@@ -433,7 +434,7 @@ function createWindow(show = true) {
           message: "You have unsynced changes",
           detail: `${dirty} change${dirty === 1 ? "" : "s"} haven't been pushed to the server yet.`
         });
-        if (choice === 2) { e.preventDefault(); return; }          // Cancel — stay open
+        if (choice === 2) { e.preventDefault(); return; }          // Cancel: stay open
         if (choice === 0) {                                        // Sync, then quit
           e.preventDefault();
           syncingBeforeQuit = true;
@@ -586,7 +587,7 @@ async function openFirewallPort(): Promise<{ ok: boolean; message: string }> {
         syncLog(`[server] firewall rule added for ${bin}`);
         resolve({ ok: true, message: "Windows Firewall now allows other devices to reach the sync server." });
       } else if (code === 1223) {
-        resolve({ ok: false, message: "The Windows permission prompt was declined — other devices may not be able to connect until it's allowed." });
+        resolve({ ok: false, message: "The Windows permission prompt was declined, so other devices may not be able to connect until it's allowed." });
       } else {
         syncLog(`[server] firewall rule failed (code ${code}) ${stderr.trim()}`);
         resolve({ ok: false, message: `Couldn't add the firewall rule (code ${code}).` });
@@ -728,7 +729,7 @@ function buildMenu() {
         {
           // App-level undo (restores the last task action: delete, edit,
           // complete-toggle, create, snooze, reorder). registerAccelerator is
-          // false so the renderer's focus-aware keydown owns Ctrl/Cmd+Z —
+          // false so the renderer's focus-aware keydown owns Ctrl/Cmd+Z,
           // that keeps native undo working inside text fields while typing.
           // The accelerator is still shown here for discoverability, and
           // clicking the item dispatches the same undo.
@@ -1140,7 +1141,7 @@ function registerIpc() {
     try {
       const found = await discoverAddressBooks(full as any);
       if (found.length > 0) books = ` Found ${found.length} address book(s).`;
-    } catch { /* not a CardDAV endpoint / unreachable — omit */ }
+    } catch { /* not a CardDAV endpoint / unreachable, omit */ }
     return { ok: cal.ok, message: cal.message + books };
   });
   ipcMain.handle("accounts:discoverCalendars", async (_e, accountId: string) => {
@@ -1175,6 +1176,22 @@ function registerIpc() {
     if (!account) throw new Error("Account not found");
     return createServerAddressBook(account, name);
   });
+  // Copy to... (2026-11-20): server to server, never writes to the source,
+  // never overwrites the target (electron/copyTo.ts, electron/davcopy.ts).
+  // Progress goes to the window as "copy:progress".
+  const copyProgress = (p: unknown) => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) mainWindow.webContents.send("copy:progress", p);
+  };
+  ipcMain.handle("copy:plan", (_e, kind: "calendar" | "addressbook", sourceId: string, targetAccountId: string) =>
+    copyPlan(kind, sourceId, targetAccountId)
+  );
+  ipcMain.handle("copy:one", (_e, kind: "calendar" | "addressbook", sourceId: string, targetAccountId: string, targetUrl: string | null) =>
+    copyOne(kind, sourceId, targetAccountId, targetUrl, copyProgress)
+  );
+  ipcMain.handle("copy:allPlan", (_e, sourceAccountId: string, targetAccountId: string) => copyAllPlan(sourceAccountId, targetAccountId));
+  ipcMain.handle("copy:all", (_e, sourceAccountId: string, targetAccountId: string, items: { kind: "calendar" | "addressbook"; url: string; name: string }[]) =>
+    copyAll(sourceAccountId, targetAccountId, items, copyProgress)
+  );
   ipcMain.handle("addressbooks:deleteServer", async (_e, accountId: string, addressBookUrl: string) => {
     const account = accountsAll().find((a) => a.id === accountId);
     if (!account) throw new Error("Account not found");
@@ -1250,7 +1267,7 @@ function registerIpc() {
       // exactly how the orphaned-book bug stayed invisible. Say why.
       const books = addressBooksAll().filter((b) => b.carddav_addressbook_url);
       syncLog(
-        `carddav: skipped account "${account.label}" — no linked address book ` +
+        `carddav: skipped account "${account.label}", no linked address book ` +
           `(${books.length} book(s) have a URL but none point at this account id ${accountId})`
       );
     }
@@ -1337,7 +1354,7 @@ app.whenReady().then(() => {
   if (!gotSingleInstanceLock) return;
   startStallMonitor();
   // Distinct AppUserModelID in dev so a raw `electron .` run doesn't register a
-  // shortcut under the packaged app's identity — that collision is what made
+  // shortcut under the packaged app's identity, that collision is what made
   // Windows show the Electron icon on the installed app's taskbar button.
   if (process.platform === "win32") app.setAppUserModelId(isDev ? "com.precisioncrab.daynizer.dev" : isExperimental ? "com.precisioncrab.daynizer.experimental" : "com.precisioncrab.daynizer"); // required for toasts; matches the experimental build's appId so its taskbar button/toasts stay separate from stable
   // Heal links left pointing at a deleted account before any sync runs. This
@@ -1372,7 +1389,7 @@ app.whenReady().then(() => {
     log: syncLog,
     onStatus: (status: ServerStatus) => {
       // The child's exit fires this during app quit, after the window/tray are
-      // already destroyed — pushing to them then throws "Object has been destroyed"
+      // already destroyed, pushing to them then throws "Object has been destroyed"
       // and crashes the main process. Skip all UI work once we're quitting, and
       // guard the send against a torn-down webContents either way.
       if (isQuiting) return;

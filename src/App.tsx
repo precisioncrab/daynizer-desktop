@@ -13,6 +13,8 @@ import EventDetailPanel from "./components/EventDetailPanel";
 import ContactsView from "./components/ContactsView";
 import MailingListView from "./components/MailingListView";
 import ImportVCardModal from "./components/ImportVCardModal";
+import CopyToModal, { type CopyRequest } from "./components/CopyToModal";
+import { loadHiddenLists, storeHiddenLists } from "./listsHidden";
 import ContactsSidebar, { CleanupItem } from "./components/ContactsSidebar";
 import ContactDetailPanel from "./components/ContactDetailPanel";
 import { ContactFilter, LabelColors, contactCategories, contactGroupLabels, contactLabels, dropFromFilter, filterBooks, filterFirstBook, filterHas, toggleInFilter } from "./contactUtils";
@@ -211,7 +213,7 @@ export default function App() {
   async function undoLast() {
     const action = lastActionRef.current;
     if (!action) return;
-    lastActionRef.current = null; // consume — one level only
+    lastActionRef.current = null; // consume, one level only
     await action();
     const fresh = await window.api.tasks.all();
     setTasks(fresh);
@@ -232,9 +234,13 @@ export default function App() {
   const startupTaskFilters = startup.taskView?.origin === "tasks" ? startup.taskView.tasks : undefined;
   const [search, setSearch] = useState(startupTaskFilters?.search ?? "");
   const [menu, setMenu] = useState<{ x: number; y: number; taskId: string } | null>(null);
+  // Right-click on the empty space in the task list.
+  const [blankMenu, setBlankMenu] = useState<{ x: number; y: number } | null>(null);
   // Right-click on a contact: its labels, and (Thunderbird's contacts) its book's mailing lists.
   const [contactMenu, setContactMenu] = useState<{ x: number; y: number; contact: Contact } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [copyRequest, setCopyRequest] = useState<CopyRequest | null>(null);
+  const [hiddenListIds, setHiddenListIds] = useState<string[]>(loadHiddenLists);
   const [settingsPane, setSettingsPane] = useState<"accounts" | "calendars" | "contacts" | "sync" | "server" | "notifications" | "license" | undefined>(undefined);
   // Freemium tier (Thunderbird add-on only; window.api.entitlement is absent on
   // desktop, so everything stays unlocked there). Calendar and Contacts are
@@ -272,7 +278,7 @@ export default function App() {
           setSettingsPane("server");
           setShowSettings(true);
         }
-      } catch { /* no server IPC (add-on) — skip */ }
+      } catch { /* no server IPC (add-on), skip */ }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -489,7 +495,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, []);
 
-  // Debounced "sync after edits" — mirrors Tasks.org's dirty-row watcher:
+  // Debounced "sync after edits", mirrors Tasks.org's dirty-row watcher:
   // creating/editing/completing/deleting a task schedules a quiet auto-sync
   // ~1 minute after the *last* change, so rapid edits collapse into one sync
   // instead of one per keystroke/save.
@@ -855,7 +861,28 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   });
 
+  // Lists hidden on this computer (right-click > Hide) and their tasks and events
+  // are left out of the sidebar, the task views, the calendar and the Today pane.
+  const hiddenListSet = useMemo(() => new Set(hiddenListIds), [hiddenListIds]);
+  const shownLists = useMemo(() => (hiddenListSet.size ? lists.filter((l) => !hiddenListSet.has(l.id)) : lists), [lists, hiddenListSet]);
+  const hiddenLists = useMemo(() => lists.filter((l) => hiddenListSet.has(l.id)), [lists, hiddenListSet]);
+  const shownTasks = useMemo(() => (hiddenListSet.size ? tasks.filter((t) => !hiddenListSet.has(t.list_id)) : tasks), [tasks, hiddenListSet]);
+  const shownEvents = useMemo(() => (hiddenListSet.size ? events.filter((e) => !hiddenListSet.has(e.list_id)) : events), [events, hiddenListSet]);
+  function setListHidden(id: string, hidden: boolean) {
+    setHiddenListIds((was) => {
+      const next = hidden ? [...new Set([...was, id])] : was.filter((x) => x !== id);
+      storeHiddenLists(next);
+      return next;
+    });
+    if (hidden) {
+      const remaining = new Set(lists.filter((l) => l.id !== id && !hiddenListSet.has(l.id)).map((l) => l.id));
+      setScope((prev) => pruneSelection(prev, remaining));
+      setCalendarListFilter((prev) => pruneSelection(prev, remaining) as CalendarLists);
+    }
+  }
+
   const visibleTasks = useMemo(() => {
+    const tasks = shownTasks;
     let base = tasks;
     if (scope === "today") {
       const now = new Date();
@@ -950,7 +977,7 @@ export default function App() {
       return a.title.localeCompare(b.title);
     });
     return base;
-  }, [tasks, scope, search, hideCompleted, dueFilter, categoryFilter, showScheduled, sortMode]);
+  }, [shownTasks, scope, search, hideCompleted, dueFilter, categoryFilter, showScheduled, sortMode]);
 
   const allCategories = useMemo(() => {
     const seen = new Set<string>();
@@ -1055,7 +1082,7 @@ export default function App() {
     // Fallback chain: never silently pick a local book when a synced one exists.
     // addressBooks[0] alone resolved to the unsynced "Contacts" book and stranded
     // contacts where nothing could ever push them. Matches the import modal's logic.
-    // (An explicit book filter still wins — creating into a local book you picked
+    // (An explicit book filter still wins, creating into a local book you picked
     // yourself is intent, not an accident. Never one of Thunderbird's books: new contacts go
     // into Daynizer's, and the add-on's background refuses contacts:create there.)
     const picked = filterFirstBook(contactFilter);
@@ -1097,7 +1124,7 @@ export default function App() {
       // Stamp the chosen color locally (the server book carries none of its own).
       if (color && newBook?.id) await window.api.addressbooks.update(newBook.id, { color } as Partial<AddressBook>);
       await loadAddressBooks();
-      setSyncMsg(`Created "${name}" on server — syncing…`);
+      setSyncMsg(`Created "${name}" on server, syncing…`);
       await syncAccountNow(accountId);
       await loadContacts();
       setSyncMsg(`Created "${name}" on server.`);
@@ -1150,7 +1177,7 @@ export default function App() {
   /** Delete a contact label: strip that CATEGORIES value from every contact
    *  carrying it, then reload + schedule a sync so the removal reaches CardDAV.
    *  Note: a label that a contact inherits only from a CardDAV group card
-   *  (group_labels) is not removed here — that would need editing the group
+   *  (group_labels) is not removed here, that would need editing the group
    *  card itself; this handles the category-based labels created in-app. */
   async function deleteLabel(label: string) {
     // Thunderbird's shown contacts too (add-on); the background saves those in Thunderbird.
@@ -1462,7 +1489,7 @@ export default function App() {
       if (color) await window.api.lists.update(newList.id, { color } as Partial<TaskList>);
       await loadLists();
       changeScope([newList.id]);
-      setSyncMsg(`Created "${name}" on server — syncing…`);
+      setSyncMsg(`Created "${name}" on server, syncing…`);
       await syncAccountNow(accountId);
       setSyncMsg(`Created "${name}" on server.`);
       setTimeout(() => setSyncMsg(null), 4000);
@@ -1602,7 +1629,7 @@ export default function App() {
       await loadContacts();
       await loadAddressBooks();
       if (errors.length) setSyncMsg(`Synced with errors: ${errors[0]}`);
-      else if (!auto || pulled || pushed) setSyncMsg(`Synced — ${pulled} pulled, ${pushed} pushed.`);
+      else if (!auto || pulled || pushed) setSyncMsg(`Synced: ${pulled} pulled, ${pushed} pushed.`);
     } catch (err: any) {
       setSyncMsg(err?.message || String(err));
     } finally {
@@ -1627,7 +1654,7 @@ export default function App() {
     return res;
   }
 
-  /** Same as syncAccountNow but surfaces a toolbar message — used by the sidebar's
+  /** Same as syncAccountNow but surfaces a toolbar message, used by the sidebar's
    *  per-list "Sync now" right-click action. */
   async function syncListAccount(accountId: string) {
     setSyncing(true);
@@ -1636,7 +1663,7 @@ export default function App() {
       const res = await syncAccountNow(accountId);
       let pulled = 0, pushed = 0, errors: string[] = [];
       for (const r of res) { pulled += r.pulled; pushed += r.pushed; errors.push(...r.errors); }
-      setSyncMsg(errors.length ? `Synced with errors: ${errors[0]}` : `Synced — ${pulled} pulled, ${pushed} pushed.`);
+      setSyncMsg(errors.length ? `Synced with errors: ${errors[0]}` : `Synced: ${pulled} pulled, ${pushed} pushed.`);
     } catch (err: any) {
       setSyncMsg(err?.message || String(err));
     } finally {
@@ -1746,6 +1773,9 @@ export default function App() {
           onSetThunderbirdBookColor={setThunderbirdBookColor}
           onRenameThunderbirdBook={renameThunderbirdBookAsked}
           onDisconnectBook={disconnectBook}
+          onCopyBook={window.api.copy ? (b) => {
+            if (b.carddav_account_id) setCopyRequest({ mode: "one", kind: "addressbook", sourceId: b.id, sourceName: b.name, sourceAccountId: b.carddav_account_id });
+          } : undefined}
           onDeleteBook={deleteBook}
           onSync={() => runSync()}
           syncing={syncing}
@@ -1771,8 +1801,8 @@ export default function App() {
         />
       ) : (
       <Sidebar
-        lists={lists}
-        tasks={tasks}
+        lists={shownLists}
+        tasks={shownTasks}
         accounts={accounts.filter((a) => a.server_url).map((a) => ({ id: a.id, label: a.label }))}
         mode={mainView === "calendar" ? "calendar" : "tasks"}
         selection={mainView === "calendar" ? calendarListFilter : scope}
@@ -1787,6 +1817,13 @@ export default function App() {
         onMergeList={mergeList}
         onSyncListToServer={syncListToServer}
         onSyncList={syncListAccount}
+        onCopyList={window.api.copy ? (id) => {
+          const l = lists.find((x) => x.id === id);
+          if (l?.caldav_account_id) setCopyRequest({ mode: "one", kind: "calendar", sourceId: id, sourceName: l.name, sourceAccountId: l.caldav_account_id });
+        } : undefined}
+        hiddenLists={hiddenLists}
+        onHideList={(id) => setListHidden(id, true)}
+        onShowList={(id) => setListHidden(id, false)}
         onOpenSettings={() => setShowSettings(true)}
         onSync={() => runSync()}
         syncing={syncing}
@@ -1841,9 +1878,9 @@ export default function App() {
             // creation, same as the locale itself.
             key={`cal-${firstDayOverride ?? "auto"}`}
             firstDayOverride={firstDayOverride}
-            events={events}
-            tasks={tasks}
-            lists={lists}
+            events={shownEvents}
+            tasks={shownTasks}
+            lists={shownLists}
             calendarShow={calendarShow}
             onSetCalendarShow={setCalendarShow}
             selectedTaskId={selectedTaskId}
@@ -1997,6 +2034,7 @@ export default function App() {
             selectTask(taskId);
             setMenu({ x: e.clientX, y: e.clientY, taskId });
           }}
+          onBlankContextMenu={(e) => setBlankMenu({ x: e.clientX, y: e.clientY })}
         />
         </>
         )}
@@ -2014,9 +2052,9 @@ export default function App() {
           />
         ) : (
           <TodayPane
-            tasks={tasks}
-            events={events}
-            lists={lists}
+            tasks={shownTasks}
+            events={shownEvents}
+            lists={shownLists}
             onSelectTask={selectTask}
             onSelectEvent={selectEvent}
             collapsed={railCollapsed}
@@ -2097,6 +2135,15 @@ export default function App() {
         />
       )}
 
+      {blankMenu && (
+        <ContextMenu
+          x={blankMenu.x}
+          y={blankMenu.y}
+          onClose={() => setBlankMenu(null)}
+          items={[{ label: "New Task", onClick: () => createTaskInScope() }]}
+        />
+      )}
+
       {showSettings && (
         <SettingsModal
           lists={lists}
@@ -2116,9 +2163,21 @@ export default function App() {
           onSetDefaultTasksView={setDefaultTasksView}
           defaultCalendarView={defaultCalendarView}
           onSetDefaultCalendarView={setDefaultCalendarView}
+          onCopyAccount={window.api.copy ? (id) => setCopyRequest({ mode: "all", sourceAccountId: id }) : undefined}
         />
       )}
 
+      {copyRequest && (
+        <CopyToModal
+          request={copyRequest}
+          accounts={accounts}
+          onClose={() => setCopyRequest(null)}
+          onCopied={async (targetId) => {
+            await loadAccounts();
+            try { await syncAccountNow(targetId); } catch { /* the next sync picks it up */ }
+          }}
+        />
+      )}
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
 
       {showMoreApps && <MoreAppsModal isAddon={IS_ADDON} onClose={() => setShowMoreApps(false)} />}

@@ -41,6 +41,8 @@ interface Props {
   onSetLabelColor: (label: string, color: string | null) => void;
   onDeleteLabel: (label: string) => void;
   onDisconnectBook: (b: AddressBook) => void;
+  /** Right-click a CardDAV book, Copy to…: copy its contacts to another account (CopyToModal). */
+  onCopyBook?: (b: AddressBook) => void;
   onDeleteBook: (b: AddressBook) => void;
   onSync: () => void;
   syncing: boolean;
@@ -86,7 +88,7 @@ interface Props {
 
 export default function ContactsSidebar({
   addressBooks, contacts, accounts, filter, onSelect, onCreateBook, onCreateServerBook, onSetBookColor, onRenameBook, labelColors, onSetLabelColor, onDeleteLabel,
-  onDisconnectBook, onDeleteBook, onSync, syncing, onOpenSettings, collapsed, onToggleCollapsed, nav, hideBooks, hideLabels, thunderbirdBooks,
+  onDisconnectBook, onCopyBook, onDeleteBook, onSync, syncing, onOpenSettings, collapsed, onToggleCollapsed, nav, hideBooks, hideLabels, thunderbirdBooks,
   sameThunderbirdBooks = [], onShowSameThunderbirdBook, dismissedSameNotes = [], onDismissSameNote, onDeleteThunderbirdBook,
   onRenameThunderbirdBook, thunderbirdBookColors = {}, onSetThunderbirdBookColor, onRenameLabel,
   hiddenLabels, hiddenBookCount, hiddenThunderbirdBookCount, onHide, onShowHidden,
@@ -472,6 +474,9 @@ export default function ContactsSidebar({
             { separator: true as const },
             { label: "Rename", onClick: () => { setEditingBookId(bookMenu.book.id); setEditName(bookMenu.book.name); } },
             { colors: PALETTE, current: bookMenu.book.color, onPick: (color: string) => onSetBookColor(bookMenu.book.id, color) },
+            ...(bookMenu.book.carddav_account_id && bookMenu.book.carddav_addressbook_url && onCopyBook
+              ? [{ label: "Copy to…", onClick: () => onCopyBook(bookMenu.book) }]
+              : []),
             { label: "Hide (and its contacts)", onClick: () => onHide("books", bookMenu.book.id) },
             ...(bookMenu.book.carddav_addressbook_url
               ? [{ label: "Disconnect from CardDAV", onClick: () => onDisconnectBook(bookMenu.book) }]

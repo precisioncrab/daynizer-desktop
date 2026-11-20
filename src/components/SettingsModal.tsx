@@ -73,12 +73,14 @@ interface Props {
   /** "" = whatever was showing last time, "all" = All lists, else a saved view id. */
   defaultCalendarView: string;
   onSetDefaultCalendarView: (v: string) => void;
+  /** Desktop: "Copy everything to…" on an account (CopyToModal). */
+  onCopyAccount?: (accountId: string) => void;
 }
 
 export default function SettingsModal({
   lists, addressBooks, onClose, onListsChanged, onSyncAccount, onReviewDuplicates, onImportVCard, onThunderbirdBooksChanged, initialPane, onEntitlementChanged,
   savedViews, defaultTasksView, onSetDefaultTasksView, defaultCalendarView, onSetDefaultCalendarView,
-  sameThunderbirdBooks = [], onShowSameThunderbirdBook
+  sameThunderbirdBooks = [], onShowSameThunderbirdBook, onCopyAccount
 }: Props) {
   // Only the Thunderbird add-on's window.api has an entitlement (freemium) API.
   const isAddon = !!window.api.entitlement;
@@ -179,9 +181,9 @@ export default function SettingsModal({
 
   /** Build the DAVx5 auto-config URI for phone pairing. The scheme follows the
    *  server: `caldavs://` for HTTPS (the default now that the built-in server
-   *  serves TLS — C4), `caldav://` if it ever falls back to plain HTTP. DAVx5
+   *  serves TLS, C4), `caldav://` if it ever falls back to plain HTTP. DAVx5
    *  discovers BOTH calendars and contacts from this one URL. Credentials are
-   *  embedded because a QR carries no "extras" — fine for a LAN-only account.
+   *  embedded because a QR carries no "extras", fine for a LAN-only account.
    *  Returns null until there's a reachable (non-loopback) LAN address. */
   function pairingUri(info: ServerInfo | null): string | null {
     if (!info?.running || !info.baseUrl) return null;
@@ -195,7 +197,7 @@ export default function SettingsModal({
     return `${scheme}://${user}:${pass}@${host}/`;
   }
 
-  /** Inverse of pairingUri() — reads a caldav(s):// link (Daynizer's own, or one
+  /** Inverse of pairingUri(), reads a caldav(s):// link (Daynizer's own, or one
    *  generated for a standalone server) into the Add Account fields. Same base
    *  URL is used for both CalDAV and CardDAV, matching how these links are built
    *  (and how Radicale-style servers serve both from one address). Returns null
@@ -228,8 +230,8 @@ export default function SettingsModal({
     }
     if (!parsed) {
       setTestMsg(__ADDON__
-        ? "Couldn't read that link — check it starts with caldavs:// and includes a username and password."
-        : "Couldn't read that link — check it starts with caldav:// or caldavs:// and includes a username and password.");
+        ? "Couldn't read that link. Check it starts with caldavs:// and includes a username and password."
+        : "Couldn't read that link. Check it starts with caldav:// or caldavs:// and includes a username and password.");
       return;
     }
     setServerUrl(parsed.serverUrl);
@@ -239,7 +241,7 @@ export default function SettingsModal({
     // Clear it immediately -- no reason for the plaintext credential to keep
     // sitting in this field once it's been read into the form above.
     setPairingInput("");
-    setTestMsg("Filled in from the pairing link below — check it looks right, then Test connection.");
+    setTestMsg("Filled in from the pairing link below. Check it looks right, then Test connection.");
   }
   // Regenerate the pairing QR whenever the reachable address or credentials change.
   useEffect(() => {
@@ -309,7 +311,7 @@ export default function SettingsModal({
   function srvCopy(text: string, what: string) {
     navigator.clipboard?.writeText(text).then(
       () => setSrvMsg(`${what} copied.`),
-      () => setSrvMsg(`Couldn't copy ${what} — select and copy manually.`)
+      () => setSrvMsg(`Couldn't copy ${what}. Select and copy manually.`)
     );
   }
   async function srvOpenFirewall() {
@@ -561,7 +563,7 @@ export default function SettingsModal({
   /** Commits every pending calendar-link change across all accounts at once:
    *  links, creates+links, or unlinks as needed, then runs one sync per affected
    *  account so newly-linked lists show up right away. Nothing is written until
-   *  this is called — closing the modal beforehand discards pending choices. */
+   *  this is called, closing the modal beforehand discards pending choices. */
   async function saveAllChanges() {
     const entries = Object.entries(pendingByCal);
     const bookEntries = Object.entries(pendingByBook);
@@ -664,7 +666,7 @@ export default function SettingsModal({
     setBusy(true);
     setTestMsg(null);
     try {
-      const preview = await window.api.maintenance.dedupe(true); // dry run — rolls back
+      const preview = await window.api.maintenance.dedupe(true); // dry run, rolls back
       const total = preview.listsMerged + preview.listsRenamedLocal + preview.booksMerged + preview.booksRenamedLocal + preview.contactsRemoved;
       if (total === 0) { setTestMsg("No duplicate lists or address books found."); return; }
       const ok = window.confirm(
@@ -706,7 +708,7 @@ export default function SettingsModal({
       if (!results.length) {
         setTestMsg("No lists are linked to a calendar on this account yet.");
       } else {
-        setTestMsg(errors.length ? `Sync had errors: ${errors[0]}` : `Synced — ${pulled} pulled, ${pushed} pushed.`);
+        setTestMsg(errors.length ? `Sync had errors: ${errors[0]}` : `Synced: ${pulled} pulled, ${pushed} pushed.`);
       }
     } catch (err: any) {
       setTestMsg(err?.message || String(err));
@@ -722,8 +724,8 @@ export default function SettingsModal({
     { id: "sync", label: "Sync" },
     // Built-in sync server pane: desktop only (the add-on has no server) and only
     // when the feature is compiled in. window.api.server is always present from
-    // preload (it doesn't know the compile-time flag), so gate on srv.feature —
-    // populated by the eager mount-time loadServer() above — not just its
+    // preload (it doesn't know the compile-time flag), so gate on srv.feature,
+    // populated by the eager mount-time loadServer() above, not just its
     // existence, or this pane would show up even when SERVER_BUILTIN is off.
     ...(srv?.feature ? [{ id: "server" as Pane, label: "Sync Server" }] : []),
     // Hidden when window.api.settings is missing. The add-on has no startup
@@ -740,7 +742,7 @@ export default function SettingsModal({
   /** Per-account calendar-link rows -- rendered in the Calendars & Lists pane. */
   function renderCalendarRows(acc: CaldavAccountPublic) {
     const cals = calendarsByAccount[acc.id];
-    if (!cals || cals.length === 0) return <div className="status">No calendars discovered yet — use "Find calendars" on the Accounts tab.</div>;
+    if (!cals || cals.length === 0) return <div className="status">No calendars discovered yet. Use "Find calendars" on the Accounts tab.</div>;
     return cals.map((cal) => {
       const linkedList = lists.find((l) => sameDavUrl(l.caldav_calendar_url, cal.url));
       const current = linkedList?.id ?? "";
@@ -894,7 +896,7 @@ export default function SettingsModal({
                 Connect a CalDAV server (Nextcloud, Tasks.org sync provider, DAVx5-compatible server, etc.).
                 One account's credentials are shared by its calendars and contacts.
               </p>
-              {accounts.length === 0 && <div className="status">No accounts yet — add one below.</div>}
+              {accounts.length === 0 && <div className="status">No accounts yet. Add one below.</div>}
               {accounts.map((acc, idx) => (
                 <div className="account-card" key={acc.id}>
                   <div className="row">
@@ -903,10 +905,19 @@ export default function SettingsModal({
                       <button onClick={() => test(acc)} disabled={busy}>Test</button>{" "}
                       <button onClick={() => discover(acc.id)} disabled={busy}>Find calendars</button>{" "}
                       <button onClick={() => syncNow(acc.id)} disabled={busy}>Sync now</button>{" "}
+                      {onCopyAccount && accounts.length > 1 && (
+                        <>
+                          <button
+                            onClick={() => onCopyAccount(acc.id)}
+                            disabled={busy}
+                            title="Copy every calendar, list and address book of this account to another account. Nothing here is changed."
+                          >Copy everything to…</button>{" "}
+                        </>
+                      )}
                       <button onClick={() => removeAccount(acc.id)} disabled={busy}>Remove</button>
                     </div>
                   </div>
-                  <div className="status">{acc.server_url || acc.carddav_url} — {acc.username}</div>
+                  <div className="status">{acc.server_url || acc.carddav_url}, {acc.username}</div>
                   <div className="status">{linkedCalCount(acc)} calendar(s), {linkedBookCount(acc)} address book(s) linked</div>
                   {proLocked && idx > 0 && (
                     <div className="status error">Paused: more than one account is a Pro feature. Its data is kept.</div>
@@ -1005,7 +1016,7 @@ export default function SettingsModal({
           {activePane === "accounts" && (
             <label
               style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", marginTop: 12 }}
-              title="Enable if your server uses a self-signed certificate (e.g. Synology DSM over HTTPS on your LAN). Turns off certificate verification for the app's sync connections — only use on servers you trust."
+              title="Enable if your server uses a self-signed certificate (e.g. Synology DSM over HTTPS on your LAN). Turns off certificate verification for the app's sync connections, only use on servers you trust."
             >
               <input
                 type="checkbox"
@@ -1027,7 +1038,7 @@ export default function SettingsModal({
                 >
                   Repair duplicate lists &amp; books
                 </button>
-                <button onClick={onReviewDuplicates} title="Review possible duplicate contacts and merge them manually — this is where contacts are combined.">
+                <button onClick={onReviewDuplicates} title="Review possible duplicate contacts and merge them manually, this is where contacts are combined.">
                   Merge duplicates…
                 </button>
                 <button onClick={onImportVCard} title="Import contacts from a .vcf file, optionally adding a label to all of them.">
@@ -1083,7 +1094,7 @@ export default function SettingsModal({
               </div>
               <p style={{ fontSize: 11, color: "var(--warn)", marginTop: 6, lineHeight: 1.5 }}>
                 ⚠️ This kind of link carries the password in <strong>plain text</strong>, not just a
-                reference to it — anyone who sees the link or a QR code made from it has the real
+                reference to it, anyone who sees the link or a QR code made from it has the real
                 password. Treat it exactly like the password itself: don't paste it into chat, email,
                 or a notes app (those often sync to the cloud or get logged), and don't keep a
                 screenshot of it around. It's cleared from this field the moment you click Fill in.
@@ -1094,8 +1105,8 @@ export default function SettingsModal({
           </details>
           <div className="form-grid">
           <input placeholder="Label (e.g. My Nextcloud)" value={label} onChange={(e) => setLabel(e.target.value)} />
-          <input placeholder="CalDAV URL — tasks & calendars (optional)" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
-          <input placeholder="CardDAV URL — contacts (optional)" value={draftCarddavUrl} onChange={(e) => setDraftCarddavUrl(e.target.value)} />
+          <input placeholder="CalDAV URL: tasks & calendars (optional)" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
+          <input placeholder="CardDAV URL: contacts (optional)" value={draftCarddavUrl} onChange={(e) => setDraftCarddavUrl(e.target.value)} />
           <input placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
           <div className="password-field">
             <input
@@ -1137,7 +1148,7 @@ export default function SettingsModal({
                   <option value="10">10 minutes</option>
                   <option value="30">30 minutes</option>
                   <option value="60">60 minutes (Tasks.org default)</option>
-                  <option value="0">Off — manual only</option>
+                  <option value="0">Off (manual only)</option>
                 </select>
               </label>
               <label className="pref-row" title="Change or disable this if it conflicts with another app's hotkey. Applies immediately.">
@@ -1162,7 +1173,7 @@ export default function SettingsModal({
               <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
                 Daynizer can host its own CalDAV/CardDAV sync server, so your tasks, calendar and
                 contacts sync across devices with no third-party account. One address serves both
-                calendars and contacts — add it to Daynizer on another computer, or to apps like
+                calendars and contacts, add it to Daynizer on another computer, or to apps like
                 DAVx5, Tasks.org, Apple Calendar or Thunderbird.
               </p>
 
@@ -1171,7 +1182,7 @@ export default function SettingsModal({
                   <strong>Your sync server is ready</strong>
                   <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "6px 0" }}>
                     We generated a username and password for you (below). Use them as they are, or
-                    change them now — then click "Got it". Daynizer will start with your computer and
+                    change them now, then click "Got it". Daynizer will start with your computer and
                     keep the server running quietly in the tray, so your other devices can always sync.
                     You can change any of this here later.
                   </p>
@@ -1232,7 +1243,7 @@ export default function SettingsModal({
                 <>
                   <h3 style={{ marginTop: 18 }}>Connect other apps</h3>
                   <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                    Use this one address in any CalDAV/CardDAV app — it finds both your calendars
+                    Use this one address in any CalDAV/CardDAV app, it finds both your calendars
                     and your contacts. On the same computer, use the local address instead.
                   </p>
                   <div className="prefs-grid">
@@ -1279,7 +1290,7 @@ export default function SettingsModal({
                           style={{ background: "#fff", padding: 8, borderRadius: 8, flex: "0 0 auto" }}
                         />
                         <div style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 300, lineHeight: 1.6 }}>
-                          <strong>Install DAVx5 first</strong> — the scan opens straight into it. Then
+                          <strong>Install DAVx5 first</strong>. The scan opens straight into it. Then
                           open a QR scanner (<strong>Binary Eye</strong>, free, is the reliable one),
                           scan this, and tap the link: DAVx5 opens with the address, username and
                           password already filled in. Finish, then tick the calendars, contacts and
@@ -1288,7 +1299,7 @@ export default function SettingsModal({
                             <button onClick={() => srvCopy(pairingUri(srv) ?? "", "Pairing link")}>Copy pairing link</button>
                           </div>
                           <div style={{ marginTop: 6, fontSize: 11, color: "var(--warn)" }}>
-                            ⚠️ The QR code and the copied link both carry your password in plain text —
+                            ⚠️ The QR code and the copied link both carry your password in plain text,
                             treat either one like the password itself. Don't screenshot the QR or paste
                             the link somewhere that isn't going straight into DAVx5 (chat/notes apps
                             often sync to the cloud). Regenerate the password below if you're ever
@@ -1298,7 +1309,7 @@ export default function SettingsModal({
                             Make sure the phone is on the same Wi-Fi{srv.platform === "win32" ? " and you've allowed the firewall above" : ""}.
                           </div>
                           <div style={{ marginTop: 6, fontSize: 11 }}>
-                            On <strong>iPhone</strong> there's no scan setup — add the account by hand
+                            On <strong>iPhone</strong> there's no scan setup. Add the account by hand
                             with the Apple Calendar / Contacts steps below.
                           </div>
                         </div>
@@ -1388,9 +1399,9 @@ export default function SettingsModal({
                 <summary style={{ cursor: "pointer", fontSize: 13, marginBottom: 4 }}>Advanced: browse the server directly (troubleshooting)</summary>
                 <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7, marginTop: 4 }}>
                   The built-in server has its own web page for looking at (and manually creating or
-                  deleting) calendars and address books — open the <em>this computer</em> address above
+                  deleting) calendars and address books, open the <em>this computer</em> address above
                   in a regular browser tab (not a CalDAV app) and log in with the username/password
-                  above. Since the certificate is self-signed, the browser will warn about it first —
+                  above. Since the certificate is self-signed, the browser will warn about it first,
                   that's expected; proceed anyway (usually "Advanced" → "Continue"). This is a fallback
                   for troubleshooting; you don't need it for normal use.
                 </div>
